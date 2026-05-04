@@ -16,7 +16,7 @@ To solve this, I created a "Better" Glyph visualizer that works on unsupported d
 * **Real-time Visualization:** The Glyph Interface lights up in sync with your currently playing music.
 * **Quick Settings Integration:** Easily toggle the feature ON/OFF via a Quick Settings tile.
   * It feels just like a native OS feature!
-* **No Screen Recording Required:** * Unlike other apps that require screen recording permissions to capture audio, this app works without them.
+* **No Screen Recording Required:** Unlike other apps that require screen recording permissions to capture audio, this app works without them.
 
 ## Supported Devices
 
