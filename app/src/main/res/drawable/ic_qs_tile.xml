@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1000"
+    android:viewportHeight="1000">
+    <!-- 左側の大きいバー (1.368035, 0.449206 でスケール, y=-385 移動) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M36.293503,-385.955321 L154.596503,-385.955321 L154.596503,74.044679 L36.293503,74.044679 Z" />
+    <!-- 小さいバー6つ (1.368035, 0.449206 でスケール, x=258) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,565.033507 L376.476364,565.033507 L376.476364,683.336507 L258.173364,683.336507 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,429.365943 L376.476364,429.365943 L376.476364,547.668943 L258.173364,547.668943 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,296.211273 L376.476364,296.211273 L376.476364,414.514273 L258.173364,414.514273 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,163.917861 L376.476364,163.917861 L376.476364,282.220861 L258.173364,282.220861 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,28.250298 L376.476364,28.250298 L376.476364,146.553298 L258.173364,146.553298 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M258.173364,-104.904372 L376.476364,-104.904372 L376.476364,13.398628 L258.173364,13.398628 Z" />
+    <!-- 赤いバー (1.368035, 0.954562 でスケール, x=465) -->
+    <path
+        android:fillColor="#D71921"
+        android:pathData="M465.261234,194.792187 L583.564234,194.792187 L583.564234,446.291749 L465.261234,446.291749 Z" />
+</vector>

@@ -1,0 +1,27 @@
+*.iml
+.DS_Store
+
+# Android Studio / IntelliJ
+/.idea/
+
+# Local machine settings
+/local.properties
+
+# Build tools and caches
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Local scratch / extracted SDK artifacts
+/.tmp/
+/.tmp_sdk/
+/com/
+/classes.jar
+/APK/
+/デザイン/
+/app/libs/_aar_tmp/
+/app/libs/*_javap.txt

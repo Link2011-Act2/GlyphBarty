@@ -1,0 +1,46 @@
+{
+  "entries": [
+    {
+      "title": "Jetpack Compose",
+      "coordinate": "androidx.compose:compose-bom:2024.09.00",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/compose",
+      "body": null
+    },
+    {
+      "title": "AndroidX Core KTX",
+      "coordinate": "androidx.core:core-ktx:1.18.0",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/core",
+      "body": null
+    },
+    {
+      "title": "AndroidX Lifecycle Runtime KTX",
+      "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle",
+      "body": null
+    },
+    {
+      "title": "AndroidX Activity Compose",
+      "coordinate": "androidx.activity:activity-compose:1.13.0",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/activity",
+      "body": null
+    },
+    {
+      "title": "Kotlin Standard Library",
+      "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.10",
+      "license": "Apache-2.0",
+      "url": "https://kotlinlang.org/",
+      "body": null
+    },
+    {
+      "title": "Nothing Glyph Matrix SDK",
+      "coordinate": "com.nothing.ketchum:glyph-matrix-sdk:2.0",
+      "license": "Nothing Technology Limited",
+      "url": "https://github.com/nothing-open-source/glyphs-sdk",
+      "body": null
+    }
+  ]
+}
