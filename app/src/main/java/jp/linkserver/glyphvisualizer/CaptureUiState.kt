@@ -5,14 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 data class CaptureUiState(
-    val statusText: String = "Preparing Glyph session...",
+    val statusText: String = "",
     val level: Float = 0f,
     val peak: Float = 0f,
     val sensitivity: Float = 1.75f,
     val noiseGate: Float = 0.08f,
     val dynamics: Float = 1.45f,
+    val outputGamma: Float = 1.8f,
     val toneFocus: Float = -0.2f,
-    val smoothing: Float = 0.55f,
+    val smoothing: Float = 0.45f,
     val smoothingBalance: Float = 0f,
     val reverseDirection: Boolean = true,
     val peakHoldEnabled: Boolean = true,
@@ -22,6 +23,7 @@ data class CaptureUiState(
     val activeMode: String = "IDLE",
     val glyphMode: String = "C1_LINEAR",
     val binaryMode: Boolean = false,
+    val levelAutoScale: Boolean = false,
     val spectrumAutoScale: Boolean = false,
     val allBrightnessAutoScale: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,

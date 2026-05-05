@@ -1,15 +1,19 @@
 package jp.linkserver.glyphvisualizer.audio
 
+import android.content.Context
 import android.media.audiofx.Visualizer
 import android.os.Handler
 import android.os.Looper
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.R
 import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-class OutputMixVisualizer {
+class OutputMixVisualizer(
+    private val context: Context
+) {
     companion object {
         private const val TAG = "OutputMixVisualizer"
     }
@@ -149,17 +153,19 @@ class OutputMixVisualizer {
                         val gated = ((rawLevel - gate) / (1f - gate)).coerceIn(0f, 1f)
                         val bounded = gated.pow(dynamicsProvider().coerceIn(0.6f, 2.4f)).coerceIn(0f, 1f)
                         val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
-                        val smoothingBalance = smoothingBalanceProvider().coerceIn(-1f, 1f)
-                        val attackMultiplier = (3f + smoothingBalance * 2f).coerceIn(1f, 5f)
-                        val releaseMultiplier = (1f - smoothingBalance * 0.5f).coerceIn(0.5f, 1.5f)
-                        val primarySmoothing = (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                        val primaryAttack = (primarySmoothing * attackMultiplier).coerceIn(0f, 1f)
-                        val primaryRelease = (primarySmoothing * releaseMultiplier).coerceIn(0f, 1f)
-                        val displayAttack = (smoothing * attackMultiplier).coerceIn(0f, 1f)
-                        val displayRelease = (smoothing * releaseMultiplier).coerceIn(0f, 1f)
-
-                        smoothedLevel += (bounded - smoothedLevel) * if (bounded > smoothedLevel) primaryAttack else primaryRelease
-                        displayedLevel += (smoothedLevel - displayedLevel) * if (smoothedLevel > displayedLevel) displayAttack else displayRelease
+                        val noReleaseSmoothing = smoothing >= 0.54f
+                        val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
+                        val release = if (noReleaseSmoothing) 1f else smoothing
+                        if (bounded > smoothedLevel) {
+                            smoothedLevel = bounded
+                        } else {
+                            smoothedLevel += (bounded - smoothedLevel) * primarySmoothing
+                        }
+                        if (smoothedLevel > displayedLevel) {
+                            displayedLevel = smoothedLevel
+                        } else {
+                            displayedLevel += (smoothedLevel - displayedLevel) * release
+                        }
                         val peakValue = displayedLevel
                         // Decimate monoSamples for spectrum analysis
                         for (i in spectrumSamples.indices) {
@@ -197,12 +203,17 @@ class OutputMixVisualizer {
                     }
                 }
             }
-            onStateChanged("Visualizer is listening to the output mix. If your player blocks this, use MediaProjection mode.")
+            onStateChanged(context.getString(R.string.status_output_mix_listening))
             true
         } catch (error: Throwable) {
             stop()
             AppLogger.e(TAG, "Output-mix visualizer failed to start", error)
-            onStateChanged("Visualizer mode could not start on this device: ${error.message ?: "unknown error"}")
+            onStateChanged(
+                context.getString(
+                    R.string.status_output_mix_start_failed,
+                    error.message ?: context.getString(R.string.status_unknown_error)
+                )
+            )
             false
         }
     }

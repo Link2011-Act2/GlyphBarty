@@ -1,0 +1,232 @@
+<resources>
+    <string name="app_name">Glyph Barty</string>
+
+    <!-- About Screen -->
+    <string name="about_screen_title">このアプリについて</string>
+    <string name="about_version_section_title">バージョン情報</string>
+    <string name="about_version_label" translatable="false">%1$s  v%2$s (%3$d)</string>
+    <string name="about_simple_version_title">バージョン</string>
+    <string name="about_simple_version_value" translatable="false">v%1$s</string>
+    <string name="about_dev_channel_title">開発チャネル</string>
+    <string name="about_dev_channel_dialog_title">開発チャネル: %1$s</string>
+    <string name="about_dev_channel_value_intdev">内部検証版</string>
+    <string name="about_dev_channel_value_beta">ベータ版</string>
+    <string name="about_dev_channel_value_stable">安定版</string>
+    <string name="about_dev_channel_value_unknown">不明</string>
+    <string name="about_dev_channel_desc_intdev">IntDev は内部検証時に使用されます。開発者のみに公開され、仕様変更や不安定な挙動が含まれる可能性があります。</string>
+    <string name="about_dev_channel_desc_beta">Beta はプレリリースのバージョンです。GitHubなどで公開されますが、不安定な挙動になる可能性があります。</string>
+    <string name="about_dev_channel_desc_stable">Stable は安定版で、バグ検証などが十分に行われた後に配布されます。</string>
+    <string name="about_dev_channel_desc_unknown">このチャネルの説明は未登録です。</string>
+    <string name="about_version_details_title">バージョン詳細</string>
+    <string name="about_version_details_message">バージョン: %1$s&#10;内部バージョン番号: %2$d</string>
+    <string name="about_support_title">サポート情報</string>
+    <string name="about_support_help">不具合報告やフィードバックはこちら</string>
+    <string name="about_support_open_site">GitHubを開く</string>
+    <string name="about_support_site_url" translatable="false">https://github.com</string>
+    <string name="about_language_open_failed">言語設定を開けませんでした</string>
+    <string name="about_oss_title">オープンソースライセンス</string>
+    <string name="about_oss_help">このアプリで使用しているオープンソースソフトウェアのライセンス情報</string>
+    <string name="about_oss_open">ライセンス一覧を表示</string>
+    <string name="about_debug_title">デバッグログ</string>
+    <string name="about_debug_help">問題が発生した際にログを共有して報告できます。</string>
+    <string name="about_debug_share">ログを共有</string>
+    <string name="about_debug_empty">ログなし</string>
+    <string name="about_debug_clear">ログを消去</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_screen_title">設定</string>
+    <string name="settings_screen_help">アプリに関する設定や各種導線をまとめています。</string>
+    <string name="settings_language_title">アプリの言語</string>
+    <string name="settings_language_desc">Android のアプリ別言語設定を開きます。</string>
+    <string name="settings_reset_title">パラメータをリセット</string>
+    <string name="settings_reset_desc">メーターと Glyph の設定をデフォルト値に戻します。</string>
+    <string name="settings_export_title">パラメータをエクスポート</string>
+    <string name="settings_export_desc">現在の設定を JSON ファイルとして保存します。</string>
+    <string name="settings_import_title">パラメータをインポート</string>
+    <string name="settings_import_desc">保存済みの JSON ファイルから設定を読み込みます。</string>
+    <string name="settings_about_title">アプリ情報</string>
+    <string name="settings_about_desc">バージョン、サポート、ログ、ライセンスを確認できます。</string>
+    <string name="settings_open_button">開く</string>
+    <string name="settings_reset_button">デフォルトに戻す</string>
+    <string name="settings_export_button">エクスポート</string>
+    <string name="settings_import_button">インポート</string>
+    <string name="settings_import_export_button">インポート / エクスポート</string>
+    <string name="settings_export_success">パラメータを書き出しました。</string>
+    <string name="settings_export_failed">パラメータを書き出せませんでした。</string>
+    <string name="settings_import_success">パラメータを読み込みました。</string>
+    <string name="settings_import_failed">パラメータを読み込めませんでした。</string>
+    <string name="settings_reset_done">パラメータをデフォルトに戻しました。</string>
+    <string name="reset_parameters_dialog_title">デフォルトに戻しますか？</string>
+    <string name="reset_parameters_dialog_message">現在のメーター設定をデフォルト値に戻します。</string>
+    <string name="import_export_dialog_title">インポート / エクスポート</string>
+    <string name="import_export_dialog_message">パラメータの読み込みまたは書き出しを選択してください。</string>
+    <string name="dialog_cancel">キャンセル</string>
+
+    <!-- OSS Licenses Screen -->
+    <string name="oss_screen_title">オープンソースライセンス</string>
+    <string name="oss_button_open_url">URLを開く</string>
+    <string name="oss_button_show_text">本文を表示</string>
+    <string name="oss_load_failed">ライセンス情報を読み込めませんでした。</string>
+    <string name="oss_unknown_license">ライセンス不明</string>
+    <string name="license_apache_body" translatable="false">Apache License&#10;Version 2.0, January 2004&#10;http://www.apache.org/licenses/&#10;&#10;TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION&#10;&#10;[Full Apache 2.0 License text: https://www.apache.org/licenses/LICENSE-2.0]</string>
+
+    <!-- Content Descriptions -->
+    <string name="cd_back">戻る</string>
+    <string name="cd_about">このアプリについて</string>
+    <string name="cd_settings">設定</string>
+    <string name="cd_collapse">折りたたむ</string>
+    <string name="cd_expand">展開</string>
+    <string name="cd_dismiss">閉じる</string>
+    <string name="cd_import_export">インポートとエクスポート</string>
+
+    <!-- Main Screen -->
+    <string name="status_mic_permission_required">再生音の取得にはマイク権限が必要です。</string>
+    <string name="status_audio_capture_cancelled">音声キャプチャがキャンセルされました。</string>
+    <string name="status_audio_capture_requires_android10">音声再生キャプチャは Android 10 以降で利用できます。</string>
+    <string name="status_no_capture_start_failed">キャプチャなしモードの開始に失敗しました: %1$s</string>
+    <string name="status_unknown_error">不明なエラー</string>
+    <string name="status_preparing_glyph_session">Glyphセッションは待機中</string>
+    <string name="status_visualizer_service_start_failed">キャプチャなしモードを開始できませんでした: %1$s</string>
+    <string name="status_media_projection_service_start_failed">MediaProjection を開始できませんでした: %1$s</string>
+    <string name="status_permission_denied">権限が拒否されました: %1$s</string>
+    <string name="status_media_projection_data_missing">MediaProjection のデータが見つかりませんでした。</string>
+    <string name="status_visualizer_retrying">キャプチャなしモードの開始を再試行しています (%1$d/3)…</string>
+    <string name="status_visualizer_try_media_projection">キャプチャなしモードを利用できませんでした。MediaProjection を試してください。</string>
+    <string name="status_capture_stopped_ready">キャプチャを停止しました。次のセッションを開始できます。</string>
+    <string name="status_output_mix_listening">キャプチャなしモードで出力ミックスを監視しています。反応しない場合は MediaProjection を使ってください。</string>
+    <string name="status_output_mix_start_failed">キャプチャなしモードをこの端末で開始できませんでした: %1$s</string>
+    <string name="status_media_projection_unavailable">MediaProjection を作成できませんでした。</string>
+    <string name="status_audio_record_initialization_failed">AudioRecord の初期化に失敗しました。</string>
+    <string name="status_playback_listening">再生音を監視しています。メーターを動かすには端末で音楽を再生してください。</string>
+    <string name="status_glyph_service_connecting">Glyph サービスに接続しています…</string>
+    <string name="status_glyph_service_disconnected">Glyph サービスとの接続が切れました。</string>
+    <string name="status_glyph_session_ready">%1$s で Glyph セッションの準備ができました。</string>
+    <string name="status_glyph_session_open_failed">Glyph セッションを開けませんでした: %1$s</string>
+    <string name="status_glyph_sdk_registration_failed">Glyph SDK の登録に失敗しました。</string>
+    <string name="status_glyph_device_unsupported">Glyph 出力は対応する Nothing 端末でのみ利用できます。model=%1$s</string>
+    <string name="status_glyph_resume_failed">Glyph の再開に失敗しました。再度キャプチャを開始してください。</string>
+    <string name="status_glyph_matrix_connecting">Glyph Matrix サービスに接続しています…</string>
+    <string name="status_glyph_matrix_service_disconnected">Glyph Matrix サービスとの接続が切れました。</string>
+    <string name="status_glyph_matrix_session_ready">%1$s で Glyph Matrix セッションの準備ができました。</string>
+    <string name="status_glyph_matrix_registration_failed">Glyph Matrix SDK の登録に失敗しました。</string>
+    <string name="status_glyph_matrix_device_unsupported">Glyph Matrix 出力は現在 Phone (3) / (4a Pro) のみ対応しています。model=%1$s</string>
+    <string name="status_glyph_matrix_length_unavailable">この端末では Glyph Matrix の長さを取得できませんでした。</string>
+    <string name="status_glyph_matrix_resume_failed">Glyph Matrix の再開に失敗しました。再度キャプチャを開始してください。</string>
+    <string name="status_glyph_matrix_update_failed">Glyph Matrix の更新に失敗しました。再度キャプチャを開始してください。</string>
+    <string name="status_glyph_matrix_update_crashed">Glyph Matrix の更新中に問題が発生しました。再度キャプチャを開始してください。</string>
+
+    <string name="log_title">ログ</string>
+    <string name="notification_title">Glyph ピークメーター</string>
+    <string name="notification_mode_visualizer">キャプチャなし</string>
+    <string name="notification_mode_media_projection">MediaProjection</string>
+    <string name="notification_channel_name">Glyph Visualizer</string>
+
+    <string name="hero_title">Nothing Glyph</string>
+    <string name="hero_subtitle">再生音に連動するライブピークスタイルのビジュアライザー。</string>
+    <string name="hero_gate_dynamics">ゲート %1$d%%  |  ダイナミクス %2$.2f</string>
+    <string name="hero_response_speed">応答速度 %1$s</string>
+    <string name="hero_tone_focus_bass">低音重視 %1$d%%</string>
+    <string name="hero_tone_focus_treble">高音重視 %1$d%%</string>
+    <string name="hero_tone_focus_balanced">音域バランス</string>
+    <string name="capture_state_live">動作中</string>
+    <string name="capture_state_idle">停止中</string>
+
+    <string name="meter_label_level">レベル</string>
+    <string name="meter_label_peak">ピーク</string>
+    <string name="meter_label_segments">セグメント</string>
+    <string name="meter_segments_value">%1$d / 16</string>
+    <string name="percent_value">%1$d%%</string>
+    <string name="response_speed_none">最大</string>
+
+    <string name="capture_control_title">キャプチャ制御</string>
+    <string name="capture_control_hint">まずはキャプチャなしモードを試し、必要な場合だけ MediaProjection を使うのがおすすめです。</string>
+    <string name="current_mode">現在のモード: %1$s</string>
+    <string name="glyph_pattern">Glyphパターン</string>
+    <string name="meter_parameters">メーター設定</string>
+
+    <string name="mode_matrix_bar">Matrix Bar</string>
+    <string name="mode_matrix_field">Matrix Field</string>
+    <string name="mode_matrix_circle">Matrix Circle</string>
+    <string name="mode_matrix_spectrum">Matrix Spectrum</string>
+    <string name="mode_matrix_spectrum_center">Matrix Spectrum Center</string>
+    <string name="mode_p3a_c_linear">C1 Linear</string>
+    <string name="mode_p3a_c_center">C1 Center</string>
+    <string name="mode_p3a_c_spectrum">C1 Spectrum</string>
+    <string name="mode_p3a_cab_linear">All Glyph Linear</string>
+    <string name="mode_p3a_cab_center">All Glyph Center</string>
+    <string name="mode_p3a_cab_spectrum">All Glyph Spectrum</string>
+    <string name="mode_c1_linear">C1 Linear</string>
+    <string name="mode_c1_center">C1 Center</string>
+    <string name="mode_d1">D1 Linear</string>
+    <string name="mode_d1_center">D1 Center</string>
+    <string name="mode_c1_spectrum">C1 Spectrum</string>
+    <string name="mode_d1_spectrum">D1 Spectrum</string>
+    <string name="mode_all_brightness">All Brightness</string>
+    <string name="mode_p4a_linear">Linear</string>
+    <string name="mode_p4a_center">Center</string>
+    <string name="mode_p4a_spectrum">Spectrum</string>
+    <string name="mode_p4a_all_brightness">All Brightness</string>
+    <string name="mode_visualizer">キャプチャなしモード</string>
+    <string name="mode_media_projection">MediaProjectionモード</string>
+    <string name="mode_idle">待機中</string>
+
+    <string name="param_sensitivity_title">感度</string>
+    <string name="param_sensitivity_desc">上げるほど小さい音でもメーターが反応します</string>
+    <string name="advanced_meter_title">詳細設定</string>
+    <string name="advanced_meter_desc">詳細なパラメータを調整します</string>
+    <string name="param_noise_gate_title">ノイズカット</string>
+    <string name="param_noise_gate_desc">小さい信号を無視して、無音時のチラつきを抑えます。</string>
+    <string name="param_dynamics_title">ダイナミクス</string>
+    <string name="param_dynamics_desc">上げると強い音を強調し、下げると細かい音にも反応しやすくなります</string>
+    <string name="param_dynamics_value">%1$.2f</string>
+    <string name="param_output_gamma_title">出力Gamma</string>
+    <string name="param_output_gamma_desc">光り方のカーブを調整します。高いほど大きい音が強調されます</string>
+    <string name="param_response_speed_title">応答速度</string>
+    <string name="param_response_speed_desc">高いほど素早く反応し、低いほど滑らかな動きになります</string>
+    <string name="param_tone_focus_title">音域フォーカス</string>
+    <string name="param_tone_focus_desc">低域/高域どちらを強めに反映するかを調整します</string>
+    <string name="param_tone_focus_bass">低音 %1$d%%</string>
+    <string name="param_tone_focus_treble">高音 %1$d%%</string>
+    <string name="param_tone_focus_balanced">バランス</string>
+
+    <string name="glyph_direction_title">Glyphの向き</string>
+    <string name="glyph_direction_top_to_bottom">上から下</string>
+    <string name="glyph_direction_bottom_to_top">下から上</string>
+
+    <string name="binary_mode_title">バイナリモード</string>
+    <string name="binary_mode_on">各セグメントを完全な点灯/消灯のみで表現</string>
+    <string name="binary_mode_off">明るさをなめらかに変化</string>
+
+    <string name="level_auto_scale_title">レベル自動スケール</string>
+    <string name="level_auto_scale_on">レベル範囲を自動調整</string>
+    <string name="level_auto_scale_off">固定スケール</string>
+
+    <string name="spectrum_auto_scale_title">自動スケール調整</string>
+    <string name="spectrum_auto_scale_on">バンドごとにレベルの最大/最小値が自動で変化します</string>
+    <string name="spectrum_auto_scale_off">固定スケール</string>
+
+    <string name="all_brightness_auto_scale_title">自動縮尺調整</string>
+    <string name="all_brightness_auto_scale_on">レベルの最大/最小値が自動で変化します</string>
+    <string name="all_brightness_auto_scale_off">固定スケール</string>
+
+    <string name="turn_off_when_back_down_title">背面を下にすると消灯</string>
+    <string name="turn_off_when_back_down_on">端末の背面が下向きの間は Glyphが消灯します</string>
+    <string name="turn_off_when_back_down_off">端末の向きに関係なく出力を続けます</string>
+
+    <string name="button_no_capture">開始</string>
+    <string name="button_media_projection">MediaProjection で開始</string>
+    <string name="button_media_projection_hint">一部のアプリの音声が取得できない場合の代替手段</string>
+    <string name="button_stop">停止</string>
+    <string name="button_language_settings">言語設定</string>
+
+    <string name="info_note_phone">Phone (2)/(3)/(2a)/(3a)/(4a)</string>
+    <string name="info_note_foreground">バックグラウンド動作対応</string>
+    <string name="info_note_projection">MediaProjectionは不要</string>
+
+    <string name="preview_status_text">プレビュー: メーターのレイアウト表示用です。</string>
+
+    <!-- Spectrum labels -->
+    <string name="spectrum_label_bass">低域</string>
+    <string name="spectrum_label_bands">%1$d バンド</string>
+    <string name="spectrum_label_treble">高域</string>
+</resources>

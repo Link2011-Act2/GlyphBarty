@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,7 +42,9 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -49,28 +52,40 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import jp.linkserver.glyphvisualizer.ui.AboutScreen
 import jp.linkserver.glyphvisualizer.ui.OssLicensesScreen
+import jp.linkserver.glyphvisualizer.ui.SettingsScreen
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -189,13 +204,29 @@ private val ALL_BRIGHTNESS_MODE_KEYS = setOf(
     MODE_P3_MATRIX_ALL_BRIGHTNESS
 )
 
+private const val RESPONSE_SPEED_NONE_THRESHOLD = 0.54f
+
+private enum class Screen {
+    MAIN,
+    SETTINGS,
+    ABOUT,
+    OSS
+}
+
 class MainActivity : ComponentActivity() {
     private enum class CaptureMode {
         VISUALIZER,
         MEDIA_PROJECTION
     }
 
+    private val isPhone3Device by lazy { Common.is23112() }
+    private val isPhone4aProDevice by lazy { Common.is25111p() }
+    private val isPhone2aDevice by lazy { Common.is23111() || Common.is23113() }
+    private val isPhone3aDevice by lazy { Common.is24111() }
+    private val isPhone4aDevice by lazy { Common.is25111() }
+
     private var pendingStartMode: CaptureMode? = null
+    private var pendingExportContent: String? = null
 
     private val audioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -212,6 +243,50 @@ class MainActivity : ComponentActivity() {
             }
         }
         pendingStartMode = null
+    }
+
+    private val exportParametersLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val content = pendingExportContent
+        pendingExportContent = null
+        if (uri == null || content == null) {
+            return@registerForActivityResult
+        }
+
+        val success = runCatching {
+            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                writer.write(content)
+            } ?: error("Output stream is unavailable.")
+        }.isSuccess
+
+        Toast.makeText(
+            this,
+            getString(if (success) R.string.settings_export_success else R.string.settings_export_failed),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private val importParametersLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) {
+            return@registerForActivityResult
+        }
+
+        val importedState = runCatching {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                SettingsPreferences.importJson(reader.readText())
+            } ?: error("Input stream is unavailable.")
+        }.getOrNull()
+
+        if (importedState == null) {
+            Toast.makeText(this, getString(R.string.settings_import_failed), Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+
+        applyParameterState(importedState)
+        Toast.makeText(this, getString(R.string.settings_import_success), Toast.LENGTH_SHORT).show()
     }
 
     private val mediaProjectionLauncher = registerForActivityResult(
@@ -231,6 +306,7 @@ class MainActivity : ComponentActivity() {
             sensitivity = uiState.sensitivity,
             noiseGate = uiState.noiseGate,
             dynamics = uiState.dynamics,
+            outputGamma = uiState.outputGamma,
             toneFocus = uiState.toneFocus,
             smoothing = uiState.smoothing,
             smoothingBalance = uiState.smoothingBalance,
@@ -238,6 +314,7 @@ class MainActivity : ComponentActivity() {
               peakHoldEnabled = uiState.peakHoldEnabled,
               glyphMode = uiState.glyphMode,
                             binaryMode = uiState.binaryMode,
+                            levelAutoScale = uiState.levelAutoScale,
                                                         spectrumAutoScale = uiState.spectrumAutoScale,
                                                                                                                 allBrightnessAutoScale = uiState.allBrightnessAutoScale,
                                                         turnOffWhenBackDown = uiState.turnOffWhenBackDown
@@ -247,31 +324,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val isPhone3Device = Common.is23112()
-        val isPhone4aProDevice = Common.is25111p()
-        val isPhone2aDevice = Common.is23111() || Common.is23113()
-        val isPhone3aDevice = Common.is24111()
-        val isPhone4aDevice = Common.is25111()
         val savedSettings = SettingsPreferences.load(this)
-        val normalizedMode = when {
-            isPhone3Device && savedSettings.glyphMode in PHONE3_MODE_KEYS -> savedSettings.glyphMode
-            isPhone3Device -> MODE_P3_MATRIX_SPECTRUM
-            isPhone4aProDevice && savedSettings.glyphMode in PHONE4A_PRO_MODE_KEYS -> savedSettings.glyphMode
-            isPhone4aProDevice -> MODE_P3_MATRIX_SPECTRUM
-            isPhone2aDevice && savedSettings.glyphMode in PHONE2A_MODE_KEYS -> savedSettings.glyphMode
-            isPhone2aDevice -> MODE_P2A_C_LINEAR
-            isPhone3aDevice && savedSettings.glyphMode in PHONE3A_MODE_KEYS -> savedSettings.glyphMode
-            isPhone3aDevice -> MODE_P3A_C_LINEAR
-            isPhone4aDevice && savedSettings.glyphMode in PHONE4A_MODE_KEYS -> savedSettings.glyphMode
-            isPhone4aDevice -> MODE_P4A_LINEAR
-            savedSettings.glyphMode in PHONE2_MODE_KEYS -> savedSettings.glyphMode
-            else -> MODE_C1_LINEAR
-        }
+        val normalizedMode = normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
         CaptureUiStore.update {
             it.copy(
+                statusText = getString(R.string.status_preparing_glyph_session),
                 sensitivity = savedSettings.sensitivity,
                 noiseGate = savedSettings.noiseGate,
                 dynamics = savedSettings.dynamics,
+                outputGamma = savedSettings.outputGamma,
                 toneFocus = savedSettings.toneFocus,
                 smoothing = savedSettings.smoothing,
                 smoothingBalance = savedSettings.smoothingBalance,
@@ -279,6 +340,7 @@ class MainActivity : ComponentActivity() {
                     peakHoldEnabled = savedSettings.peakHoldEnabled,
                     glyphMode = normalizedMode,
                     binaryMode = savedSettings.binaryMode,
+                    levelAutoScale = savedSettings.levelAutoScale,
                     spectrumAutoScale = savedSettings.spectrumAutoScale,
                     turnOffWhenBackDown = savedSettings.turnOffWhenBackDown,
                 allBrightnessAutoScale = savedSettings.allBrightnessAutoScale,
@@ -296,6 +358,7 @@ class MainActivity : ComponentActivity() {
                     sensitivity = uiState.sensitivity,
                     noiseGate = uiState.noiseGate,
                     dynamics = uiState.dynamics,
+                    outputGamma = uiState.outputGamma,
                     toneFocus = uiState.toneFocus,
                     smoothing = uiState.smoothing,
                     smoothingBalance = uiState.smoothingBalance,
@@ -309,6 +372,7 @@ class MainActivity : ComponentActivity() {
                         isPhone3aDevice = isPhone3aDevice,
                         isPhone4aDevice = isPhone4aDevice,
                         binaryMode = uiState.binaryMode,
+                        levelAutoScale = uiState.levelAutoScale,
                         spectrumAutoScale = uiState.spectrumAutoScale,
                         allBrightnessAutoScale = uiState.allBrightnessAutoScale,
                         turnOffWhenBackDown = uiState.turnOffWhenBackDown,
@@ -327,6 +391,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -348,6 +413,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -369,9 +435,33 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onOutputGammaChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(outputGamma = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.binaryMode,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -390,6 +480,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -411,6 +502,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -432,6 +524,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -453,6 +546,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -474,6 +568,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -495,6 +590,29 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
+                                updated.spectrumAutoScale,
+                                updated.allBrightnessAutoScale,
+                                updated.turnOffWhenBackDown
+                            )
+                            SettingsPreferences.save(this, updated)
+                        },
+                        onLevelAutoScaleChanged = { newValue ->
+                            CaptureUiStore.update { it.copy(levelAutoScale = newValue) }
+                            val updated = CaptureUiStore.state
+                            GlyphVisualizerService.updateSensitivity(
+                                this,
+                                updated.sensitivity,
+                                updated.noiseGate,
+                                updated.dynamics,
+                                updated.toneFocus,
+                                updated.smoothing,
+                                updated.smoothingBalance,
+                                updated.reverseDirection,
+                                updated.peakHoldEnabled,
+                                updated.glyphMode,
+                                updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -516,13 +634,14 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
                             )
                             SettingsPreferences.save(this, updated)
                         },
-                        onAllBrightnessAutoScaleChanged = { newValue ->
+                    onAllBrightnessAutoScaleChanged = { newValue ->
                             CaptureUiStore.update { it.copy(allBrightnessAutoScale = newValue) }
                             val updated = CaptureUiStore.state
                             GlyphVisualizerService.updateSensitivity(
@@ -537,6 +656,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
@@ -558,12 +678,23 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.turnOffWhenBackDown
                             )
                             SettingsPreferences.save(this, updated)
                         },
+                    onResetParametersClick = {
+                        applyParameterState(defaultParameterState())
+                        Toast.makeText(this, getString(R.string.settings_reset_done), Toast.LENGTH_SHORT).show()
+                    },
+                    onExportParametersClick = {
+                        exportParameters()
+                    },
+                    onImportParametersClick = {
+                        importParameters()
+                    },
                     onStartVisualizerClick = {
                         requestModeStart(CaptureMode.VISUALIZER)
                     },
@@ -580,6 +711,101 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    private fun defaultGlyphModeForCurrentDevice(): String = when {
+        isPhone3Device -> MODE_P3_MATRIX_SPECTRUM
+        isPhone4aProDevice -> MODE_P3_MATRIX_SPECTRUM
+        isPhone2aDevice -> MODE_P2A_C_LINEAR
+        isPhone3aDevice -> MODE_P3A_C_LINEAR
+        isPhone4aDevice -> MODE_P4A_LINEAR
+        else -> MODE_C1_LINEAR
+    }
+
+    private fun normalizeGlyphModeForCurrentDevice(glyphMode: String): String = when {
+        isPhone3Device && glyphMode in PHONE3_MODE_KEYS -> glyphMode
+        isPhone3Device -> defaultGlyphModeForCurrentDevice()
+        isPhone4aProDevice && glyphMode in PHONE4A_PRO_MODE_KEYS -> glyphMode
+        isPhone4aProDevice -> defaultGlyphModeForCurrentDevice()
+        isPhone2aDevice && glyphMode in PHONE2A_MODE_KEYS -> glyphMode
+        isPhone2aDevice -> defaultGlyphModeForCurrentDevice()
+        isPhone3aDevice && glyphMode in PHONE3A_MODE_KEYS -> glyphMode
+        isPhone3aDevice -> defaultGlyphModeForCurrentDevice()
+        isPhone4aDevice && glyphMode in PHONE4A_MODE_KEYS -> glyphMode
+        isPhone4aDevice -> defaultGlyphModeForCurrentDevice()
+        glyphMode in PHONE2_MODE_KEYS -> glyphMode
+        else -> defaultGlyphModeForCurrentDevice()
+    }
+
+    private fun defaultParameterState(): CaptureUiState {
+        return SettingsPreferences.defaultParameters().copy(
+            glyphMode = defaultGlyphModeForCurrentDevice()
+        )
+    }
+
+    private fun sanitizeParameterState(state: CaptureUiState): CaptureUiState {
+        val parameters = SettingsPreferences.parameterStateOf(state)
+        return parameters.copy(
+            sensitivity = parameters.sensitivity.coerceIn(0.6f, 3.0f),
+            noiseGate = parameters.noiseGate.coerceIn(0f, 0.35f),
+            dynamics = parameters.dynamics.coerceIn(0.6f, 2.2f),
+            outputGamma = parameters.outputGamma.coerceIn(0.6f, 2.6f),
+            toneFocus = parameters.toneFocus.coerceIn(-1f, 1f),
+            smoothing = parameters.smoothing.coerceIn(0.08f, 0.55f),
+            glyphMode = normalizeGlyphModeForCurrentDevice(parameters.glyphMode)
+        )
+    }
+
+    private fun applyParameterState(state: CaptureUiState) {
+        val parameters = sanitizeParameterState(state)
+        CaptureUiStore.update { current ->
+            current.copy(
+                sensitivity = parameters.sensitivity,
+                noiseGate = parameters.noiseGate,
+                dynamics = parameters.dynamics,
+                outputGamma = parameters.outputGamma,
+                toneFocus = parameters.toneFocus,
+                smoothing = parameters.smoothing,
+                smoothingBalance = parameters.smoothingBalance,
+                reverseDirection = parameters.reverseDirection,
+                peakHoldEnabled = parameters.peakHoldEnabled,
+                glyphMode = parameters.glyphMode,
+                binaryMode = parameters.binaryMode,
+                levelAutoScale = parameters.levelAutoScale,
+                spectrumAutoScale = parameters.spectrumAutoScale,
+                allBrightnessAutoScale = parameters.allBrightnessAutoScale,
+                turnOffWhenBackDown = parameters.turnOffWhenBackDown
+            )
+        }
+        val updated = CaptureUiStore.state
+        GlyphVisualizerService.updateSensitivity(
+            this,
+            updated.sensitivity,
+            updated.noiseGate,
+            updated.dynamics,
+            updated.toneFocus,
+            updated.smoothing,
+            updated.smoothingBalance,
+            updated.reverseDirection,
+            updated.peakHoldEnabled,
+            updated.glyphMode,
+            updated.binaryMode,
+            updated.levelAutoScale,
+            updated.spectrumAutoScale,
+            updated.allBrightnessAutoScale,
+            updated.turnOffWhenBackDown,
+            updated.outputGamma
+        )
+        SettingsPreferences.save(this, updated)
+    }
+
+    private fun exportParameters() {
+        pendingExportContent = SettingsPreferences.exportJson(CaptureUiStore.state)
+        exportParametersLauncher.launch("glyph-barty-parameters.json")
+    }
+
+    private fun importParameters() {
+        importParametersLauncher.launch(arrayOf("application/json", "text/plain"))
     }
 
     private fun requestModeStart(mode: CaptureMode) {
@@ -610,9 +836,11 @@ class MainActivity : ComponentActivity() {
                 uiState.peakHoldEnabled,
                 uiState.glyphMode,
                 uiState.binaryMode,
+                uiState.levelAutoScale,
                 uiState.spectrumAutoScale,
                 uiState.allBrightnessAutoScale,
-                uiState.turnOffWhenBackDown
+                uiState.turnOffWhenBackDown,
+                uiState.outputGamma
             )
         } catch (error: Throwable) {
             val msg = getString(
@@ -648,6 +876,7 @@ private fun GlyphVisualizerApp(
     sensitivity: Float,
     noiseGate: Float,
     dynamics: Float,
+    outputGamma: Float,
     toneFocus: Float,
     smoothing: Float,
     smoothingBalance: Float,
@@ -661,45 +890,40 @@ private fun GlyphVisualizerApp(
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
     binaryMode: Boolean,
+    levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
     onNoiseGateChanged: (Float) -> Unit,
     onDynamicsChanged: (Float) -> Unit,
+    onOutputGammaChanged: (Float) -> Unit,
     onSmoothingChanged: (Float) -> Unit,
     onSmoothingBalanceChanged: (Float) -> Unit,
     onToneFocusChanged: (Float) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
+    onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
+    onResetParametersClick: () -> Unit,
+    onExportParametersClick: () -> Unit,
+    onImportParametersClick: () -> Unit,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
     onStopClick: () -> Unit,
     logMessage: String?,
     onDismissLog: () -> Unit
 ) {
-    var screen by remember { mutableStateOf("main") }
-    BackHandler(enabled = screen != "main") {
+    var screen by remember { mutableStateOf(Screen.MAIN) }
+    BackHandler(enabled = screen != Screen.MAIN) {
         when (screen) {
-            "oss" -> screen = "about"
-            else -> screen = "main"
+            Screen.OSS -> screen = Screen.ABOUT
+            Screen.ABOUT -> screen = Screen.SETTINGS
+            else -> screen = Screen.MAIN
         }
-    }
-
-    if (screen == "about") {
-        AboutScreen(
-            onBack = { screen = "main" },
-            onOssLicenses = { screen = "oss" }
-        )
-        return
-    }
-    if (screen == "oss") {
-        OssLicensesScreen(onBack = { screen = "about" })
-        return
     }
 
     val containerBrush = Brush.verticalGradient(
@@ -709,9 +933,149 @@ private fun GlyphVisualizerApp(
             MaterialTheme.colorScheme.surfaceContainerHigh
         )
     )
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                if (forward) {
+                    (slideInHorizontally { it / 5 } + fadeIn()) togetherWith
+                        (slideOutHorizontally { -it / 5 } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it / 5 } + fadeIn()) togetherWith
+                        (slideOutHorizontally { it / 5 } + fadeOut())
+                }
+            },
+            label = "screen_transition"
+        ) { targetScreen ->
+            when (targetScreen) {
+                Screen.MAIN -> MainScreenContent(
+                    containerBrush = containerBrush,
+                    statusText = statusText,
+                    isCapturing = isCapturing,
+                    level = level,
+                    peak = peak,
+                    spectrumBands = spectrumBands,
+                    sensitivity = sensitivity,
+                    noiseGate = noiseGate,
+                    dynamics = dynamics,
+                    outputGamma = outputGamma,
+                    toneFocus = toneFocus,
+                    smoothing = smoothing,
+                    smoothingBalance = smoothingBalance,
+                    reverseDirection = reverseDirection,
+                    meterSegments = meterSegments,
+                    activeMode = activeMode,
+                    glyphMode = glyphMode,
+                    isPhone3Device = isPhone3Device,
+                    isPhone4aProDevice = isPhone4aProDevice,
+                    isPhone2aDevice = isPhone2aDevice,
+                    isPhone3aDevice = isPhone3aDevice,
+                    isPhone4aDevice = isPhone4aDevice,
+                    binaryMode = binaryMode,
+                    levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    turnOffWhenBackDown = turnOffWhenBackDown,
+                    onResetParametersClick = onResetParametersClick,
+                    onExportParametersClick = onExportParametersClick,
+                    onImportParametersClick = onImportParametersClick,
+                    onSensitivityChanged = onSensitivityChanged,
+                    onNoiseGateChanged = onNoiseGateChanged,
+                    onDynamicsChanged = onDynamicsChanged,
+                    onOutputGammaChanged = onOutputGammaChanged,
+                    onSmoothingChanged = onSmoothingChanged,
+                    onSmoothingBalanceChanged = onSmoothingBalanceChanged,
+                    onToneFocusChanged = onToneFocusChanged,
+                    onReverseDirectionChanged = onReverseDirectionChanged,
+                    onGlyphModeChanged = onGlyphModeChanged,
+                    onBinaryModeChanged = onBinaryModeChanged,
+                    onLevelAutoScaleChanged = onLevelAutoScaleChanged,
+                    onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
+                    onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                    onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
+                    onStartVisualizerClick = onStartVisualizerClick,
+                    onStartProjectionClick = onStartProjectionClick,
+                    onStopClick = onStopClick,
+                    logMessage = logMessage,
+                    onDismissLog = onDismissLog,
+                    onOpenSettings = { screen = Screen.SETTINGS }
+                )
+                Screen.SETTINGS -> SettingsScreen(
+                    onBack = { screen = Screen.MAIN },
+                    onAbout = { screen = Screen.ABOUT }
+                )
+                Screen.ABOUT -> AboutScreen(
+                    onBack = { screen = Screen.SETTINGS },
+                    onOssLicenses = { screen = Screen.OSS }
+                )
+                Screen.OSS -> OssLicensesScreen(onBack = { screen = Screen.ABOUT })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainScreenContent(
+    containerBrush: Brush,
+    statusText: String,
+    isCapturing: Boolean,
+    level: Float,
+    peak: Float,
+    spectrumBands: FloatArray,
+    sensitivity: Float,
+    noiseGate: Float,
+    dynamics: Float,
+    outputGamma: Float,
+    toneFocus: Float,
+    smoothing: Float,
+    smoothingBalance: Float,
+    reverseDirection: Boolean,
+    meterSegments: Int,
+    activeMode: String,
+    glyphMode: String,
+    isPhone3Device: Boolean,
+    isPhone4aProDevice: Boolean,
+    isPhone2aDevice: Boolean,
+    isPhone3aDevice: Boolean,
+    isPhone4aDevice: Boolean,
+    binaryMode: Boolean,
+    levelAutoScale: Boolean,
+    spectrumAutoScale: Boolean,
+    allBrightnessAutoScale: Boolean,
+    turnOffWhenBackDown: Boolean,
+    onResetParametersClick: () -> Unit,
+    onExportParametersClick: () -> Unit,
+    onImportParametersClick: () -> Unit,
+    onSensitivityChanged: (Float) -> Unit,
+    onNoiseGateChanged: (Float) -> Unit,
+    onDynamicsChanged: (Float) -> Unit,
+    onOutputGammaChanged: (Float) -> Unit,
+    onSmoothingChanged: (Float) -> Unit,
+    onSmoothingBalanceChanged: (Float) -> Unit,
+    onToneFocusChanged: (Float) -> Unit,
+    onReverseDirectionChanged: (Boolean) -> Unit,
+    onGlyphModeChanged: (String) -> Unit,
+    onBinaryModeChanged: (Boolean) -> Unit,
+    onLevelAutoScaleChanged: (Boolean) -> Unit,
+    onSpectrumAutoScaleChanged: (Boolean) -> Unit,
+    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
+    onStartVisualizerClick: () -> Unit,
+    onStartProjectionClick: () -> Unit,
+    onStopClick: () -> Unit,
+    logMessage: String?,
+    onDismissLog: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     val scrollState = rememberScrollState()
 
     Scaffold(
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
@@ -725,10 +1089,10 @@ private fun GlyphVisualizerApp(
                     )
                 },
                 actions = {
-                    IconButton(onClick = { screen = "about" }) {
+                    IconButton(onClick = onOpenSettings) {
                         Icon(
-                            Icons.Default.Info,
-                            contentDescription = stringResource(R.string.cd_about)
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.cd_settings)
                         )
                     }
                 }
@@ -739,7 +1103,8 @@ private fun GlyphVisualizerApp(
             modifier = Modifier
                 .fillMaxSize()
                 .background(containerBrush)
-                .padding(innerPadding)
+                .padding(innerPadding),
+            color = Color.Transparent
         ) {
             Column(
                 modifier = Modifier
@@ -768,33 +1133,40 @@ private fun GlyphVisualizerApp(
                     sensitivity = sensitivity,
                     noiseGate = noiseGate,
                     dynamics = dynamics,
+                    outputGamma = outputGamma,
                     toneFocus = toneFocus,
                     smoothing = smoothing,
                     smoothingBalance = smoothingBalance,
                     reverseDirection = reverseDirection,
                     activeMode = activeMode,
-                        glyphMode = glyphMode,
-                        isPhone3Device = isPhone3Device,
-                        isPhone4aProDevice = isPhone4aProDevice,
-                        isPhone2aDevice = isPhone2aDevice,
-                        isPhone3aDevice = isPhone3aDevice,
-                        isPhone4aDevice = isPhone4aDevice,
-                        binaryMode = binaryMode,
-                        spectrumAutoScale = spectrumAutoScale,
-                        allBrightnessAutoScale = allBrightnessAutoScale,
-                        turnOffWhenBackDown = turnOffWhenBackDown,
+                    glyphMode = glyphMode,
+                    isPhone3Device = isPhone3Device,
+                    isPhone4aProDevice = isPhone4aProDevice,
+                    isPhone2aDevice = isPhone2aDevice,
+                    isPhone3aDevice = isPhone3aDevice,
+                    isPhone4aDevice = isPhone4aDevice,
+                    binaryMode = binaryMode,
+                    levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    turnOffWhenBackDown = turnOffWhenBackDown,
+                    onResetParametersClick = onResetParametersClick,
+                    onExportParametersClick = onExportParametersClick,
+                    onImportParametersClick = onImportParametersClick,
                     onSensitivityChanged = onSensitivityChanged,
                     onNoiseGateChanged = onNoiseGateChanged,
                     onDynamicsChanged = onDynamicsChanged,
+                    onOutputGammaChanged = onOutputGammaChanged,
                     onSmoothingChanged = onSmoothingChanged,
                     onSmoothingBalanceChanged = onSmoothingBalanceChanged,
                     onToneFocusChanged = onToneFocusChanged,
                     onReverseDirectionChanged = onReverseDirectionChanged,
-                        onGlyphModeChanged = onGlyphModeChanged,
-                        onBinaryModeChanged = onBinaryModeChanged,
-                        onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
-                        onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                        onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
+                    onGlyphModeChanged = onGlyphModeChanged,
+                    onBinaryModeChanged = onBinaryModeChanged,
+                    onLevelAutoScaleChanged = onLevelAutoScaleChanged,
+                    onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
+                    onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                    onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                     onStartVisualizerClick = onStartVisualizerClick,
                     onStartProjectionClick = onStartProjectionClick,
                     onStopClick = onStopClick
@@ -889,6 +1261,15 @@ private fun LogCard(
 }
 
 @Composable
+private fun responseSpeedValueText(smoothing: Float): String {
+    return if (smoothing >= RESPONSE_SPEED_NONE_THRESHOLD) {
+        stringResource(R.string.response_speed_none)
+    } else {
+        stringResource(R.string.percent_value, (smoothing * 100).toInt())
+    }
+}
+
+@Composable
 private fun HeroCard(
     isCapturing: Boolean,
     statusText: String,
@@ -940,7 +1321,10 @@ private fun HeroCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = stringResource(R.string.hero_response_speed, (smoothing * 100).toInt()),
+                        text = stringResource(
+                            R.string.hero_response_speed,
+                            responseSpeedValueText(smoothing)
+                        ),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -977,7 +1361,7 @@ private fun HeroCard(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = activeMode,
+                        text = activeModeLabel(activeMode),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -997,6 +1381,16 @@ private fun HeroCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun activeModeLabel(activeMode: String): String {
+    return when (activeMode) {
+        "VISUALIZER" -> stringResource(R.string.mode_visualizer)
+        "MEDIA PROJECTION" -> stringResource(R.string.mode_media_projection)
+        "IDLE" -> stringResource(R.string.mode_idle)
+        else -> activeMode
     }
 }
 
@@ -1201,17 +1595,17 @@ private fun SpectrumCanvas(spectrumBands: FloatArray) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Bass",
+                text = stringResource(R.string.spectrum_label_bass),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "$bandCount bands",
+                text = stringResource(R.string.spectrum_label_bands, bandCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Treble",
+                text = stringResource(R.string.spectrum_label_treble),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1263,6 +1657,7 @@ private fun ControlCard(
     sensitivity: Float,
     noiseGate: Float,
     dynamics: Float,
+    outputGamma: Float,
     toneFocus: Float,
     smoothing: Float,
     smoothingBalance: Float,
@@ -1275,25 +1670,95 @@ private fun ControlCard(
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
     binaryMode: Boolean,
+    levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
     onNoiseGateChanged: (Float) -> Unit,
     onDynamicsChanged: (Float) -> Unit,
+    onOutputGammaChanged: (Float) -> Unit,
     onSmoothingChanged: (Float) -> Unit,
     onSmoothingBalanceChanged: (Float) -> Unit,
     onToneFocusChanged: (Float) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
+    onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
+    onResetParametersClick: () -> Unit,
+    onExportParametersClick: () -> Unit,
+    onImportParametersClick: () -> Unit,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
     onStopClick: () -> Unit
 ) {
+    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
+    var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text(stringResource(R.string.reset_parameters_dialog_title)) },
+            text = { Text(stringResource(R.string.reset_parameters_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetDialog = false
+                        onResetParametersClick()
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_reset_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+
+    if (showImportExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportExportDialog = false },
+            title = { Text(stringResource(R.string.import_export_dialog_title)) },
+            text = { Text(stringResource(R.string.import_export_dialog_message)) },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            showImportExportDialog = false
+                            onImportParametersClick()
+                        }
+                    ) {
+                        Text(stringResource(R.string.settings_import_button))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            showImportExportDialog = false
+                            onExportParametersClick()
+                        }
+                    ) {
+                        Text(stringResource(R.string.settings_export_button))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportExportDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+
     androidx.compose.material3.ElevatedCard(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -1340,18 +1805,8 @@ private fun ControlCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.button_no_capture))
                 }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onStartProjectionClick,
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Text(stringResource(R.string.button_media_projection))
-                }
-                Text(
-                    text = stringResource(R.string.button_media_projection_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // MediaProjection start button removed from UI by request.
+                // The service and supporting code remain; re-add button if needed.
             }
 
             HorizontalDivider()
@@ -1456,10 +1911,25 @@ private fun ControlCard(
 
             HorizontalDivider()
 
-            Text(
-                text = stringResource(R.string.meter_parameters),
-                style = MaterialTheme.typography.titleMedium
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.meter_parameters),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = { showResetDialog = true }) {
+                    Text(stringResource(R.string.settings_reset_button))
+                }
+                IconButton(onClick = { showImportExportDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.SwapVert,
+                        contentDescription = stringResource(R.string.cd_import_export)
+                    )
+                }
+            }
 
             ParameterSlider(
                 title = stringResource(R.string.param_sensitivity_title),
@@ -1471,49 +1941,12 @@ private fun ControlCard(
             )
 
             ParameterSlider(
-                title = stringResource(R.string.param_noise_gate_title),
-                valueText = stringResource(R.string.percent_value, (noiseGate * 100).toInt()),
-                description = stringResource(R.string.param_noise_gate_desc),
-                value = noiseGate,
-                onValueChange = onNoiseGateChanged,
-                valueRange = 0f..0.35f
-            )
-
-            ParameterSlider(
-                title = stringResource(R.string.param_dynamics_title),
-                valueText = stringResource(R.string.param_dynamics_value, dynamics),
-                description = stringResource(R.string.param_dynamics_desc),
-                value = dynamics,
-                onValueChange = onDynamicsChanged,
-                valueRange = 0.6f..2.2f
-            )
-
-            ParameterSlider(
                 title = stringResource(R.string.param_response_speed_title),
-                valueText = stringResource(R.string.percent_value, (smoothing * 100).toInt()),
+                valueText = responseSpeedValueText(smoothing),
                 description = stringResource(R.string.param_response_speed_desc),
                 value = smoothing,
                 onValueChange = onSmoothingChanged,
                 valueRange = 0.08f..0.55f
-            )
-
-            ParameterSlider(
-                title = stringResource(R.string.param_response_bias_title),
-                valueText = when {
-                    smoothingBalance > 0.05f -> stringResource(
-                        R.string.param_response_bias_rise,
-                        (smoothingBalance * 100).toInt()
-                    )
-                    smoothingBalance < -0.05f -> stringResource(
-                        R.string.param_response_bias_fall,
-                        (-smoothingBalance * 100).toInt()
-                    )
-                    else -> stringResource(R.string.param_response_bias_default)
-                },
-                description = stringResource(R.string.param_response_bias_desc),
-                value = smoothingBalance,
-                onValueChange = onSmoothingBalanceChanged,
-                valueRange = -1f..1f
             )
 
             ParameterSlider(
@@ -1534,6 +1967,77 @@ private fun ControlCard(
                 onValueChange = onToneFocusChanged,
                 valueRange = -1f..1f
             )
+
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { advancedExpanded = !advancedExpanded },
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.advanced_meter_title),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = stringResource(R.string.advanced_meter_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Icon(
+                    imageVector = if (advancedExpanded) {
+                        Icons.Default.KeyboardArrowUp
+                    } else {
+                        Icons.Default.KeyboardArrowDown
+                    },
+                    contentDescription = if (advancedExpanded) {
+                        stringResource(R.string.cd_collapse)
+                    } else {
+                        stringResource(R.string.cd_expand)
+                    }
+                )
+            }
+
+            AnimatedVisibility(
+                visible = advancedExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ParameterSlider(
+                        title = stringResource(R.string.param_noise_gate_title),
+                        valueText = stringResource(R.string.percent_value, (noiseGate * 100).toInt()),
+                        description = stringResource(R.string.param_noise_gate_desc),
+                        value = noiseGate,
+                        onValueChange = onNoiseGateChanged,
+                        valueRange = 0f..0.35f
+                    )
+
+                    ParameterSlider(
+                        title = stringResource(R.string.param_dynamics_title),
+                        valueText = stringResource(R.string.param_dynamics_value, dynamics),
+                        description = stringResource(R.string.param_dynamics_desc),
+                        value = dynamics,
+                        onValueChange = onDynamicsChanged,
+                        valueRange = 0.6f..2.2f
+                    )
+
+                    if (glyphMode in ALL_BRIGHTNESS_MODE_KEYS || ((glyphMode in SPECTRUM_MODE_KEYS) && !isPhone3Device && !isPhone4aProDevice)) {
+                        ParameterSlider(
+                            title = stringResource(R.string.param_output_gamma_title),
+                            valueText = stringResource(R.string.param_dynamics_value, outputGamma),
+                            description = stringResource(R.string.param_output_gamma_desc),
+                            value = outputGamma,
+                            onValueChange = onOutputGammaChanged,
+                            valueRange = 0.6f..2.6f
+                        )
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1585,6 +2089,34 @@ private fun ControlCard(
                     Switch(
                         checked = binaryMode,
                         onCheckedChange = onBinaryModeChanged
+                    )
+                }
+            }
+
+            if (glyphMode !in SPECTRUM_MODE_KEYS && glyphMode !in ALL_BRIGHTNESS_MODE_KEYS) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.level_auto_scale_title),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (levelAutoScale) {
+                                stringResource(R.string.level_auto_scale_on)
+                            } else {
+                                stringResource(R.string.level_auto_scale_off)
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = levelAutoScale,
+                        onCheckedChange = onLevelAutoScaleChanged
                     )
                 }
             }
@@ -1724,6 +2256,7 @@ private fun GlyphVisualizerPreview() {
             sensitivity = 1.35f,
             noiseGate = 0.08f,
             dynamics = 1.45f,
+            outputGamma = 1.8f,
             toneFocus = 0f,
             smoothing = 0.28f,
             smoothingBalance = 0f,
@@ -1737,21 +2270,27 @@ private fun GlyphVisualizerPreview() {
             isPhone3aDevice = false,
             isPhone4aDevice = false,
             binaryMode = false,
+            levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
             turnOffWhenBackDown = false,
             onSensitivityChanged = {},
             onNoiseGateChanged = {},
             onDynamicsChanged = {},
+            onOutputGammaChanged = {},
             onSmoothingChanged = {},
             onSmoothingBalanceChanged = {},
             onToneFocusChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onBinaryModeChanged = {},
+            onLevelAutoScaleChanged = {},
             onSpectrumAutoScaleChanged = {},
             onAllBrightnessAutoScaleChanged = {},
             onTurnOffWhenBackDownChanged = {},
+            onResetParametersClick = {},
+            onExportParametersClick = {},
+            onImportParametersClick = {},
             onStartVisualizerClick = {},
             onStartProjectionClick = {},
             onStopClick = {},

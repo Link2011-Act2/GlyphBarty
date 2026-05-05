@@ -40,6 +40,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_SENSITIVITY = "extra_sensitivity"
         private const val EXTRA_NOISE_GATE = "extra_noise_gate"
         private const val EXTRA_DYNAMICS = "extra_dynamics"
+        private const val EXTRA_OUTPUT_GAMMA = "extra_output_gamma"
         private const val EXTRA_TONE_FOCUS = "extra_tone_focus"
         private const val EXTRA_SMOOTHING = "extra_smoothing"
         private const val EXTRA_SMOOTHING_BALANCE = "extra_smoothing_balance"
@@ -47,6 +48,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_PEAK_HOLD_ENABLED = "extra_peak_hold_enabled"
         private const val EXTRA_GLYPH_MODE = "extra_glyph_mode"
         private const val EXTRA_BINARY_MODE = "extra_binary_mode"
+        private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
         private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
         private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
@@ -65,15 +67,18 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
-            turnOffWhenBackDown: Boolean
+            turnOffWhenBackDown: Boolean,
+            outputGamma: Float = 1.8f
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_VISUALIZER
                 putExtra(EXTRA_SENSITIVITY, sensitivity)
                 putExtra(EXTRA_NOISE_GATE, noiseGate)
                 putExtra(EXTRA_DYNAMICS, dynamics)
+                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
                 putExtra(EXTRA_TONE_FOCUS, toneFocus)
                 putExtra(EXTRA_SMOOTHING, smoothing)
                 putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -81,6 +86,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
@@ -89,7 +95,10 @@ class GlyphVisualizerService : Service() {
                 context.startForegroundService(intent)
             } catch (error: Throwable) {
                 AppLogger.e(TAG, "startVisualizer failed to start service", error)
-                val msg = "Visualizer mode could not start: ${error.message ?: "unknown error"}"
+                val msg = context.getString(
+                    R.string.status_visualizer_service_start_failed,
+                    error.message ?: context.getString(R.string.status_unknown_error)
+                )
                 CaptureUiStore.update {
                     it.copy(statusText = msg, logMessage = msg)
                 }
@@ -110,9 +119,11 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
-            turnOffWhenBackDown: Boolean
+            turnOffWhenBackDown: Boolean,
+            outputGamma: Float = 1.8f
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_MEDIA_PROJECTION
@@ -121,6 +132,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_SENSITIVITY, sensitivity)
                 putExtra(EXTRA_NOISE_GATE, noiseGate)
                 putExtra(EXTRA_DYNAMICS, dynamics)
+                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
                 putExtra(EXTRA_TONE_FOCUS, toneFocus)
                 putExtra(EXTRA_SMOOTHING, smoothing)
                 putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -128,6 +140,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
@@ -136,7 +149,10 @@ class GlyphVisualizerService : Service() {
                 context.startForegroundService(intent)
             } catch (error: Throwable) {
                 AppLogger.e(TAG, "startMediaProjection failed to start service", error)
-                val msg = "MediaProjection mode could not start: ${error.message ?: "unknown error"}"
+                val msg = context.getString(
+                    R.string.status_media_projection_service_start_failed,
+                    error.message ?: context.getString(R.string.status_unknown_error)
+                )
                 CaptureUiStore.update {
                     it.copy(statusText = msg, logMessage = msg)
                 }
@@ -155,15 +171,18 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
-            turnOffWhenBackDown: Boolean
+            turnOffWhenBackDown: Boolean,
+            outputGamma: Float = Float.NaN
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_UPDATE_SENSITIVITY
                 putExtra(EXTRA_SENSITIVITY, sensitivity)
                 putExtra(EXTRA_NOISE_GATE, noiseGate)
                 putExtra(EXTRA_DYNAMICS, dynamics)
+                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
                 putExtra(EXTRA_TONE_FOCUS, toneFocus)
                 putExtra(EXTRA_SMOOTHING, smoothing)
                 putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -171,6 +190,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
@@ -209,6 +229,7 @@ class GlyphVisualizerService : Service() {
     private var sensitivity = 1.75f
     private var noiseGate = 0.08f
     private var dynamics = 1.45f
+    private var outputGamma = 1.8f
     private var toneFocus = -0.2f
     private var smoothing = 0.55f
     private var smoothingBalance = 0f
@@ -216,6 +237,7 @@ class GlyphVisualizerService : Service() {
     private var peakHoldEnabled = true
     private var glyphMode = "C1_LINEAR"
     private var binaryMode = false
+    private var levelAutoScale = false
     private var spectrumAutoScale = false
     private var allBrightnessAutoScale = false
     private var turnOffWhenBackDown = false
@@ -260,7 +282,7 @@ class GlyphVisualizerService : Service() {
             }
         }
         audioPlaybackVisualizer = AudioPlaybackVisualizer(this)
-        outputMixVisualizer = OutputMixVisualizer()
+        outputMixVisualizer = OutputMixVisualizer(this)
         glyphController.bind()
         gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
     }
@@ -273,6 +295,7 @@ class GlyphVisualizerService : Service() {
                     sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                     noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                     dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
+                    intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
                     toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
                     smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
                     smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -280,28 +303,38 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                     glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                     binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                    levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                     spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                     allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                     glyphController.setReverseDirection(reverseDirection)
                     glyphController.setGlyphMode(glyphMode)
                     glyphController.setBinaryMode(binaryMode)
+                    glyphController.setOutputGamma(outputGamma)
+                    glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                     glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                     glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
                     updateBackDownSensorState()
-                    startServiceNotification("Visualizer mode")
+                    startServiceNotification(getString(R.string.notification_mode_visualizer))
                     startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1)
                 } catch (error: SecurityException) {
                     // パーミッション不足は即座に失敗（リトライ不要）
-                    val msg = "Permission denied: ${error.message ?: "unknown"}"
+                    val msg = getString(
+                        R.string.status_permission_denied,
+                        error.message ?: getString(R.string.status_unknown_error)
+                    )
                     AppLogger.e(TAG, "ACTION_START_VISUALIZER permission denied", error)
-                    val logMsg = "No capture start failed: $msg"
-                    CaptureUiStore.update { it.copy(statusText = logMsg, logMessage = logMsg) }
+                    CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
                     safeStopForeground()
                     stopSelf()
                 } catch (error: Throwable) {
                     AppLogger.e(TAG, "ACTION_START_VISUALIZER failed", error)
-                    stopCapture("Visualizer mode crashed during startup: ${error.message ?: "unknown error"}")
+                    stopCapture(
+                        getString(
+                            R.string.status_visualizer_service_start_failed,
+                            error.message ?: getString(R.string.status_unknown_error)
+                        )
+                    )
                     safeStopForeground()
                     stopSelf()
                 }
@@ -312,6 +345,7 @@ class GlyphVisualizerService : Service() {
                 sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                 noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                 dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
+                intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
                 toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
                 smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
                 smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -319,22 +353,25 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
                 glyphController.setBinaryMode(binaryMode)
+                glyphController.setOutputGamma(outputGamma)
+                glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
                 updateBackDownSensorState()
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = intent.getParcelableExtraCompat<Intent>(EXTRA_RESULT_DATA)
                 if (resultCode != 0 && data != null) {
-                    startServiceNotification("MediaProjection mode", mediaProjection = true)
+                    startServiceNotification(getString(R.string.notification_mode_media_projection), mediaProjection = true)
                     startMediaProjectionMode(resultCode, data)
                 } else {
-                    stopCapture("MediaProjection data was missing.")
+                    stopCapture(getString(R.string.status_media_projection_data_missing))
                     stopSelf()
                 }
             }
@@ -343,6 +380,7 @@ class GlyphVisualizerService : Service() {
                 sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                 noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                 dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
+                intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
                 toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
                 smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
                 smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
@@ -350,12 +388,15 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
                 glyphController.setBinaryMode(binaryMode)
+                glyphController.setOutputGamma(outputGamma)
+                glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
                 updateBackDownSensorState()
@@ -364,6 +405,7 @@ class GlyphVisualizerService : Service() {
                         sensitivity = sensitivity,
                         noiseGate = noiseGate,
                         dynamics = dynamics,
+                        outputGamma = outputGamma,
                         toneFocus = toneFocus,
                         smoothing = smoothing,
                         smoothingBalance = smoothingBalance,
@@ -371,6 +413,7 @@ class GlyphVisualizerService : Service() {
                         peakHoldEnabled = peakHoldEnabled,
                         glyphMode = glyphMode,
                         binaryMode = binaryMode,
+                        levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         turnOffWhenBackDown = turnOffWhenBackDown
@@ -381,7 +424,7 @@ class GlyphVisualizerService : Service() {
             ACTION_STOP -> {
                 visualizerStartRequestId += 1
                 try {
-                    stopCapture("Capture stopped. Ready for the next session.")
+                    stopCapture(getString(R.string.status_capture_stopped_ready))
                 } catch (error: Throwable) {
                     AppLogger.e(TAG, "stopCapture failed while handling ACTION_STOP", error)
                 }
@@ -433,14 +476,16 @@ class GlyphVisualizerService : Service() {
                         isCapturing = true,
                         activeMode = "VISUALIZER",
                         sensitivity = sensitivity,
-                        noiseGate = noiseGate,
-                        dynamics = dynamics,
-                        toneFocus = toneFocus,
+                            noiseGate = noiseGate,
+                            dynamics = dynamics,
+                            outputGamma = outputGamma,
+                            toneFocus = toneFocus,
                         smoothing = smoothing,
                         reverseDirection = reverseDirection,
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
                             binaryMode = binaryMode,
+                            levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
@@ -476,7 +521,7 @@ class GlyphVisualizerService : Service() {
                 val nextAttempt = attempt + 1
                 val retryMs = 60L * attempt
                 CaptureUiStore.update {
-                    it.copy(statusText = "Visualizer start retrying ($nextAttempt/3)...")
+                    it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt))
                 }
                 mainHandler.postDelayed(
                     { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
@@ -484,8 +529,8 @@ class GlyphVisualizerService : Service() {
                 )
                 return
             }
-            val msg = "Visualizer mode was unavailable. Try the MediaProjection option."
-            val logMsg = "No capture failed after $attempt attempt(s). Consider MediaProjection mode."
+            val msg = getString(R.string.status_visualizer_try_media_projection)
+            val logMsg = getString(R.string.status_visualizer_try_media_projection)
             AppLogger.e(TAG, logMsg)
             stopCapture(msg)
             safeStopForeground()
@@ -511,14 +556,16 @@ class GlyphVisualizerService : Service() {
                         isCapturing = true,
                         activeMode = "MEDIA PROJECTION",
                         sensitivity = sensitivity,
-                        noiseGate = noiseGate,
-                        dynamics = dynamics,
-                        toneFocus = toneFocus,
+                            noiseGate = noiseGate,
+                            dynamics = dynamics,
+                            outputGamma = outputGamma,
+                            toneFocus = toneFocus,
                         smoothing = smoothing,
                         reverseDirection = reverseDirection,
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
                             binaryMode = binaryMode,
+                            levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
@@ -539,7 +586,7 @@ class GlyphVisualizerService : Service() {
             }
         )
         if (!started) {
-            stopCapture("MediaProjection mode could not start.")
+            stopCapture(getString(R.string.status_media_projection_service_start_failed, getString(R.string.status_unknown_error)))
             safeStopForeground()
             stopSelf()
         }
@@ -566,6 +613,7 @@ class GlyphVisualizerService : Service() {
                 sensitivity = sensitivity,
                 noiseGate = noiseGate,
                 dynamics = dynamics,
+                outputGamma = outputGamma,
                 toneFocus = toneFocus,
                 smoothing = smoothing,
                 smoothingBalance = smoothingBalance,
@@ -573,6 +621,7 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = peakHoldEnabled,
                     glyphMode = glyphMode,
                     binaryMode = binaryMode,
+                    levelAutoScale = levelAutoScale,
                     turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
@@ -611,18 +660,20 @@ class GlyphVisualizerService : Service() {
                 meterSegments = 0,
                 isCapturing = false,
                 activeMode = "IDLE",
-                statusText = if (clearStatus) "Capture stopped. Ready for the next session." else it.statusText,
+                statusText = if (clearStatus) getString(R.string.status_capture_stopped_ready) else it.statusText,
                 sensitivity = sensitivity,
                 noiseGate = noiseGate,
                 dynamics = dynamics,
+                outputGamma = outputGamma,
                 toneFocus = toneFocus,
                 smoothing = smoothing,
                 smoothingBalance = smoothingBalance,
                 reverseDirection = reverseDirection,
                     peakHoldEnabled = peakHoldEnabled,
-                    glyphMode = glyphMode,
-                    binaryMode = binaryMode,
-                    turnOffWhenBackDown = turnOffWhenBackDown
+                glyphMode = glyphMode,
+                binaryMode = binaryMode,
+                levelAutoScale = levelAutoScale,
+                turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
         isBackDownSuppressed = false
@@ -684,7 +735,7 @@ class GlyphVisualizerService : Service() {
 
     private fun buildNotification(label: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Glyph Peak Meter")
+            .setContentTitle(getString(R.string.notification_title))
             .setContentText(label)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
@@ -696,7 +747,7 @@ class GlyphVisualizerService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Glyph Visualizer",
+            getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
         manager.createNotificationChannel(channel)

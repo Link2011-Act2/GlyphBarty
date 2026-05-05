@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.R
 import com.nothing.ketchum.Common
 import com.nothing.ketchum.Glyph
 import com.nothing.ketchum.GlyphException
@@ -16,7 +17,7 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 class GlyphPhone2Controller(
-    context: Context,
+    private val context: Context,
     private val onStatusChanged: (String) -> Unit
 ) : GlyphOutputController {
     companion object {
@@ -82,8 +83,13 @@ class GlyphPhone2Controller(
     private var reverseDirection = true
     private var glyphMode = MODE_C1_LINEAR
     private var binaryMode = false
+    private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
+    private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
+    private var levelMin = 0f
+    private var levelMax = 1f
+    private var lastLevelUpdateMs = 0L
     private var allBrightnessMin = 0f
     private var allBrightnessMax = 1f
     private var lastAllBrightnessUpdateMs = 0L
@@ -111,7 +117,7 @@ class GlyphPhone2Controller(
         override fun onServiceConnected(componentName: ComponentName) {
             val spec = resolveDeviceSpec()
             if (spec == null) {
-                onStatusChanged("Glyph output is available only on supported Nothing devices. model=${Build.MODEL}")
+                onStatusChanged(context.getString(R.string.status_glyph_device_unsupported, Build.MODEL))
                 return
             }
 
@@ -148,7 +154,7 @@ class GlyphPhone2Controller(
 
             val registered = glyphManager.register(spec.deviceId)
             if (!registered) {
-                onStatusChanged("Glyph SDK registration failed.")
+                onStatusChanged(context.getString(R.string.status_glyph_sdk_registration_failed))
                 return
             }
 
@@ -157,13 +163,20 @@ class GlyphPhone2Controller(
                 isSessionOpen = true
                 silenceStartedAt = 0L
                 sessionReleasedForSilence = false
-                onStatusChanged("Glyph session ready on ${Build.MODEL}.")                // 接続完了前に届いていたレベルを即反映
+                onStatusChanged(context.getString(R.string.status_glyph_session_ready, Build.MODEL))
+                // 接続完了前に届いていたレベルを即反映
                 val pending = pendingLevel
                 if (pending >= 0f) {
                     pendingLevel = -1f
                     updateLevel(pending)
-                }            } catch (error: GlyphException) {
-                onStatusChanged("Glyph session could not be opened: ${error.message ?: "unknown error"}")
+                }
+            } catch (error: GlyphException) {
+                onStatusChanged(
+                    context.getString(
+                        R.string.status_glyph_session_open_failed,
+                        error.message ?: context.getString(R.string.status_unknown_error)
+                    )
+                )
             }
         }
 
@@ -171,7 +184,7 @@ class GlyphPhone2Controller(
             isSessionOpen = false
             silenceStartedAt = 0L
             sessionReleasedForSilence = false
-            onStatusChanged("Glyph service disconnected.")
+            onStatusChanged(context.getString(R.string.status_glyph_service_disconnected))
         }
     }
 
@@ -179,7 +192,7 @@ class GlyphPhone2Controller(
         if (isBound) return
         isBound = true
         glyphManager.init(callback)
-        onStatusChanged("Connecting to the Glyph service...")
+        onStatusChanged(context.getString(R.string.status_glyph_service_connecting))
     }
 
     override fun unbind() {
@@ -199,11 +212,23 @@ class GlyphPhone2Controller(
         if (glyphMode != mode) {
             glyphMode = mode
             resetSpectrumScaleTracking()
+            resetLevelScaleTracking()
         }
     }
 
     override fun setBinaryMode(binary: Boolean) {
         binaryMode = binary
+    }
+
+    override fun setOutputGamma(gamma: Float) {
+        outputGamma = gamma.coerceIn(0.6f, 2.6f)
+    }
+
+    override fun setLevelAutoScaleEnabled(enabled: Boolean) {
+        if (levelAutoScaleEnabled != enabled) {
+            levelAutoScaleEnabled = enabled
+            resetLevelScaleTracking()
+        }
     }
 
     override fun setSpectrumAutoScaleEnabled(enabled: Boolean) {
@@ -314,18 +339,57 @@ class GlyphPhone2Controller(
             return
         }
         pendingLevel = -1f
+        val renderLevel = normalizeLevelForMode(clamped)
 
         val spec = deviceSpec ?: return
         val cFrame = cLinearFrame ?: return
 
         try {
             when (spec.profile) {
-                DeviceProfile.PHONE2 -> updatePhone2Level(spec, cFrame, level)
-                DeviceProfile.PHONE2A -> updatePhone2aLevel(spec, cFrame, level)
-                DeviceProfile.PHONE3A -> updatePhone3aLevel(spec, cFrame, level)
-                DeviceProfile.PHONE4A -> updatePhone4aLevel(spec, cFrame, level)
+                DeviceProfile.PHONE2 -> updatePhone2Level(spec, cFrame, renderLevel)
+                DeviceProfile.PHONE2A -> updatePhone2aLevel(spec, cFrame, renderLevel)
+                DeviceProfile.PHONE3A -> updatePhone3aLevel(spec, cFrame, renderLevel)
+                DeviceProfile.PHONE4A -> updatePhone4aLevel(spec, cFrame, renderLevel)
             }
         } catch (_: GlyphException) {
+        }
+    }
+
+    private fun normalizeLevelForMode(level: Float): Float {
+        if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
+        lastLevelUpdateMs = now
+        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+
+        levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
+        levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
+
+        val range = (levelMax - levelMin).coerceAtLeast(0.05f)
+        return ((level - levelMin) / range).coerceIn(0f, 1f)
+    }
+
+    private fun resetLevelScaleTracking() {
+        levelMin = 0f
+        levelMax = 1f
+        lastLevelUpdateMs = 0L
+    }
+
+    private fun isLevelAutoScaleMode(): Boolean {
+        return when (glyphMode) {
+            MODE_C1_LINEAR,
+            MODE_C1_CENTER,
+            MODE_D1,
+            MODE_D1_CENTER,
+            MODE_P2A_C_LINEAR,
+            MODE_P2A_C_CENTER,
+            MODE_P3A_C_LINEAR,
+            MODE_P3A_C_CENTER,
+            MODE_P3A_CAB_LINEAR,
+            MODE_P3A_CAB_CENTER,
+            MODE_P4A_LINEAR,
+            MODE_P4A_CENTER -> true
+            else -> false
         }
     }
 
@@ -346,9 +410,9 @@ class GlyphPhone2Controller(
             MODE_D1_CENTER -> updateCenterRange(level, spec.d1Range ?: spec.cRange)
             MODE_C1_SPECTRUM -> updateSpectrumRanges(level, listOf(spec.cRange))
             MODE_D1 -> {
-                val activeD1Frame = d1Frame
-                if (activeD1Frame != null && spec.d1Range != null) {
-                    displayLinear(level, activeD1Frame, spec.d1Range.count())
+                val d1Range = spec.d1Range
+                if (d1Range != null) {
+                    updateLinearRanges(level, listOf(d1Range))
                 } else {
                     displayLinear(level, cFrame, spec.cRange.count())
                 }
@@ -474,7 +538,7 @@ class GlyphPhone2Controller(
             val position = if (count <= 1) 0f else index / (count - 1f)
             val bandValue = sampleSpectrumAt(position)
             val weighted = (bandValue * level).coerceIn(0f, 1f)
-            val shaped = weighted.pow(ALL_BRIGHTNESS_RESPONSE_GAMMA)
+            val shaped = weighted.pow(outputGamma)
             val brightness = if (binaryMode) {
                 if (shaped >= 0.5f) MAX_LIGHT else 0
             } else {
@@ -517,7 +581,7 @@ class GlyphPhone2Controller(
         }
         val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
             .coerceIn(0f, 1f)
-        val shaped = normalized.pow(ALL_BRIGHTNESS_RESPONSE_GAMMA)
+        val shaped = normalized.pow(outputGamma)
         val brightness = if (binaryMode) {
             MAX_LIGHT
         } else {
@@ -556,6 +620,44 @@ class GlyphPhone2Controller(
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
             turnOff()
+            return
+        }
+
+        if (spec.profile == DeviceProfile.PHONE2 && glyphMode == MODE_D1_CENTER && 29 in channelRange) {
+            val centerChannel = 29
+            val leftChannels = (channelRange.first until centerChannel).toList().asReversed()
+            val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
+            val pairCount = min(leftChannels.size, rightChannels.size)
+            val totalSlots = 1 + pairCount
+            val virtualSlots = clamped * totalSlots
+            val fullSlots = virtualSlots.toInt().coerceIn(0, totalSlots)
+            val edgeBrightness = if (binaryMode) {
+                0
+            } else {
+                ((virtualSlots - fullSlots) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+            }
+
+            val colors = IntArray(spec.channelCount)
+            val centerBrightness = if (fullSlots >= 1) MAX_LIGHT else edgeBrightness
+            if (centerBrightness > 0 && centerChannel in colors.indices) {
+                colors[centerChannel] = centerBrightness
+            }
+
+            for (pair in 1..pairCount) {
+                val brightness = when {
+                    pair < fullSlots -> MAX_LIGHT
+                    pair == fullSlots -> edgeBrightness
+                    else -> 0
+                }
+                if (brightness > 0) {
+                    val leftChannel = leftChannels[pair - 1]
+                    val rightChannel = rightChannels[pair - 1]
+                    if (leftChannel in colors.indices) colors[leftChannel] = brightness
+                    if (rightChannel in colors.indices) colors[rightChannel] = brightness
+                }
+            }
+
+            glyphManager.setFrameColors(colors)
             return
         }
 
@@ -695,7 +797,7 @@ class GlyphPhone2Controller(
         return try {
             val registered = glyphManager.register(spec.deviceId)
             if (!registered) {
-                onStatusChanged("Glyph resume failed. Restart capture to retry.")
+                onStatusChanged(context.getString(R.string.status_glyph_resume_failed))
                 false
             } else {
                 glyphManager.openSession()
@@ -735,7 +837,7 @@ class GlyphPhone2Controller(
                 deviceId = Glyph.DEVICE_22111,
                 channelCount = 33,
                 cRange = 3..18,
-                d1Range = 27..32,
+                d1Range = 25..32,
                 centerSupported = true
             )
             Common.is24111() -> DeviceSpec(

@@ -15,8 +15,8 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.1.5-IntDev"
+        versionCode = 13
+        versionName = "1.1.6-IntDev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,7 +61,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    // material-icons-extended は削除済み: 使用アイコン7つはすべてcore収録
+    implementation(libs.androidx.compose.material.icons.extended)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

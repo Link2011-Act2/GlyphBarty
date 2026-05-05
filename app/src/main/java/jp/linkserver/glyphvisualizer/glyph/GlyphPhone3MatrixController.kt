@@ -9,13 +9,14 @@ import com.nothing.ketchum.Glyph
 import com.nothing.ketchum.GlyphException
 import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.R
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.pow
 
 class GlyphPhone3MatrixController(
-    context: Context,
+    private val context: Context,
     private val onStatusChanged: (String) -> Unit
 ) : GlyphOutputController {
 
@@ -51,8 +52,13 @@ class GlyphPhone3MatrixController(
     private var isSessionOpen = false
     private var reverseDirection = true
     private var glyphMode = MODE_P3_MATRIX_BAR
+    private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
+    private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
+    private var levelMin = 0f
+    private var levelMax = 1f
+    private var lastLevelUpdateMs = 0L
     private var allBrightnessMin = 0f
     private var allBrightnessMax = 1f
     private var lastAllBrightnessUpdateMs = 0L
@@ -74,6 +80,11 @@ class GlyphPhone3MatrixController(
     private var silenceStartedAt = 0L
     private var matrixReleasedForSilence = false
     private var matrixDevice = MatrixDevice.PHONE3
+    
+    private var lastSentFrameBuffer = IntArray(0)
+    private var cachedMaxPixelsByColumn: IntArray? = null
+    private var cachedMaxPixelsLength = -1
+    private var normalizedSpectrumBands = FloatArray(0)
 
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
@@ -81,14 +92,14 @@ class GlyphPhone3MatrixController(
                 Common.is25111p() -> MatrixDevice.PHONE4A_PRO
                 Common.is23112() -> MatrixDevice.PHONE3
                 else -> {
-                    onStatusChanged("Glyph Matrix output is currently available on Phone (3)/(4a Pro). model=${Build.MODEL}")
+                    onStatusChanged(context.getString(R.string.status_glyph_matrix_device_unsupported, Build.MODEL))
                     return
                 }
             }
 
             matrixLength = Common.getDeviceMatrixLength()
             if (matrixLength <= 0) {
-                onStatusChanged("Glyph Matrix length is unavailable on this device.")
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_length_unavailable))
                 return
             }
             frameBuffer = IntArray(matrixLength * matrixLength)
@@ -99,7 +110,7 @@ class GlyphPhone3MatrixController(
             }
             val registered = glyphMatrixManager.register(targetDeviceCode)
             if (!registered) {
-                onStatusChanged("Glyph Matrix SDK registration failed.")
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_registration_failed))
                 return
             }
 
@@ -113,7 +124,7 @@ class GlyphPhone3MatrixController(
             } catch (error: Throwable) {
                 AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed", error)
             }
-            onStatusChanged("Glyph Matrix session ready on ${Build.MODEL}.")
+            onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
 
             val pending = pendingLevel
             if (pending >= 0f) {
@@ -124,7 +135,7 @@ class GlyphPhone3MatrixController(
 
         override fun onServiceDisconnected(componentName: ComponentName) {
             isSessionOpen = false
-            onStatusChanged("Glyph Matrix service disconnected.")
+            onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
         }
     }
 
@@ -132,7 +143,7 @@ class GlyphPhone3MatrixController(
         if (isBound) return
         isBound = true
         glyphMatrixManager.init(callback)
-        onStatusChanged("Connecting to the Glyph Matrix service...")
+        onStatusChanged(context.getString(R.string.status_glyph_matrix_connecting))
     }
 
     override fun unbind() {
@@ -152,6 +163,7 @@ class GlyphPhone3MatrixController(
         if (glyphMode != mode) {
             glyphMode = mode
             lastLitRows = -1
+            resetLevelScaleTracking()
             resetSpectrumScaleTracking()
             resetAllBrightnessScaleTracking()
         }
@@ -159,6 +171,17 @@ class GlyphPhone3MatrixController(
 
     override fun setBinaryMode(binary: Boolean) {
         // Matrix minimum implementation does not use binary mode yet.
+    }
+
+    override fun setOutputGamma(gamma: Float) {
+        outputGamma = gamma.coerceIn(0.6f, 2.6f)
+    }
+
+    override fun setLevelAutoScaleEnabled(enabled: Boolean) {
+        if (levelAutoScaleEnabled != enabled) {
+            levelAutoScaleEnabled = enabled
+            resetLevelScaleTracking()
+        }
     }
 
     override fun setSpectrumAutoScaleEnabled(enabled: Boolean) {
@@ -199,7 +222,7 @@ class GlyphPhone3MatrixController(
         if (input.isEmpty()) return input
         if (smoothedSpectrumBands.size != input.size) {
             smoothedSpectrumBands = input.copyOf()
-            return input.copyOf()
+            return smoothedSpectrumBands
         }
         val attack = 0.4f
         val release = 0.15f
@@ -208,7 +231,7 @@ class GlyphPhone3MatrixController(
             val alpha = if (v > smoothedSpectrumBands[i]) attack else release
             smoothedSpectrumBands[i] += (v - smoothedSpectrumBands[i]) * alpha
         }
-        return smoothedSpectrumBands.copyOf()
+        return smoothedSpectrumBands
     }
 
     private fun downsampleBands(input: FloatArray, targetCount: Int): FloatArray {
@@ -240,8 +263,10 @@ class GlyphPhone3MatrixController(
             spectrumBandMins = input.copyOf()
             spectrumBandMaxs = input.copyOf()
         }
+        if (normalizedSpectrumBands.size != input.size) {
+            normalizedSpectrumBands = FloatArray(input.size)
+        }
 
-        val out = FloatArray(input.size)
         for (i in input.indices) {
             val v = input[i].coerceIn(0f, 1f)
             var minTrack = min(v, (spectrumBandMins[i] + drift).coerceIn(0f, 1f))
@@ -254,9 +279,9 @@ class GlyphPhone3MatrixController(
             spectrumBandMaxs[i] = maxTrack
 
             val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
-            out[i] = ((v - minTrack) / range).coerceIn(0f, 1f)
+            normalizedSpectrumBands[i] = ((v - minTrack) / range).coerceIn(0f, 1f)
         }
-        return out
+        return normalizedSpectrumBands
     }
 
     private fun resetSpectrumScaleTracking() {
@@ -270,6 +295,35 @@ class GlyphPhone3MatrixController(
         allBrightnessMin = 0f
         allBrightnessMax = 1f
         lastAllBrightnessUpdateMs = 0L
+    }
+
+    private fun resetLevelScaleTracking() {
+        levelMin = 0f
+        levelMax = 1f
+        lastLevelUpdateMs = 0L
+    }
+
+    private fun normalizeLevelForMode(level: Float): Float {
+        if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
+        lastLevelUpdateMs = now
+        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+
+        levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
+        levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
+
+        val range = (levelMax - levelMin).coerceAtLeast(0.05f)
+        return ((level - levelMin) / range).coerceIn(0f, 1f)
+    }
+
+    private fun isLevelAutoScaleMode(): Boolean {
+        return when (glyphMode) {
+            MODE_P3_MATRIX_BAR,
+            MODE_P3_MATRIX_FIELD,
+            MODE_P3_MATRIX_CIRCLE -> true
+            else -> false
+        }
     }
 
     private fun normalizeAllBrightnessLevel(level: Float): Float {
@@ -295,6 +349,7 @@ class GlyphPhone3MatrixController(
         val now = SystemClock.elapsedRealtime()
 
         val clamped = level.coerceIn(0f, 1f)
+        val renderLevel = normalizeLevelForMode(clamped)
         val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
@@ -309,7 +364,7 @@ class GlyphPhone3MatrixController(
         if (matrixReleasedForSilence) {
             val registered = glyphMatrixManager.register(currentDeviceCode())
             if (!registered) {
-                onStatusChanged("Glyph Matrix resume failed. Restart capture to retry.")
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_resume_failed))
                 return
             }
             matrixReleasedForSilence = false
@@ -318,9 +373,9 @@ class GlyphPhone3MatrixController(
         if (now - lastRenderAt < FRAME_INTERVAL_MS) return
         lastRenderAt = now
 
-        val litRows = (clamped * matrixLength).roundToInt().coerceIn(0, matrixLength)
+        val litRows = (renderLevel * matrixLength).roundToInt().coerceIn(0, matrixLength)
         if (glyphMode == MODE_P3_MATRIX_BAR && litRows == lastLitRows) return
-        if (glyphMode == MODE_P3_MATRIX_ALL_BRIGHTNESS && clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
+        if (glyphMode == MODE_P3_MATRIX_ALL_BRIGHTNESS && renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
             turnOff()
             return
         }
@@ -383,7 +438,7 @@ class GlyphPhone3MatrixController(
             for (x in 0 until matrixLength) {
                 val band = sampleBandForColumn(x)
                 val maxPx = maxPixelsByColumn[x].coerceAtLeast(1)
-                val activePx = (maxPx * clamped * band).roundToInt().coerceIn(0, maxPx)
+                val activePx = (maxPx * renderLevel * band).roundToInt().coerceIn(0, maxPx)
                 if (activePx <= 0) continue
 
                 // 奇数画素で中央軸対称にする
@@ -469,14 +524,14 @@ class GlyphPhone3MatrixController(
             MODE_P3_MATRIX_SPECTRUM_CENTER -> drawSpectrum(centerLowToHigh = true)
             MODE_P3_MATRIX_ALL_BRIGHTNESS -> {
                 val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
-                    normalizeAllBrightnessLevel(clamped)
+                    normalizeAllBrightnessLevel(renderLevel)
                 } else {
-                    clamped
+                    renderLevel
                 }
                 if (normalizedRaw > ALL_BRIGHTNESS_OFF_THRESHOLD) {
                     val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
                         .coerceIn(0f, 1f)
-                    val shaped = normalized.pow(ALL_BRIGHTNESS_RESPONSE_GAMMA)
+                    val shaped = normalized.pow(outputGamma)
                     val brightness = (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX + ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped)).roundToInt()
                         .coerceIn(0, 255)
                     frameBuffer.fill(brightness)
@@ -487,6 +542,15 @@ class GlyphPhone3MatrixController(
             else -> drawBar(matrixLength / 2, litRows)
         }
 
+        if (lastSentFrameBuffer.size != frameBuffer.size) {
+            lastSentFrameBuffer = frameBuffer.copyOf()
+        } else if (lastSentFrameBuffer.contentEquals(frameBuffer)) {
+            // フレームの変更がなければSDKへの転送をスキップし、処理を軽量化する
+            return
+        } else {
+            frameBuffer.copyInto(lastSentFrameBuffer)
+        }
+
         try {
             glyphMatrixManager.setAppMatrixFrame(frameBuffer)
             failureCount = 0
@@ -495,14 +559,14 @@ class GlyphPhone3MatrixController(
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame repeatedly failed. disabling matrix output", error)
                 isSessionOpen = false
-                onStatusChanged("Glyph Matrix update failed. Restart capture to retry.")
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_update_failed))
             }
         } catch (error: Throwable) {
             failureCount += 1
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame crashed repeatedly. disabling matrix output", error)
                 isSessionOpen = false
-                onStatusChanged("Glyph Matrix update crashed. Restart capture to retry.")
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_update_crashed))
             }
         }
     }
@@ -543,6 +607,10 @@ class GlyphPhone3MatrixController(
     }
 
     private fun buildColumnMaxPixels(length: Int, device: MatrixDevice): IntArray {
+        if (cachedMaxPixelsLength == length && cachedMaxPixelsByColumn != null) {
+            return cachedMaxPixelsByColumn!!
+        }
+
         val profile = when (device) {
             // Phone (3)
             MatrixDevice.PHONE3 -> intArrayOf(
@@ -554,15 +622,22 @@ class GlyphPhone3MatrixController(
                 5, 9, 11, 11, 13, 13, 13, 13, 13, 11, 11, 9, 5
             )
         }
-        if (length == profile.size) return profile
 
-        val out = IntArray(length)
-        for (i in 0 until length) {
-            val src = if (length <= 1) (profile.lastIndex / 2f) else i * (profile.lastIndex.toFloat() / (length - 1f))
-            val srcIdx = src.roundToInt().coerceIn(0, profile.lastIndex)
-            val scaled = (profile[srcIdx] * (length / profile.size.toFloat())).roundToInt().coerceAtLeast(1)
-            out[i] = if (scaled % 2 == 0) (scaled - 1).coerceAtLeast(1) else scaled
+        val out = if (length == profile.size) {
+            profile
+        } else {
+            val arr = IntArray(length)
+            for (i in 0 until length) {
+                val src = if (length <= 1) (profile.lastIndex / 2f) else i * (profile.lastIndex.toFloat() / (length - 1f))
+                val srcIdx = src.roundToInt().coerceIn(0, profile.lastIndex)
+                val scaled = (profile[srcIdx] * (length / profile.size.toFloat())).roundToInt().coerceAtLeast(1)
+                arr[i] = if (scaled % 2 == 0) (scaled - 1).coerceAtLeast(1) else scaled
+            }
+            arr
         }
+
+        cachedMaxPixelsLength = length
+        cachedMaxPixelsByColumn = out
         return out
     }
 }

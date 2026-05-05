@@ -34,13 +34,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import jp.linkserver.glyphvisualizer.AppLogger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -193,13 +193,13 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "デバッグログ",
+                    text = stringResource(R.string.about_debug_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "問題が発生した際、ログをシェアして報告できます",
+                    text = stringResource(R.string.about_debug_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -209,7 +209,13 @@ fun AboutScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = logExists
                 ) {
-                    Text(if (logExists) "ログをシェア" else "ログなし")
+                    Text(
+                        if (logExists) {
+                            stringResource(R.string.about_debug_share)
+                        } else {
+                            stringResource(R.string.about_debug_empty)
+                        }
+                    )
                 }
                 OutlinedButton(
                     onClick = {
@@ -219,7 +225,7 @@ fun AboutScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = logExists
                 ) {
-                    Text("ログを消去")
+                    Text(stringResource(R.string.about_debug_clear))
                 }
             }
 

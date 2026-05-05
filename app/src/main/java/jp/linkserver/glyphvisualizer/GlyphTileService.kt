@@ -53,6 +53,7 @@ class GlyphTileService : TileService() {
                 peakHoldEnabled = s.peakHoldEnabled,
                 glyphMode = s.glyphMode,
                 binaryMode = s.binaryMode,
+                levelAutoScale = s.levelAutoScale,
                 spectrumAutoScale = s.spectrumAutoScale,
                 allBrightnessAutoScale = s.allBrightnessAutoScale,
                 turnOffWhenBackDown = s.turnOffWhenBackDown

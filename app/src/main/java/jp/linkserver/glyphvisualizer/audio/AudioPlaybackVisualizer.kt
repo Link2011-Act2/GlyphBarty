@@ -12,6 +12,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import jp.linkserver.glyphvisualizer.R
 import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.max
@@ -51,7 +52,7 @@ class AudioPlaybackVisualizer(
         ) -> Unit
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            onStateChanged("Audio playback capture requires Android 10 or newer.")
+            onStateChanged(context.getString(R.string.status_audio_capture_requires_android10))
             return false
         }
 
@@ -60,7 +61,7 @@ class AudioPlaybackVisualizer(
         val projectionManager = context.getSystemService(MediaProjectionManager::class.java)
         val projection = projectionManager?.getMediaProjection(resultCode, data)
         if (projection == null) {
-            onStateChanged("MediaProjection could not be created.")
+            onStateChanged(context.getString(R.string.status_media_projection_unavailable))
             return false
         }
 
@@ -109,7 +110,7 @@ class AudioPlaybackVisualizer(
 
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             projection.stop()
-            onStateChanged("AudioRecord initialization failed.")
+            onStateChanged(context.getString(R.string.status_audio_record_initialization_failed))
             return false
         }
 
@@ -118,7 +119,7 @@ class AudioPlaybackVisualizer(
         isRunning = true
 
         record.startRecording()
-        onStateChanged("Listening to playback audio. Start music on the device to drive the meter.")
+        onStateChanged(context.getString(R.string.status_playback_listening))
 
         workerThread = thread(
             start = true,
@@ -201,19 +202,29 @@ class AudioPlaybackVisualizer(
                 val gated = ((normalized - gate) / (1f - gate)).coerceIn(0f, 1f)
                 val bounded = gated.pow(dynamicsProvider().coerceIn(0.6f, 2.4f)).coerceIn(0f, 1f)
                 val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
-                val smoothingBalance = smoothingBalanceProvider().coerceIn(-1f, 1f)
-                val attackMultiplier = (3f + smoothingBalance * 2f).coerceIn(1f, 5f)
-                val releaseMultiplier = (1f - smoothingBalance * 0.5f).coerceIn(0.5f, 1.5f)
-                val primarySmoothing = (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                val primaryAttack = (primarySmoothing * attackMultiplier).coerceIn(0f, 1f)
-                val primaryRelease = (primarySmoothing * releaseMultiplier).coerceIn(0f, 1f)
-                val displayAttack = (smoothing * attackMultiplier).coerceIn(0f, 1f)
-                val displayRelease = (smoothing * releaseMultiplier).coerceIn(0f, 1f)
-
-                smoothedLevel += (bounded - smoothedLevel) * if (bounded > smoothedLevel) primaryAttack else primaryRelease
-                displayedLevel += (smoothedLevel - displayedLevel) * if (smoothedLevel > displayedLevel) displayAttack else displayRelease
-                displayedLeft += (leftLevel - displayedLeft) * if (leftLevel > displayedLeft) displayAttack else displayRelease
-                displayedRight += (rightLevel - displayedRight) * if (rightLevel > displayedRight) displayAttack else displayRelease
+                val noReleaseSmoothing = smoothing >= 0.54f
+                val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
+                val release = if (noReleaseSmoothing) 1f else smoothing
+                if (bounded > smoothedLevel) {
+                    smoothedLevel = bounded
+                } else {
+                    smoothedLevel += (bounded - smoothedLevel) * primarySmoothing
+                }
+                if (smoothedLevel > displayedLevel) {
+                    displayedLevel = smoothedLevel
+                } else {
+                    displayedLevel += (smoothedLevel - displayedLevel) * release
+                }
+                if (leftLevel > displayedLeft) {
+                    displayedLeft = leftLevel
+                } else {
+                    displayedLeft += (leftLevel - displayedLeft) * release
+                }
+                if (rightLevel > displayedRight) {
+                    displayedRight = rightLevel
+                } else {
+                    displayedRight += (rightLevel - displayedRight) * release
+                }
                 val peakValue = displayedLevel
                 val spectrumBands = SpectrumAnalyzer.computeLogBands(
                     samples = monoSamples,
