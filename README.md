@@ -1,4 +1,7 @@
 [English](README.md) [日本語](README_ja.md)
+
+### ⚠️ This project is still a work in progress. While the IntDev version source code is available for early access, it may contain bugs.<br>It is highly recommended to wait for the stable release on May 17th.
+
 # Glyph Barty
 
 A Glyph visualizer that is cooler than the official feature and supports a wider range of devices.
