@@ -52,6 +52,10 @@
     <string name="settings_about_desc">Version, support links, logs, and licenses.</string>
     <string name="settings_nothing_style_title">Experimental: Nothing-like UI</string>
     <string name="settings_nothing_style_desc">Switches to a Nothing-inspired look with a black-and-white base and red accents. This is experimental and the design may change later.</string>
+    <string name="settings_ui_mode_title">UI style</string>
+    <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
+    <string name="settings_ui_mode_nothing">Nothing-like</string>
+    <string name="settings_ui_mode_material">Material 3</string>
     <string name="settings_media_projection_title">Show MediaProjection</string>
     <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.&#10;You usually do not need this, but if you run into issues, try using it.</string>
     <string name="settings_glyph_meter_preview_title">Experimental: More faithful preview</string>

@@ -91,11 +91,15 @@ fun SettingsScreen(
 
             if (nothingStyleEnabled) {
                 SettingsNothingGroup {
-                    SettingsToggleEntry(
-                        title = stringResource(R.string.settings_nothing_style_title),
-                        description = stringResource(R.string.settings_nothing_style_desc),
-                        checked = localNothingStyleEnabled,
-                        onCheckedChange = { checked ->
+                    SettingsRadioEntry(
+                        title = stringResource(R.string.settings_ui_mode_title),
+                        description = stringResource(R.string.settings_ui_mode_desc),
+                        options = listOf(
+                            stringResource(R.string.settings_ui_mode_nothing) to localNothingStyleEnabled,
+                            stringResource(R.string.settings_ui_mode_material) to !localNothingStyleEnabled
+                        ),
+                        onOptionSelected = { index ->
+                            val checked = index == 0
                             localNothingStyleEnabled = checked
                             onNothingStyleEnabledChanged(checked)
                         },
@@ -149,11 +153,15 @@ fun SettingsScreen(
                     )
                 }
             } else {
-                SettingsToggleEntry(
-                    title = stringResource(R.string.settings_nothing_style_title),
-                    description = stringResource(R.string.settings_nothing_style_desc),
-                    checked = localNothingStyleEnabled,
-                    onCheckedChange = { checked ->
+                SettingsRadioEntry(
+                    title = stringResource(R.string.settings_ui_mode_title),
+                    description = stringResource(R.string.settings_ui_mode_desc),
+                    options = listOf(
+                        stringResource(R.string.settings_ui_mode_nothing) to localNothingStyleEnabled,
+                        stringResource(R.string.settings_ui_mode_material) to !localNothingStyleEnabled
+                    ),
+                    onOptionSelected = { index ->
+                        val checked = index == 0
                         localNothingStyleEnabled = checked
                         onNothingStyleEnabledChanged(checked)
                     },

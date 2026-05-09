@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -180,6 +181,69 @@ fun SettingsToggleEntry(
                 onCheckedChange = onCheckedChange,
                 colors = SwitchDefaults.colors()
             )
+        }
+    }
+}
+
+@Composable
+fun SettingsRadioEntry(
+    title: String,
+    description: String,
+    options: List<Pair<String, Boolean>>,
+    onOptionSelected: (Int) -> Unit,
+    nothingStyle: Boolean,
+    position: SettingsGroupPosition
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val containerColor = if (nothingStyle) {
+        if (darkTheme) Color(0xFF1E1E1E) else Color.White
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = itemShape(position, nothingStyle),
+        color = containerColor,
+        border = if (nothingStyle) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = if (nothingStyle) 22.dp else 16.dp,
+                    vertical = if (nothingStyle) 18.dp else 16.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Normal
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            options.forEachIndexed { index, (label, selected) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = { onOptionSelected(index) }
+                    )
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
         }
     }
 }

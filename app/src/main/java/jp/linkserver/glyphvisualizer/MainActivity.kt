@@ -1830,14 +1830,14 @@ private fun HeroCard(
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    val statusChipBackground = if (nothingStyleEnabled && isCapturing) {
+                    val statusChipBackground = if (isCapturing) {
                         NothingRed
                     } else if (nothingStyleEnabled) {
                         if (isSystemInDarkTheme()) Color(0xFF2A2A2A) else Color(0xFFF2F2F2)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     }
-                    val statusChipLabelColor = if (nothingStyleEnabled && isCapturing) {
+                    val statusChipLabelColor = if (isCapturing) {
                         Color.White
                     } else {
                         MaterialTheme.colorScheme.onSurface
@@ -1896,10 +1896,15 @@ private fun CompactMeterOverlay(
     onDismissUpward: () -> Unit
 ) {
     val density = LocalDensity.current
+    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    val activeColor = Color.Black
+    val activeColor = if (darkTheme) Color.White else Color.Black
     val peakColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.75f)
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val containerColor = if (nothingStyleEnabled) {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
     val animatedPeak by animateFloatAsState(
         targetValue = peak,
         animationSpec = spring(stiffness = Spring.StiffnessLow),
@@ -2447,8 +2452,7 @@ private fun meterBackgroundBrush(nothingStyleEnabled: Boolean): Brush {
     } else {
         Brush.linearGradient(
             listOf(
-                MaterialTheme.colorScheme.surfaceContainerHighest,
-                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.05f),
+                MaterialTheme.colorScheme.surfaceDim,
                 MaterialTheme.colorScheme.surfaceDim
             )
         )
