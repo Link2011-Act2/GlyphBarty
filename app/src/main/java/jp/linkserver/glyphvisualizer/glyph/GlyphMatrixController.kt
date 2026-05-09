@@ -9,6 +9,7 @@ import com.nothing.ketchum.Glyph
 import com.nothing.ketchum.GlyphException
 import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
 import kotlin.math.max
@@ -20,11 +21,6 @@ class GlyphMatrixController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit
 ) : GlyphOutputController {
-
-    private enum class MatrixDevice {
-        PHONE3,
-        PHONE4A_PRO
-    }
 
     companion object {
         private const val TAG = "GlyphMatrixController"
@@ -81,7 +77,7 @@ class GlyphMatrixController(
     private var lastSpectrumUpdateMs = 0L
     private var silenceStartedAt = 0L
     private var matrixReleasedForSilence = false
-    private var matrixDevice = MatrixDevice.PHONE3
+    private var matrixProfile = GlyphDeviceProfile.PHONE3_MATRIX
     
     private var lastSentFrameBuffer = IntArray(0)
     private var cachedMaxPixelsByColumn: IntArray? = null
@@ -90,9 +86,10 @@ class GlyphMatrixController(
 
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
-            matrixDevice = when {
-                Common.is25111p() -> MatrixDevice.PHONE4A_PRO
-                Common.is23112() -> MatrixDevice.PHONE3
+            val currentDevice = GlyphDeviceCatalog.currentOrNull()
+            matrixProfile = when (currentDevice?.profile) {
+                GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+                GlyphDeviceProfile.PHONE3_MATRIX -> GlyphDeviceProfile.PHONE3_MATRIX
                 else -> {
                     onStatusChanged(context.getString(R.string.status_glyph_matrix_device_unsupported, Build.MODEL))
                     return
@@ -106,10 +103,7 @@ class GlyphMatrixController(
             }
             frameBuffer = IntArray(matrixLength * matrixLength)
 
-            val targetDeviceCode = when (matrixDevice) {
-                MatrixDevice.PHONE3 -> Glyph.DEVICE_23112
-                MatrixDevice.PHONE4A_PRO -> Glyph.DEVICE_25111p
-            }
+            val targetDeviceCode = currentDevice.matrixSpec?.sdkDeviceId ?: return
             val registered = glyphMatrixManager.register(targetDeviceCode)
             if (!registered) {
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_registration_failed))
@@ -219,7 +213,7 @@ class GlyphMatrixController(
         this.leftLevel = leftLevel.coerceIn(0f, 1f)
         this.rightLevel = rightLevel.coerceIn(0f, 1f)
         val raw = spectrumBands ?: FloatArray(0)
-        val resampled = if (matrixDevice == MatrixDevice.PHONE4A_PRO && raw.size > 13) {
+        val resampled = if (matrixProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX && raw.size > 13) {
             downsampleBands(raw, 13)
         } else {
             raw
@@ -409,7 +403,7 @@ class GlyphMatrixController(
 
         fun drawSpectrum(centerLowToHigh: Boolean) {
             val centerY = matrixLength / 2
-            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixDevice)
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
 
             fun sampleBandForColumn(x: Int): Float {
                 val sampledX = if (!centerLowToHigh && reverseDirection) {
@@ -604,27 +598,27 @@ class GlyphMatrixController(
     }
 
     private fun currentDeviceCode(): String {
-        return when (matrixDevice) {
-            MatrixDevice.PHONE3 -> Glyph.DEVICE_23112
-            MatrixDevice.PHONE4A_PRO -> Glyph.DEVICE_25111p
+        return requireNotNull(GlyphDeviceCatalog.currentOrNull()?.matrixSpec?.sdkDeviceId) {
+            "Matrix device spec is unavailable for the current device."
         }
     }
 
-    private fun buildColumnMaxPixels(length: Int, device: MatrixDevice): IntArray {
+    private fun buildColumnMaxPixels(length: Int, deviceProfile: GlyphDeviceProfile): IntArray {
         if (cachedMaxPixelsLength == length && cachedMaxPixelsByColumn != null) {
             return cachedMaxPixelsByColumn!!
         }
 
-        val profile = when (device) {
+        val profile = when (deviceProfile) {
             // Phone (3)
-            MatrixDevice.PHONE3 -> intArrayOf(
+            GlyphDeviceProfile.PHONE3_MATRIX -> intArrayOf(
                 7, 11, 15, 17, 19, 21, 21, 23, 23, 25, 25, 25, 25,
                 25, 25, 25, 23, 23, 21, 21, 19, 17, 15, 11, 7
             )
             // Phone (4a) Pro: 端=5, 2番目=9, 3-4番目=11, 5番目〜中央=13
-            MatrixDevice.PHONE4A_PRO -> intArrayOf(
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> intArrayOf(
                 5, 9, 11, 11, 13, 13, 13, 13, 13, 11, 11, 9, 5
             )
+            else -> IntArray(length) { length }
         }
 
         val out = if (length == profile.size) {

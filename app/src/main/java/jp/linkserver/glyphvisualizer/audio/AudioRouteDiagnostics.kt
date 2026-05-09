@@ -1,6 +1,7 @@
 package jp.linkserver.glyphvisualizer.audio
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
@@ -13,6 +14,9 @@ internal object AudioRouteDiagnostics {
 
     fun isBluetoothOutputLikelyConnected(context: Context): Boolean {
         val audioManager = context.getSystemService(AudioManager::class.java) ?: return false
+        activePlaybackDevices(audioManager)?.let { activeDevices ->
+            return isBluetoothDeviceTypes(activeDevices.mapNotNull { playbackDeviceType(it) })
+        }
         return isBluetoothOutputLikelyConnected(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS))
     }
 
@@ -47,6 +51,7 @@ internal object AudioRouteDiagnostics {
 
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         val outputSummary = describeDevices(outputs)
+        val activePlaybackSummary = describeActivePlaybackDevices(audioManager)
 
         val communicationDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.communicationDevice?.let { device ->
@@ -78,6 +83,25 @@ internal object AudioRouteDiagnostics {
             append(", outputs=[")
             append(outputSummary)
             append("]")
+            append(", activePlayback=[")
+            append(activePlaybackSummary)
+            append("]")
+        }
+    }
+
+    private fun describeActivePlaybackDevices(audioManager: AudioManager): String {
+        val activeDevices = activePlaybackDevices(audioManager) ?: return "unknown"
+        if (activeDevices.isEmpty()) return "none"
+        return activeDevices.joinToString(separator = ", ") { device ->
+            buildString {
+                append(typeName(playbackDeviceType(device) ?: -1))
+                val productName = playbackDeviceName(device).trim()
+                if (productName.isNotEmpty()) {
+                    append("(")
+                    append(productName)
+                    append(")")
+                }
+            }
         }
     }
 
@@ -114,13 +138,46 @@ internal object AudioRouteDiagnostics {
     }
 
     private fun isBluetoothOutputLikelyConnected(devices: Array<AudioDeviceInfo>): Boolean {
-        return devices.any {
-            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                it.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+        return isBluetoothDeviceTypes(devices.map { it.type })
+    }
+
+    private fun isBluetoothDeviceTypes(types: List<Int>): Boolean {
+        return types.any {
+            it == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                it == AudioDeviceInfo.TYPE_BLE_BROADCAST
         }
+    }
+
+    private fun activePlaybackDevices(audioManager: AudioManager): List<Any>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        return runCatching {
+            val method = AudioManager::class.java.getMethod(
+                "getAudioDevicesForAttributes",
+                AudioAttributes::class.java
+            )
+            @Suppress("UNCHECKED_CAST")
+            method.invoke(
+                audioManager,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+            ) as? List<Any>
+        }.getOrNull()
+    }
+
+    private fun playbackDeviceType(device: Any): Int? {
+        return runCatching {
+            device.javaClass.getMethod("getType").invoke(device) as? Int
+        }.getOrNull()
+    }
+
+    private fun playbackDeviceName(device: Any): String {
+        return runCatching {
+            device.javaClass.getMethod("getName").invoke(device)?.toString().orEmpty()
+        }.getOrElse { "" }
     }
 
     private fun outputSignature(devices: Array<AudioDeviceInfo>): String {

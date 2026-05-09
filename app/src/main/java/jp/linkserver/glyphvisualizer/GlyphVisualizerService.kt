@@ -22,7 +22,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.service.quicksettings.TileService
 import androidx.core.app.NotificationCompat
-import com.nothing.ketchum.Common
 import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
@@ -259,7 +258,7 @@ class GlyphVisualizerService : Service() {
     private var smoothingBalance = 0f
     private var reverseDirection = true
     private var peakHoldEnabled = true
-    private var glyphMode = GlyphPatternRegistry.P2_C1_LINEAR
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
     private var levelAutoScale = false
     private var spectrumAutoScale = false
@@ -337,7 +336,7 @@ class GlyphVisualizerService : Service() {
         super.onCreate()
         AppLogger.init(this)
         createNotificationChannel()
-        glyphController = if (Common.is23112() || Common.is25111p()) {
+        glyphController = if (GlyphDeviceCatalog.currentOrFallback().controllerFamily == GlyphControllerFamily.MATRIX) {
             GlyphMatrixController(this) { status ->
                 CaptureUiStore.update { it.copy(statusText = status) }
             }
@@ -818,24 +817,7 @@ class GlyphVisualizerService : Service() {
                 meterSegments = (frame.level * 16f).toInt().coerceIn(0, 16),
                 spectrumBands = frame.spectrumBands,
                 isCapturing = true,
-                activeMode = frame.mode,
-                sensitivity = sensitivity,
-                noiseGate = noiseGate,
-                dynamics = dynamics,
-                outputGamma = outputGamma,
-                toneFocus = toneFocus,
-                smoothing = smoothing,
-                smoothingBalance = smoothingBalance,
-                reverseDirection = reverseDirection,
-                    peakHoldEnabled = peakHoldEnabled,
-                    glyphMode = glyphMode,
-                    binaryMode = binaryMode,
-                levelAutoScale = levelAutoScale,
-                    spectrumAutoScale = spectrumAutoScale,
-                    allBrightnessAutoScale = allBrightnessAutoScale,
-                    autoScaleWindowSeconds = autoScaleWindowSeconds,
-                    latencyMs = latencyMs,
-                    turnOffWhenBackDown = turnOffWhenBackDown
+                activeMode = frame.mode
             )
         }
         if (isBackDownSuppressed) {

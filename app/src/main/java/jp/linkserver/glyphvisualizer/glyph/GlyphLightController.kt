@@ -5,10 +5,9 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
-import com.nothing.ketchum.Common
-import com.nothing.ketchum.Glyph
 import com.nothing.ketchum.GlyphException
 import com.nothing.ketchum.GlyphFrame
 import com.nothing.ketchum.GlyphManager
@@ -59,15 +58,8 @@ class GlyphLightController(
         private val MODE_P4A_ALL_BRIGHTNESS = Patterns.P4A_ALL_BRIGHTNESS
     }
 
-    private enum class DeviceProfile {
-        PHONE2,
-        PHONE2A,
-        PHONE3A,
-        PHONE4A
-    }
-
     private data class DeviceSpec(
-        val profile: DeviceProfile,
+        val profile: GlyphDeviceProfile,
         val deviceId: String,
         val channelCount: Int,
         val cRange: IntRange,
@@ -355,10 +347,12 @@ class GlyphLightController(
 
         try {
             when (spec.profile) {
-                DeviceProfile.PHONE2 -> updatePhone2Level(spec, cFrame, renderLevel)
-                DeviceProfile.PHONE2A -> updatePhone2aLevel(spec, cFrame, renderLevel)
-                DeviceProfile.PHONE3A -> updatePhone3aLevel(spec, cFrame, renderLevel)
-                DeviceProfile.PHONE4A -> updatePhone4aLevel(spec, cFrame, renderLevel)
+                GlyphDeviceProfile.PHONE2 -> updatePhone2Level(spec, cFrame, renderLevel)
+                GlyphDeviceProfile.PHONE2A -> updatePhone2aLevel(spec, cFrame, renderLevel)
+                GlyphDeviceProfile.PHONE3A -> updatePhone3aLevel(spec, cFrame, renderLevel)
+                GlyphDeviceProfile.PHONE4A -> updatePhone4aLevel(spec, cFrame, renderLevel)
+                GlyphDeviceProfile.PHONE3_MATRIX,
+                GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> Unit
             }
         } catch (_: GlyphException) {
         }
@@ -618,7 +612,7 @@ class GlyphLightController(
             return
         }
 
-        if (spec.profile == DeviceProfile.PHONE2 && glyphMode == MODE_D1_CENTER && 29 in channelRange) {
+        if (spec.profile == GlyphDeviceProfile.PHONE2 && glyphMode == MODE_D1_CENTER && 29 in channelRange) {
             val centerChannel = 29
             val leftChannels = (channelRange.first until centerChannel).toList().asReversed()
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
@@ -817,42 +811,18 @@ class GlyphLightController(
     }
 
     private fun resolveDeviceSpec(): DeviceSpec? {
-        return when {
-            Common.is23111() || Common.is23113() -> DeviceSpec(
-                profile = DeviceProfile.PHONE2A,
-                deviceId = if (Common.is23113()) Glyph.DEVICE_23113 else Glyph.DEVICE_23111,
-                channelCount = 26,
-                cRange = 0..23,
-                aRange = 24..24,
-                bRange = 25..25,
-                centerSupported = true
-            )
-            Common.is22111() -> DeviceSpec(
-                profile = DeviceProfile.PHONE2,
-                deviceId = Glyph.DEVICE_22111,
-                channelCount = 33,
-                cRange = 3..18,
-                d1Range = 25..32,
-                centerSupported = true
-            )
-            Common.is24111() -> DeviceSpec(
-                profile = DeviceProfile.PHONE3A,
-                deviceId = Glyph.DEVICE_24111,
-                channelCount = 36,
-                cRange = 0..19,
-                aRange = 20..30,
-                bRange = 31..35,
-                cabRange = 0..35,
-                centerSupported = true
-            )
-            Common.is25111() -> DeviceSpec(
-                profile = DeviceProfile.PHONE4A,
-                deviceId = Glyph.DEVICE_25111,
-                channelCount = 6,
-                cRange = 0..5,
-                centerSupported = true
-            )
-            else -> null
-        }
+        val currentDevice = GlyphDeviceCatalog.currentOrNull() ?: return null
+        val lightSpec = currentDevice.lightSpec ?: return null
+        return DeviceSpec(
+            profile = currentDevice.profile,
+            deviceId = lightSpec.sdkDeviceId,
+            channelCount = lightSpec.channelCount,
+            cRange = lightSpec.cRange,
+            aRange = lightSpec.aRange,
+            bRange = lightSpec.bRange,
+            cabRange = lightSpec.cabRange,
+            d1Range = lightSpec.d1Range,
+            centerSupported = lightSpec.centerSupported
+        )
     }
 }

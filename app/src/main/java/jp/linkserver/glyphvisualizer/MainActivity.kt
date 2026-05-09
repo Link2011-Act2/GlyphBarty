@@ -20,6 +20,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -111,13 +112,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nothing.ketchum.Common
 import kotlinx.coroutines.delay
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
@@ -147,11 +151,13 @@ class MainActivity : ComponentActivity() {
         MEDIA_PROJECTION
     }
 
-    private val isPhone3Device by lazy { Common.is23112() }
-    private val isPhone4aProDevice by lazy { Common.is25111p() }
-    private val isPhone2aDevice by lazy { Common.is23111() || Common.is23113() }
-    private val isPhone3aDevice by lazy { Common.is24111() }
-    private val isPhone4aDevice by lazy { Common.is25111() }
+    private val currentDevice by lazy { GlyphDeviceCatalog.currentOrFallback() }
+    private val deviceProfile by lazy { currentDevice.profile }
+    private val isPhone3Device by lazy { deviceProfile == GlyphDeviceProfile.PHONE3_MATRIX }
+    private val isPhone4aProDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX }
+    private val isPhone2aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE2A }
+    private val isPhone3aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE3A }
+    private val isPhone4aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE4A }
 
     private var pendingStartMode: CaptureMode? = null
     private var pendingExportContent: String? = null
@@ -255,7 +261,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val savedSettings = SettingsPreferences.load(this)
-        val normalizedMode = normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
+        val normalizedMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolvedLatencySettings = savedSettings.withResolvedLatency(bluetoothOutputActive)
         CaptureUiStore.update {
@@ -293,7 +299,7 @@ class MainActivity : ComponentActivity() {
                 GlyphVisualizerApp(
                     statusText = uiState.statusText,
                     isCapturing = uiState.isCapturing,
-                    heroTitle = GlyphDevicePresentationRegistry.current().heroTitle,
+                    heroTitle = currentDevice.presentation.heroTitle,
                     level = uiState.level,
                     peak = uiState.peak,
                     spectrumBands = uiState.spectrumBands,
@@ -313,20 +319,21 @@ class MainActivity : ComponentActivity() {
                     reverseDirection = uiState.reverseDirection,
                     meterSegments = uiState.meterSegments,
                     activeMode = uiState.activeMode,
-                        glyphMode = uiState.glyphMode,
-                        isPhone3Device = isPhone3Device,
-                        isPhone4aProDevice = isPhone4aProDevice,
-                        isPhone2aDevice = isPhone2aDevice,
-                        isPhone3aDevice = isPhone3aDevice,
-                        isPhone4aDevice = isPhone4aDevice,
-                        binaryMode = uiState.binaryMode,
-                        levelAutoScale = uiState.levelAutoScale,
-                        spectrumAutoScale = uiState.spectrumAutoScale,
-                        allBrightnessAutoScale = uiState.allBrightnessAutoScale,
-                        mediaProjectionEnabled = uiState.mediaProjectionEnabled,
-                        glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
-                        nothingStyleEnabled = uiState.nothingStyleEnabled,
-                        turnOffWhenBackDown = uiState.turnOffWhenBackDown,
+                    glyphMode = uiState.glyphMode,
+                    deviceProfile = deviceProfile,
+                    isPhone3Device = isPhone3Device,
+                    isPhone4aProDevice = isPhone4aProDevice,
+                    isPhone2aDevice = isPhone2aDevice,
+                    isPhone3aDevice = isPhone3aDevice,
+                    isPhone4aDevice = isPhone4aDevice,
+                    binaryMode = uiState.binaryMode,
+                    levelAutoScale = uiState.levelAutoScale,
+                    spectrumAutoScale = uiState.spectrumAutoScale,
+                    allBrightnessAutoScale = uiState.allBrightnessAutoScale,
+                    mediaProjectionEnabled = uiState.mediaProjectionEnabled,
+                    glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
+                    nothingStyleEnabled = uiState.nothingStyleEnabled,
+                    turnOffWhenBackDown = uiState.turnOffWhenBackDown,
                     onSensitivityChanged = { newValue ->
                         CaptureUiStore.update { it.copy(sensitivity = newValue) }
                         scheduleParameterSync()
@@ -580,37 +587,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun defaultGlyphModeForCurrentDevice(): String = when {
-        isPhone3Device -> GlyphPatternRegistry.P3_MATRIX_SPECTRUM
-        isPhone4aProDevice -> GlyphPatternRegistry.P3_MATRIX_SPECTRUM
-        isPhone2aDevice -> GlyphPatternRegistry.P2A_C_LINEAR
-        isPhone3aDevice -> GlyphPatternRegistry.P3A_C_LINEAR
-        isPhone4aDevice -> GlyphPatternRegistry.P4A_LINEAR
-        else -> GlyphPatternRegistry.P2_C1_LINEAR
-    }
-
-    private fun currentGlyphDeviceProfile(): GlyphDeviceProfile = when {
-        isPhone3Device -> GlyphDeviceProfile.PHONE3_MATRIX
-        isPhone4aProDevice -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
-        isPhone2aDevice -> GlyphDeviceProfile.PHONE2A
-        isPhone3aDevice -> GlyphDeviceProfile.PHONE3A
-        isPhone4aDevice -> GlyphDeviceProfile.PHONE4A
-        else -> GlyphDeviceProfile.PHONE2
-    }
-
-    private fun normalizeGlyphModeForCurrentDevice(glyphMode: String): String {
-        val profile = currentGlyphDeviceProfile()
-        return if (GlyphPatternRegistry.isSupported(profile, glyphMode)) {
-            glyphMode
-        } else {
-            defaultGlyphModeForCurrentDevice()
-        }
-    }
-
     private fun defaultParameterState(): CaptureUiState {
         return applyRouteAwareLatency(
             SettingsPreferences.defaultParameters().copy(
-                glyphMode = defaultGlyphModeForCurrentDevice()
+                glyphMode = currentDevice.defaultGlyphMode
             )
         )
     }
@@ -633,7 +613,7 @@ class MainActivity : ComponentActivity() {
             latencyMs = parameters.latencyMs.coerceIn(0f, 500f),
             defaultOutputLatencyMs = parameters.defaultOutputLatencyMs.coerceIn(0f, 500f),
             bluetoothLatencyMs = parameters.bluetoothLatencyMs.coerceIn(0f, 500f),
-            glyphMode = normalizeGlyphModeForCurrentDevice(parameters.glyphMode)
+            glyphMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(parameters.glyphMode)
         ))
     }
 
@@ -836,6 +816,7 @@ private fun GlyphVisualizerApp(
     meterSegments: Int,
     activeMode: String,
     glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
@@ -959,6 +940,7 @@ private fun GlyphVisualizerApp(
                         meterSegments = meterSegments,
                         activeMode = activeMode,
                         glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
                         isPhone3Device = isPhone3Device,
                         isPhone4aProDevice = isPhone4aProDevice,
                         isPhone2aDevice = isPhone2aDevice,
@@ -1075,6 +1057,7 @@ private fun MainScreenContent(
     meterSegments: Int,
     activeMode: String,
     glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
@@ -1117,6 +1100,24 @@ private fun MainScreenContent(
     onOpenSettings: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    var heroBottomInRoot by remember { mutableStateOf(Float.POSITIVE_INFINITY) }
+    var compactMeterDismissed by rememberSaveable { mutableStateOf(false) }
+    val meterModel = remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled) {
+        buildUiMeterModel(
+            level = level,
+            meterSegments = meterSegments,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+        )
+    }
+    val collapsedMeterVisible = heroBottomInRoot <= 0f
+    LaunchedEffect(collapsedMeterVisible) {
+        if (!collapsedMeterVisible) {
+            compactMeterDismissed = false
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -1158,95 +1159,110 @@ private fun MainScreenContent(
                 .padding(innerPadding),
             color = Color.Transparent
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                HeroCard(
-                    isCapturing = isCapturing,
-                    statusText = statusText,
-                    heroTitle = heroTitle,
-                    level = level,
-                    peak = peak,
-                    spectrumBands = spectrumBands,
-                    sensitivity = sensitivity,
-                    glyphMode = glyphMode,
-                    toneFocus = toneFocus,
-                    smoothing = smoothing,
-                    meterSegments = meterSegments,
-                    activeMode = activeMode,
-                    isPhone3Device = isPhone3Device,
-                    isPhone4aProDevice = isPhone4aProDevice,
-                    isPhone2aDevice = isPhone2aDevice,
-                    isPhone3aDevice = isPhone3aDevice,
-                    isPhone4aDevice = isPhone4aDevice,
-                    binaryMode = binaryMode,
-                    glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
-                    nothingStyleEnabled = nothingStyleEnabled
-                )
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    HeroCard(
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            heroBottomInRoot = coordinates.boundsInRoot().bottom
+                        },
+                        isCapturing = isCapturing,
+                        statusText = statusText,
+                        heroTitle = heroTitle,
+                        level = level,
+                        peak = peak,
+                        spectrumBands = spectrumBands,
+                        sensitivity = sensitivity,
+                        toneFocus = toneFocus,
+                        smoothing = smoothing,
+                        meterModel = meterModel,
+                        activeMode = activeMode,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
 
-                ControlCard(
-                    isCapturing = isCapturing,
-                    sensitivity = sensitivity,
-                    noiseGate = noiseGate,
-                    dynamics = dynamics,
-                    outputGamma = outputGamma,
-                    toneFocus = toneFocus,
-                    smoothing = smoothing,
-                    smoothingBalance = smoothingBalance,
-                    autoScaleWindowSeconds = autoScaleWindowSeconds,
-                    reverseDirection = reverseDirection,
-                    activeMode = activeMode,
-                    glyphMode = glyphMode,
-                    isPhone3Device = isPhone3Device,
-                    isPhone4aProDevice = isPhone4aProDevice,
-                    isPhone2aDevice = isPhone2aDevice,
-                    isPhone3aDevice = isPhone3aDevice,
-                    isPhone4aDevice = isPhone4aDevice,
-                    binaryMode = binaryMode,
-                    levelAutoScale = levelAutoScale,
-                    spectrumAutoScale = spectrumAutoScale,
-                    allBrightnessAutoScale = allBrightnessAutoScale,
-                    mediaProjectionEnabled = mediaProjectionEnabled,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    turnOffWhenBackDown = turnOffWhenBackDown,
-                    onResetParametersClick = onResetParametersClick,
-                    onExportParametersClick = onExportParametersClick,
-                    onImportParametersClick = onImportParametersClick,
-                    onSensitivityChanged = onSensitivityChanged,
-                    onNoiseGateChanged = onNoiseGateChanged,
-                    onDynamicsChanged = onDynamicsChanged,
-                    onOutputGammaChanged = onOutputGammaChanged,
-                    onSmoothingChanged = onSmoothingChanged,
-                    onSmoothingBalanceChanged = onSmoothingBalanceChanged,
-                    onToneFocusChanged = onToneFocusChanged,
-                    onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
-                    onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
-                    onReverseDirectionChanged = onReverseDirectionChanged,
-                    onGlyphModeChanged = onGlyphModeChanged,
-                    onBinaryModeChanged = onBinaryModeChanged,
-                    onLevelAutoScaleChanged = onLevelAutoScaleChanged,
-                    onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
-                    onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                        onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
-                        startPending = startPending,
-                        onStartVisualizerClick = onStartVisualizerClick,
-                        onStartProjectionClick = onStartProjectionClick,
-                        onStopClick = onStopClick
-                )
+                    ControlCard(
+                        isCapturing = isCapturing,
+                        sensitivity = sensitivity,
+                        noiseGate = noiseGate,
+                        dynamics = dynamics,
+                        outputGamma = outputGamma,
+                        toneFocus = toneFocus,
+                        smoothing = smoothing,
+                        smoothingBalance = smoothingBalance,
+                        autoScaleWindowSeconds = autoScaleWindowSeconds,
+                        reverseDirection = reverseDirection,
+                        activeMode = activeMode,
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        isPhone3Device = isPhone3Device,
+                        isPhone4aProDevice = isPhone4aProDevice,
+                        isPhone2aDevice = isPhone2aDevice,
+                        isPhone3aDevice = isPhone3aDevice,
+                        isPhone4aDevice = isPhone4aDevice,
+                        binaryMode = binaryMode,
+                        levelAutoScale = levelAutoScale,
+                        spectrumAutoScale = spectrumAutoScale,
+                        allBrightnessAutoScale = allBrightnessAutoScale,
+                        mediaProjectionEnabled = mediaProjectionEnabled,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        turnOffWhenBackDown = turnOffWhenBackDown,
+                        onResetParametersClick = onResetParametersClick,
+                        onExportParametersClick = onExportParametersClick,
+                        onImportParametersClick = onImportParametersClick,
+                        onSensitivityChanged = onSensitivityChanged,
+                        onNoiseGateChanged = onNoiseGateChanged,
+                        onDynamicsChanged = onDynamicsChanged,
+                        onOutputGammaChanged = onOutputGammaChanged,
+                        onSmoothingChanged = onSmoothingChanged,
+                        onSmoothingBalanceChanged = onSmoothingBalanceChanged,
+                        onToneFocusChanged = onToneFocusChanged,
+                        onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
+                        onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                        onReverseDirectionChanged = onReverseDirectionChanged,
+                        onGlyphModeChanged = onGlyphModeChanged,
+                        onBinaryModeChanged = onBinaryModeChanged,
+                        onLevelAutoScaleChanged = onLevelAutoScaleChanged,
+                        onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
+                        onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                            onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
+                            startPending = startPending,
+                            onStartVisualizerClick = onStartVisualizerClick,
+                            onStartProjectionClick = onStartProjectionClick,
+                            onStopClick = onStopClick
+                    )
 
-                InfoStrip()
+                    InfoStrip()
 
-                MeterInfoSection(
-                    statusText = statusText,
-                    noiseGate = noiseGate,
-                    dynamics = dynamics,
-                    logMessage = logMessage,
-                    onDismissLog = onDismissLog
-                )
+                    MeterInfoSection(
+                        statusText = statusText,
+                        noiseGate = noiseGate,
+                        dynamics = dynamics,
+                        logMessage = logMessage,
+                        onDismissLog = onDismissLog
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = collapsedMeterVisible && !compactMeterDismissed,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 20.dp),
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    CompactMeterOverlay(
+                        level = level,
+                        peak = peak,
+                        meterModel = meterModel,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onDismissUpward = { compactMeterDismissed = true }
+                    )
+                }
             }
         }
     }
@@ -1737,6 +1753,7 @@ private fun responseSpeedValueText(smoothing: Float): String {
 
 @Composable
 private fun HeroCard(
+    modifier: Modifier = Modifier,
     isCapturing: Boolean,
     statusText: String,
     heroTitle: String,
@@ -1744,38 +1761,14 @@ private fun HeroCard(
     peak: Float,
     spectrumBands: FloatArray,
     sensitivity: Float,
-    glyphMode: String,
     toneFocus: Float,
     smoothing: Float,
-    meterSegments: Int,
+    meterModel: UiMeterModel,
     activeMode: String,
-    isPhone3Device: Boolean,
-    isPhone4aProDevice: Boolean,
-    isPhone2aDevice: Boolean,
-    isPhone3aDevice: Boolean,
-    isPhone4aDevice: Boolean,
-    binaryMode: Boolean,
-    glyphMeterPreviewEnabled: Boolean,
     nothingStyleEnabled: Boolean
 ) {
-    val deviceProfile = rememberGlyphDeviceProfile(
-        isPhone3Device = isPhone3Device,
-        isPhone4aProDevice = isPhone4aProDevice,
-        isPhone2aDevice = isPhone2aDevice,
-        isPhone3aDevice = isPhone3aDevice,
-        isPhone4aDevice = isPhone4aDevice
-    )
-    val meterModel = remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled) {
-        buildUiMeterModel(
-            level = level,
-            meterSegments = meterSegments,
-            glyphMode = glyphMode,
-            deviceProfile = deviceProfile,
-            binaryMode = binaryMode,
-            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
-        )
-    }
     androidx.compose.material3.Card(
+        modifier = modifier,
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -1895,6 +1888,177 @@ private fun HeroCard(
 }
 
 @Composable
+private fun CompactMeterOverlay(
+    level: Float,
+    peak: Float,
+    meterModel: UiMeterModel,
+    nothingStyleEnabled: Boolean,
+    onDismissUpward: () -> Unit
+) {
+    val density = LocalDensity.current
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val activeColor = Color.Black
+    val peakColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.75f)
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val animatedPeak by animateFloatAsState(
+        targetValue = peak,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "compact-meter-peak"
+    )
+
+    androidx.compose.material3.Card(
+        modifier = Modifier.pointerInput(Unit) {
+            val dismissThresholdPx = with(density) { 28.dp.toPx() }
+            var totalDrag = 0f
+            detectVerticalDragGestures(
+                onVerticalDrag = { _, dragAmount ->
+                    totalDrag += dragAmount
+                },
+                onDragEnd = {
+                    if (totalDrag < -dismissThresholdPx) {
+                        onDismissUpward()
+                    }
+                    totalDrag = 0f
+                },
+                onDragCancel = {
+                    totalDrag = 0f
+                }
+            )
+        },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(28.dp)
+            ) {
+                val segmentCount = meterModel.segmentCount.coerceAtLeast(1)
+                val centerIndex = segmentCount / 2
+                val gap = 4.dp.toPx()
+                val totalGap = gap * (segmentCount - 1)
+                val widthPerSegment = (size.width - totalGap) / segmentCount.toFloat()
+                val top = 0f
+                val height = size.height
+
+                for (segment in 0 until segmentCount) {
+                    val left = segment * (widthPerSegment + gap)
+                    val intensity = meterModel.segmentLevels.getOrElse(segment) { 0f }.coerceIn(0f, 1f)
+                    val color = if (intensity > 0.001f) {
+                        activeColor.copy(alpha = 0.18f + intensity * 0.82f)
+                    } else {
+                        inactiveColor
+                    }
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(left, top),
+                        size = Size(widthPerSegment, height),
+                        cornerRadius = CornerRadius(widthPerSegment / 2f, widthPerSegment / 2f)
+                    )
+                }
+
+                if (meterModel.usesSymmetricCenterLayout) {
+                    val centerPeakX = centerIndex * (widthPerSegment + gap) + (widthPerSegment / 2f)
+                    val leftCenterPeakX = if (meterModel.symmetricSeedCount == 2) {
+                        (centerIndex - 1).coerceAtLeast(0) * (widthPerSegment + gap) + (widthPerSegment / 2f)
+                    } else {
+                        centerPeakX
+                    }
+                    val betweenCentersPeakX = (leftCenterPeakX + centerPeakX) / 2f
+                    val maxPairDistance = ((segmentCount - meterModel.symmetricSeedCount).coerceAtLeast(0) / 2).coerceAtLeast(1).toFloat()
+                    val peakDistance = animatedPeak.coerceIn(0f, 1f) * maxPairDistance
+                    if (peakDistance <= 0.001f) {
+                        val restingPeakX = if (meterModel.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
+                        drawLine(
+                            color = peakColor,
+                            start = Offset(restingPeakX, 0f),
+                            end = Offset(restingPeakX, size.height),
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    } else {
+                        val leftPeakX: Float
+                        val rightPeakX: Float
+                        if (meterModel.symmetricSeedCount == 2) {
+                            val unitSpan = widthPerSegment + gap
+                            if (peakDistance <= 1f) {
+                                val halfGap = (centerPeakX - leftCenterPeakX) / 2f
+                                leftPeakX = betweenCentersPeakX - (halfGap * peakDistance)
+                                rightPeakX = betweenCentersPeakX + (halfGap * peakDistance)
+                            } else {
+                                val extraTravel = unitSpan * (peakDistance - 1f)
+                                leftPeakX = leftCenterPeakX - extraTravel
+                                rightPeakX = centerPeakX + extraTravel
+                            }
+                        } else {
+                            val travelPerSide = (widthPerSegment + gap) * peakDistance
+                            leftPeakX = centerPeakX - travelPerSide
+                            rightPeakX = centerPeakX + travelPerSide
+                        }
+                        drawLine(
+                            color = peakColor,
+                            start = Offset(leftPeakX.coerceAtLeast(widthPerSegment / 2f), 0f),
+                            end = Offset(leftPeakX.coerceAtLeast(widthPerSegment / 2f), size.height),
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = peakColor,
+                            start = Offset(rightPeakX.coerceAtMost(size.width - (widthPerSegment / 2f)), 0f),
+                            end = Offset(rightPeakX.coerceAtMost(size.width - (widthPerSegment / 2f)), size.height),
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                } else {
+                    val peakX = ((animatedPeak.coerceIn(0f, 1f) * (segmentCount - 1).coerceAtLeast(0).toFloat()) * (widthPerSegment + gap)) +
+                        (widthPerSegment / 2f)
+                    drawLine(
+                        color = peakColor,
+                        start = Offset(peakX, 0f),
+                        end = Offset(peakX, size.height),
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.width(88.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                MeterStat(
+                    label = stringResource(R.string.meter_label_level),
+                    value = stringResource(R.string.percent_value, (level * 100).toInt()),
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    compact = true
+                )
+                MeterStat(
+                    label = stringResource(R.string.meter_label_segments),
+                    value = stringResource(
+                        R.string.meter_segments_value,
+                        meterModel.activeSegments,
+                        meterModel.segmentCount
+                    ),
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    compact = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun activeModeLabel(activeMode: String): String {
     return when (activeMode) {
         "VISUALIZER" -> stringResource(R.string.mode_visualizer)
@@ -1912,23 +2076,6 @@ private data class UiMeterModel(
     val usesSymmetricCenterLayout: Boolean = false,
     val symmetricSeedCount: Int = 1
 )
-
-private fun rememberGlyphDeviceProfile(
-    isPhone3Device: Boolean,
-    isPhone4aProDevice: Boolean,
-    isPhone2aDevice: Boolean,
-    isPhone3aDevice: Boolean,
-    isPhone4aDevice: Boolean
-): GlyphDeviceProfile {
-    return when {
-        isPhone3Device -> GlyphDeviceProfile.PHONE3_MATRIX
-        isPhone4aProDevice -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
-        isPhone2aDevice -> GlyphDeviceProfile.PHONE2A
-        isPhone3aDevice -> GlyphDeviceProfile.PHONE3A
-        isPhone4aDevice -> GlyphDeviceProfile.PHONE4A
-        else -> GlyphDeviceProfile.PHONE2
-    }
-}
 
 private fun buildUiMeterModel(
     level: Float,
@@ -2312,23 +2459,24 @@ private fun meterBackgroundBrush(nothingStyleEnabled: Boolean): Brush {
 private fun MeterStat(
     label: String,
     value: String,
-    nothingStyleEnabled: Boolean
+    nothingStyleEnabled: Boolean,
+    compact: Boolean = false
 ) {
     val valueStyle = if (nothingStyleEnabled) {
-        MaterialTheme.typography.titleLarge.copy(
+        (if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge).copy(
             fontFamily = NothingDotFontFamily,
             fontWeight = FontWeight.Normal
         )
     } else {
-        MaterialTheme.typography.titleLarge
+        if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 6.dp)
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = if (compact) 9.sp else 11.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
@@ -2499,6 +2647,7 @@ private fun ControlCard(
     reverseDirection: Boolean,
     activeMode: String,
     glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
@@ -2679,14 +2828,6 @@ private fun ControlCard(
                 text = stringResource(R.string.glyph_pattern),
                 style = MaterialTheme.typography.titleMedium
             )
-            val deviceProfile = when {
-                isPhone3Device -> GlyphDeviceProfile.PHONE3_MATRIX
-                isPhone4aProDevice -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
-                isPhone2aDevice -> GlyphDeviceProfile.PHONE2A
-                isPhone3aDevice -> GlyphDeviceProfile.PHONE3A
-                isPhone4aDevice -> GlyphDeviceProfile.PHONE4A
-                else -> GlyphDeviceProfile.PHONE2
-            }
             val modes = GlyphPatternRegistry.patternsFor(deviceProfile)
                 .map { it.id to stringResource(it.labelRes) }
 
@@ -3121,12 +3262,13 @@ private fun GlyphVisualizerPreview() {
             reverseDirection = true,
             meterSegments = remember { 11 },
             activeMode = stringResource(R.string.mode_visualizer),
-            glyphMode = GlyphPatternRegistry.P2_C1_LINEAR,
-            isPhone3Device = false,
-            isPhone4aProDevice = false,
-            isPhone2aDevice = false,
-            isPhone3aDevice = false,
-            isPhone4aDevice = false,
+            glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
+            deviceProfile = GlyphDeviceCatalog.currentProfile(),
+            isPhone3Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3_MATRIX,
+            isPhone4aProDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
+            isPhone2aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE2A,
+            isPhone3aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3A,
+            isPhone4aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A,
             binaryMode = false,
             levelAutoScale = false,
             spectrumAutoScale = false,
