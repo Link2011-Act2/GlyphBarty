@@ -38,8 +38,8 @@
     {
       "title": "Nothing Glyph Matrix SDK",
       "coordinate": "com.nothing.ketchum:glyph-matrix-sdk:2.0",
-      "license": "Nothing Technology Limited",
-      "url": "https://github.com/nothing-open-source/glyphs-sdk",
+      "license": "Glyph SDK End User License Agreement",
+      "url": "https://github.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/blob/main/LICENSE.md",
       "body": null
     }
   ]

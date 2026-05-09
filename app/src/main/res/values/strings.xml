@@ -19,10 +19,14 @@
     <string name="about_dev_channel_desc_unknown">No description is available for this channel.</string>
     <string name="about_version_details_title">Version details</string>
     <string name="about_version_details_message">Version: %1$s&#10;Internal version code: %2$d</string>
+    <string name="about_updates_title">What\'s new</string>
+    <string name="about_updates_body">- This section is not written yet because the app is still being debugged.</string>
+    <string name="about_known_issues_title">Known issues</string>
+    <string name="about_known_issues_body">- On Nothing Phone (4a) Pro with Nothing earbuds, the meter may not move when spatial audio is enabled.</string>
     <string name="about_support_title">Support</string>
     <string name="about_support_help">Report bugs or send feedback</string>
     <string name="about_support_open_site">Open GitHub</string>
-    <string name="about_support_site_url" translatable="false">https://github.com</string>
+    <string name="about_support_site_url" translatable="false">https://github.com/Link2011-Act2/GlyphBarty</string>
     <string name="about_language_open_failed">Unable to open language settings</string>
     <string name="about_oss_title">Open-source licenses</string>
     <string name="about_oss_help">License information for open-source software used by this app.</string>
@@ -46,6 +50,12 @@
     <string name="settings_import_desc">Load settings from a saved JSON file.</string>
     <string name="settings_about_title">About this app</string>
     <string name="settings_about_desc">Version, support links, logs, and licenses.</string>
+    <string name="settings_nothing_style_title">Experimental: Nothing-like UI</string>
+    <string name="settings_nothing_style_desc">Switches to a Nothing-inspired look with a black-and-white base and red accents. This is experimental and the design may change later.</string>
+    <string name="settings_media_projection_title">Show MediaProjection</string>
+    <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.&#10;You usually do not need this, but if you run into issues, try using it.</string>
+    <string name="settings_glyph_meter_preview_title">Experimental: More faithful preview</string>
+    <string name="settings_glyph_meter_preview_desc">Reflect the actual segment count and brightness changes on the on-screen meter.</string>
     <string name="settings_open_button">Open</string>
     <string name="settings_reset_button">Reset</string>
     <string name="settings_export_button">Export</string>
@@ -69,10 +79,12 @@
     <string name="oss_load_failed">Failed to load license information.</string>
     <string name="oss_unknown_license">Unknown license</string>
     <string name="license_apache_body" translatable="false">Apache License&#10;Version 2.0, January 2004&#10;http://www.apache.org/licenses/&#10;&#10;TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION&#10;&#10;[Full Apache 2.0 License text: https://www.apache.org/licenses/LICENSE-2.0]</string>
+    <string name="license_glyph_sdk_eula_body" translatable="false">Glyph SDK End User License Agreement&#10;&#10;1. License Grant&#10;Nothing Technology Limited grants a limited, non-exclusive, non-transferable license to use the Glyph Matrix SDK solely to integrate its functionality into your applications.&#10;&#10;2. User Rights and Restrictions&#10;You may not remove proprietary notices, modify or reverse engineer the software, redistribute it, or transfer your rights except as permitted by the agreement. Commercial use is prohibited unless you obtain prior written permission from Nothing.&#10;&#10;3. Third-Party Software&#10;The software contains or relies on Android Open Source Project components under Apache License 2.0 and Java OpenJDK components under GPLv2 with the Classpath Exception.&#10;&#10;4. Intellectual Property Rights&#10;All intellectual property rights remain with Nothing. The software is licensed, not sold.&#10;&#10;5. Disclaimer of Warranty&#10;The software is provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without warranties.&#10;&#10;6. Limitation of Liability&#10;Nothing and its licensors are not liable for indirect, incidental, consequential, or similar damages arising from use of the software.&#10;&#10;7. Termination&#10;The agreement remains in effect until terminated. If you fail to comply with the terms, Nothing may terminate it immediately and you must stop using the software and delete all copies.&#10;&#10;8. Governing Law&#10;This agreement is governed by the laws of England and Wales.&#10;&#10;9. Commercial Licensing&#10;For commercial use or licensing inquiries, contact GDKsupport@nothing.tech.&#10;&#10;Source: https://github.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/blob/main/LICENSE.md</string>
 
     <!-- Content Descriptions -->
     <string name="cd_back">Back</string>
     <string name="cd_about">About</string>
+    <string name="cd_menu">Menu</string>
     <string name="cd_settings">Settings</string>
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
@@ -83,18 +95,18 @@
     <string name="status_mic_permission_required">Microphone permission is required to capture playback audio.</string>
     <string name="status_audio_capture_cancelled">Audio capture was cancelled.</string>
     <string name="status_audio_capture_requires_android10">Audio playback capture is available on Android 10 or newer.</string>
-    <string name="status_no_capture_start_failed">Failed to start No capture: %1$s</string>
+    <string name="status_no_capture_start_failed">Failed to start normal mode: %1$s</string>
     <string name="status_unknown_error">Unknown error</string>
     <string name="status_preparing_glyph_session">Glyph session is on hold</string>
-    <string name="status_visualizer_service_start_failed">Visualizer mode could not start: %1$s</string>
+    <string name="status_visualizer_service_start_failed">Normal mode could not start: %1$s</string>
     <string name="status_media_projection_service_start_failed">MediaProjection mode could not start: %1$s</string>
     <string name="status_permission_denied">Permission denied: %1$s</string>
     <string name="status_media_projection_data_missing">MediaProjection data was missing.</string>
-    <string name="status_visualizer_retrying">Retrying No capture startup (%1$d/3)…</string>
-    <string name="status_visualizer_try_media_projection">No capture was unavailable. Try the MediaProjection option.</string>
+    <string name="status_visualizer_retrying">Retrying normal mode startup (%1$d/%2$d)…</string>
+    <string name="status_visualizer_try_media_projection">Normal mode was unavailable. Try MediaProjection if needed.</string>
     <string name="status_capture_stopped_ready">Capture stopped. Ready for the next session.</string>
-    <string name="status_output_mix_listening">No capture is listening to the output mix. If your player blocks this, use MediaProjection mode.</string>
-    <string name="status_output_mix_start_failed">No capture could not start on this device: %1$s</string>
+    <string name="status_output_mix_listening">Normal mode is listening to the output mix.</string>
+    <string name="status_output_mix_start_failed">Normal mode could not start on this device: %1$s</string>
     <string name="status_media_projection_unavailable">MediaProjection could not be created.</string>
     <string name="status_audio_record_initialization_failed">AudioRecord initialization failed.</string>
     <string name="status_playback_listening">Listening to playback audio. Start music on the device to drive the meter.</string>
@@ -116,13 +128,16 @@
     <string name="status_glyph_matrix_update_crashed">Glyph Matrix update crashed. Restart capture to retry.</string>
 
     <string name="log_title">Log</string>
+    <string name="log_section_show">Show logs and info</string>
+    <string name="log_section_hide">Hide logs and info</string>
     <string name="notification_title">Glyph Peak Meter</string>
-    <string name="notification_mode_visualizer">No capture</string>
+    <string name="notification_mode_visualizer">Normal</string>
     <string name="notification_mode_media_projection" translatable="false">MediaProjection</string>
     <string name="notification_channel_name" translatable="false">Glyph Visualizer</string>
 
-    <string name="hero_title" translatable="false">Nothing Glyph</string>
+    <string name="hero_title" translatable="false">Glyph Interface</string>
     <string name="hero_subtitle">Live peak-style visualizer synced to playback audio.</string>
+    <string name="hero_sensitivity">Sensitivity %1$d%%</string>
     <string name="hero_gate_dynamics">Gate %1$d%%  |  Dynamics %2$.2f</string>
     <string name="hero_response_speed">Response speed %1$s</string>
     <string name="hero_tone_focus_bass">Bass focus %1$d%%</string>
@@ -134,12 +149,12 @@
     <string name="meter_label_level">Level</string>
     <string name="meter_label_peak">Peak</string>
     <string name="meter_label_segments">Segments</string>
-    <string name="meter_segments_value">%1$d / 16</string>
+    <string name="meter_segments_value">%1$d / %2$d</string>
     <string name="percent_value">%1$d%%</string>
     <string name="response_speed_none">Max</string>
 
     <string name="capture_control_title">Capture control</string>
-    <string name="capture_control_hint">Try &quot;No capture&quot; first; use MediaProjection only if necessary.</string>
+    <string name="capture_control_hint">Try normal mode first, and use MediaProjection only when necessary.</string>
     <string name="current_mode">Current mode: %1$s</string>
     <string name="glyph_pattern">Glyph pattern</string>
     <string name="meter_parameters">Meter parameters</string>
@@ -166,7 +181,7 @@
     <string name="mode_p4a_center" translatable="false">Center</string>
     <string name="mode_p4a_spectrum" translatable="false">Spectrum</string>
     <string name="mode_p4a_all_brightness" translatable="false">All Brightness</string>
-    <string name="mode_visualizer">No capture mode</string>
+    <string name="mode_visualizer">Normal mode</string>
     <string name="mode_media_projection">MediaProjection mode</string>
     <string name="mode_idle">Idle</string>
 
@@ -181,6 +196,45 @@
     <string name="param_dynamics_value" translatable="false">%1$.2f</string>
     <string name="param_output_gamma_title">Output gamma</string>
     <string name="param_output_gamma_desc">Adjusts the output brightness curve. Higher values emphasize louder sounds</string>
+    <string name="param_auto_scale_window_title">Auto scale window</string>
+    <string name="param_auto_scale_window_desc">Adjusts how long auto scale remembers recent min/max levels. Shorter values adapt faster.</string>
+    <string name="param_auto_scale_window_value">%1$.0f s</string>
+    <string name="latency_title">Latency adjustment</string>
+    <string name="latency_desc">Delay the meter and Glyph output to match playback timing.</string>
+    <string name="latency_value_ms">%1$.0f ms</string>
+    <string name="latency_slider_title">Latency</string>
+    <string name="latency_slider_desc">Adds delay before meter and Glyph updates are shown.</string>
+    <string name="latency_slider_desc_default">Adjusts the latency used for speaker and wired output.</string>
+    <string name="latency_slider_desc_bluetooth">Adjusts the latency used for Bluetooth output.</string>
+    <string name="latency_presets_section_title">Presets</string>
+    <string name="latency_add_preset">Add preset</string>
+    <string name="latency_add_preset_dialog_title">Preset name</string>
+    <string name="latency_add_preset_dialog_label">Name</string>
+    <string name="latency_add_preset_dialog_placeholder">Example: Bluetooth earbuds</string>
+    <string name="latency_add_preset_dialog_confirm">Add</string>
+    <string name="latency_assign_speaker">Assign to speaker output</string>
+    <string name="latency_assign_bluetooth">Assign to Bluetooth output</string>
+    <string name="latency_delete_preset">Delete preset</string>
+    <string name="latency_auto_switch_title">Auto-switch presets</string>
+    <string name="latency_auto_switch_on">Switch presets automatically for Bluetooth and other outputs.</string>
+    <string name="latency_auto_switch_off">Keep using the current latency value regardless of output route.</string>
+    <string name="latency_route_bluetooth">Bluetooth output</string>
+    <string name="latency_route_default">Other output</string>
+    <string name="latency_active_route_bluetooth">Current route: Bluetooth</string>
+    <string name="latency_active_route_default">Current route: Other output</string>
+    <string name="latency_route_name_bluetooth">Bluetooth</string>
+    <string name="latency_route_name_default">Other output</string>
+    <string name="latency_active_route_with_value">Current route: %1$s  (%2$.0f ms)</string>
+    <string name="latency_active_preset">Active preset: %1$s</string>
+    <string name="menu_main">Main</string>
+    <string name="menu_latency">Latency</string>
+    <string name="menu_settings">Settings</string>
+    <string name="latency_saved_presets_title">Saved presets</string>
+    <string name="latency_load_button">Load</string>
+    <string name="latency_save_button">Save current</string>
+    <string name="latency_preset_1">Preset 1</string>
+    <string name="latency_preset_2">Preset 2</string>
+    <string name="latency_preset_3">Preset 3</string>
     <string name="param_response_speed_title">Response speed</string>
     <string name="param_response_speed_desc">Higher values react faster, while lower values create smoother motion</string>
     <string name="param_tone_focus_title">Tone focus</string>
@@ -215,7 +269,7 @@
 
     <string name="button_no_capture">Start</string>
     <string name="button_media_projection">Start with MediaProjection</string>
-    <string name="button_media_projection_hint">Fallback if audio from some apps cannot be captured</string>
+    <string name="button_media_projection_hint">Fallback when audio cannot be captured in normal mode</string>
     <string name="button_stop">Stop</string>
     <string name="button_language_settings">Language settings</string>
 

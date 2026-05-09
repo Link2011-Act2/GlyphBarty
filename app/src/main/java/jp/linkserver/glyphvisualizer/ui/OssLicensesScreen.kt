@@ -49,6 +49,11 @@ private data class OssEntry(
     val body: String?
 )
 
+private fun JSONObject.optMeaningfulString(key: String): String? {
+    val value = optString(key).trim()
+    return value.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+}
+
 private fun loadOssEntries(context: android.content.Context): List<OssEntry> {
     return try {
         val json = context.assets.open("oss_licenses/oss_licenses_auto.json")
@@ -64,10 +69,10 @@ private fun loadOssEntries(context: android.content.Context): List<OssEntry> {
                 OssEntry(
                     title = title,
                     coordinate = obj.optString("coordinate"),
-                    license = obj.optString("license").ifBlank { null }
+                    license = obj.optMeaningfulString("license")
                         ?: context.getString(R.string.oss_unknown_license),
-                    url = obj.optString("url").ifBlank { null },
-                    body = obj.optString("body").ifBlank { null }
+                    url = obj.optMeaningfulString("url"),
+                    body = obj.optMeaningfulString("body")
                 )
             )
         }
@@ -220,6 +225,8 @@ private fun resolveBodyText(entry: OssEntry, context: android.content.Context): 
     return when {
         normalized.contains("apache") && normalized.contains("2.0") ->
             context.getString(R.string.license_apache_body)
+        normalized.contains("glyph sdk end user license agreement") ->
+            context.getString(R.string.license_glyph_sdk_eula_body)
         else -> entry.url ?: ""
     }
 }

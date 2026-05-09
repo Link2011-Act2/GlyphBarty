@@ -10,12 +10,13 @@ import com.nothing.ketchum.GlyphException
 import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.pow
 
-class GlyphPhone3MatrixController(
+class GlyphMatrixController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit
 ) : GlyphOutputController {
@@ -26,24 +27,24 @@ class GlyphPhone3MatrixController(
     }
 
     companion object {
-        private const val TAG = "GlyphPhone3Matrix"
+        private const val TAG = "GlyphMatrixController"
         private const val COLOR_ON = 255
         private const val COLOR_OFF = 0
         private const val SILENCE_RELEASE_MS = 3_000L
         private const val SILENCE_ACTIVITY_THRESHOLD = 0.003f
-        private const val SPECTRUM_HISTORY_WINDOW_MS = 120_000L
+        private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_MAX_LIGHT = 4095
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
         private const val ALL_BRIGHTNESS_MIN_LIGHT_MATRIX = 60
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
-        private const val MODE_P3_MATRIX_BAR = "P3_MATRIX_BAR"
-        private const val MODE_P3_MATRIX_FIELD = "P3_MATRIX_FIELD"
-        private const val MODE_P3_MATRIX_CIRCLE = "P3_MATRIX_CIRCLE"
-        private const val MODE_P3_MATRIX_SPECTRUM = "P3_MATRIX_SPECTRUM"
-        private const val MODE_P3_MATRIX_SPECTRUM_CENTER = "P3_MATRIX_SPECTRUM_CENTER"
-        private const val MODE_P3_MATRIX_ALL_BRIGHTNESS = "P3_MATRIX_ALL_BRIGHTNESS"
+        private val MODE_P3_MATRIX_BAR = Patterns.P3_MATRIX_BAR
+        private val MODE_P3_MATRIX_FIELD = Patterns.P3_MATRIX_FIELD
+        private val MODE_P3_MATRIX_CIRCLE = Patterns.P3_MATRIX_CIRCLE
+        private val MODE_P3_MATRIX_SPECTRUM = Patterns.P3_MATRIX_SPECTRUM
+        private val MODE_P3_MATRIX_SPECTRUM_CENTER = Patterns.P3_MATRIX_SPECTRUM_CENTER
+        private val MODE_P3_MATRIX_ALL_BRIGHTNESS = Patterns.P3_MATRIX_ALL_BRIGHTNESS
         private const val FRAME_INTERVAL_MS = 16L // ~60fps
     }
 
@@ -56,6 +57,7 @@ class GlyphPhone3MatrixController(
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
+    private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
@@ -198,6 +200,13 @@ class GlyphPhone3MatrixController(
         }
     }
 
+    override fun setAutoScaleWindowSeconds(seconds: Float) {
+        val nextWindowMs = seconds.coerceIn(10f, 60f) * 1_000f
+        if (autoScaleWindowMs != nextWindowMs) {
+            autoScaleWindowMs = nextWindowMs
+        }
+    }
+
     override fun updateAnalysis(
         lowEnergy: Float,
         highEnergy: Float,
@@ -257,7 +266,7 @@ class GlyphPhone3MatrixController(
         val now = SystemClock.elapsedRealtime()
         val elapsedMs = if (lastSpectrumUpdateMs <= 0L) 0L else (now - lastSpectrumUpdateMs).coerceAtLeast(0L)
         lastSpectrumUpdateMs = now
-        val drift = (elapsedMs.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsedMs.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         if (spectrumBandMins.size != input.size || spectrumBandMaxs.size != input.size) {
             spectrumBandMins = input.copyOf()
@@ -308,7 +317,7 @@ class GlyphPhone3MatrixController(
         val now = SystemClock.elapsedRealtime()
         val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
         lastLevelUpdateMs = now
-        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
         levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
@@ -318,19 +327,14 @@ class GlyphPhone3MatrixController(
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
-        return when (glyphMode) {
-            MODE_P3_MATRIX_BAR,
-            MODE_P3_MATRIX_FIELD,
-            MODE_P3_MATRIX_CIRCLE -> true
-            else -> false
-        }
+        return Patterns.isLevelAutoScale(glyphMode)
     }
 
     private fun normalizeAllBrightnessLevel(level: Float): Float {
         val now = SystemClock.elapsedRealtime()
         val elapsed = if (lastAllBrightnessUpdateMs <= 0L) 0L else (now - lastAllBrightnessUpdateMs).coerceAtLeast(0L)
         lastAllBrightnessUpdateMs = now
-        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
         allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))

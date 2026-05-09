@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
 import com.nothing.ketchum.Common
 import com.nothing.ketchum.Glyph
 import com.nothing.ketchum.GlyphException
@@ -16,46 +17,46 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-class GlyphPhone2Controller(
+class GlyphLightController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit
 ) : GlyphOutputController {
     companion object {
-        private const val TAG = "GlyphPhone2Controller"
+        private const val TAG = "GlyphLightController"
         private const val MIN_LIGHT = 800
         private const val MAX_LIGHT = 4095
         private const val SILENCE_RELEASE_MS = 3_000L
         private const val SILENCE_ACTIVITY_THRESHOLD = 0.003f
-        private const val SPECTRUM_HISTORY_WINDOW_MS = 120_000L
+        private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
 
-        private const val MODE_C1_LINEAR = "C1_LINEAR"
-        private const val MODE_C1_CENTER = "C1_CENTER"
-        private const val MODE_D1 = "D1"
-        private const val MODE_D1_CENTER = "D1_CENTER"
-        private const val MODE_C1_SPECTRUM = "C1_SPECTRUM"
-        private const val MODE_D1_SPECTRUM = "D1_SPECTRUM"
-        private const val MODE_ALL_BRIGHTNESS = "ALL_BRIGHTNESS"
+        private val MODE_C1_LINEAR = Patterns.P2_C1_LINEAR
+        private val MODE_C1_CENTER = Patterns.P2_C1_CENTER
+        private val MODE_D1 = Patterns.P2_D1_LINEAR
+        private val MODE_D1_CENTER = Patterns.P2_D1_CENTER
+        private val MODE_C1_SPECTRUM = Patterns.P2_C1_SPECTRUM
+        private val MODE_D1_SPECTRUM = Patterns.P2_D1_SPECTRUM
+        private val MODE_ALL_BRIGHTNESS = Patterns.P2_ALL_BRIGHTNESS
 
-        private const val MODE_P3A_C_LINEAR = "P3A_C_LINEAR"
-        private const val MODE_P3A_C_CENTER = "P3A_C_CENTER"
-        private const val MODE_P3A_C_SPECTRUM = "P3A_C_SPECTRUM"
-        private const val MODE_P3A_CAB_LINEAR = "P3A_CAB_LINEAR"
-        private const val MODE_P3A_CAB_CENTER = "P3A_CAB_CENTER"
-        private const val MODE_P3A_CAB_SPECTRUM = "P3A_CAB_SPECTRUM"
-        private const val MODE_P3A_ALL_BRIGHTNESS = "P3A_ALL_BRIGHTNESS"
+        private val MODE_P3A_C_LINEAR = Patterns.P3A_C_LINEAR
+        private val MODE_P3A_C_CENTER = Patterns.P3A_C_CENTER
+        private val MODE_P3A_C_SPECTRUM = Patterns.P3A_C_SPECTRUM
+        private val MODE_P3A_CAB_LINEAR = Patterns.P3A_CAB_LINEAR
+        private val MODE_P3A_CAB_CENTER = Patterns.P3A_CAB_CENTER
+        private val MODE_P3A_CAB_SPECTRUM = Patterns.P3A_CAB_SPECTRUM
+        private val MODE_P3A_ALL_BRIGHTNESS = Patterns.P3A_ALL_BRIGHTNESS
 
-        private const val MODE_P2A_C_LINEAR = "P2A_C_LINEAR"
-        private const val MODE_P2A_C_CENTER = "P2A_C_CENTER"
-        private const val MODE_P2A_C_SPECTRUM = "P2A_C_SPECTRUM"
-        private const val MODE_P2A_ALL_BRIGHTNESS = "P2A_ALL_BRIGHTNESS"
+        private val MODE_P2A_C_LINEAR = Patterns.P2A_C_LINEAR
+        private val MODE_P2A_C_CENTER = Patterns.P2A_C_CENTER
+        private val MODE_P2A_C_SPECTRUM = Patterns.P2A_C_SPECTRUM
+        private val MODE_P2A_ALL_BRIGHTNESS = Patterns.P2A_ALL_BRIGHTNESS
 
-        private const val MODE_P4A_LINEAR = "P4A_LINEAR"
-        private const val MODE_P4A_CENTER = "P4A_CENTER"
-        private const val MODE_P4A_SPECTRUM = "P4A_SPECTRUM"
-        private const val MODE_P4A_ALL_BRIGHTNESS = "P4A_ALL_BRIGHTNESS"
+        private val MODE_P4A_LINEAR = Patterns.P4A_LINEAR
+        private val MODE_P4A_CENTER = Patterns.P4A_CENTER
+        private val MODE_P4A_SPECTRUM = Patterns.P4A_SPECTRUM
+        private val MODE_P4A_ALL_BRIGHTNESS = Patterns.P4A_ALL_BRIGHTNESS
     }
 
     private enum class DeviceProfile {
@@ -87,6 +88,7 @@ class GlyphPhone2Controller(
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
+    private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
@@ -245,6 +247,13 @@ class GlyphPhone2Controller(
         }
     }
 
+    override fun setAutoScaleWindowSeconds(seconds: Float) {
+        val nextWindowMs = seconds.coerceIn(10f, 60f) * 1_000f
+        if (autoScaleWindowMs != nextWindowMs) {
+            autoScaleWindowMs = nextWindowMs
+        }
+    }
+
     override fun updateAnalysis(
         lowEnergy: Float,
         highEnergy: Float,
@@ -281,7 +290,7 @@ class GlyphPhone2Controller(
         val now = SystemClock.elapsedRealtime()
         val elapsedMs = if (lastSpectrumUpdateMs <= 0L) 0L else (now - lastSpectrumUpdateMs).coerceAtLeast(0L)
         lastSpectrumUpdateMs = now
-        val drift = (elapsedMs.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsedMs.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         if (spectrumBandMins.size != input.size || spectrumBandMaxs.size != input.size) {
             spectrumBandMins = input.copyOf()
@@ -360,7 +369,7 @@ class GlyphPhone2Controller(
         val now = SystemClock.elapsedRealtime()
         val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
         lastLevelUpdateMs = now
-        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
         levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
@@ -376,21 +385,7 @@ class GlyphPhone2Controller(
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
-        return when (glyphMode) {
-            MODE_C1_LINEAR,
-            MODE_C1_CENTER,
-            MODE_D1,
-            MODE_D1_CENTER,
-            MODE_P2A_C_LINEAR,
-            MODE_P2A_C_CENTER,
-            MODE_P3A_C_LINEAR,
-            MODE_P3A_C_CENTER,
-            MODE_P3A_CAB_LINEAR,
-            MODE_P3A_CAB_CENTER,
-            MODE_P4A_LINEAR,
-            MODE_P4A_CENTER -> true
-            else -> false
-        }
+        return Patterns.isLevelAutoScale(glyphMode)
     }
 
     private fun updatePhone2aLevel(spec: DeviceSpec, cFrame: GlyphFrame, level: Float) {
@@ -595,7 +590,7 @@ class GlyphPhone2Controller(
         val now = SystemClock.elapsedRealtime()
         val elapsed = if (lastAllBrightnessUpdateMs <= 0L) 0L else (now - lastAllBrightnessUpdateMs).coerceAtLeast(0L)
         lastAllBrightnessUpdateMs = now
-        val drift = (elapsed.toFloat() / SPECTRUM_HISTORY_WINDOW_MS).coerceIn(0f, 1f)
+        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
 
         allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
         allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))

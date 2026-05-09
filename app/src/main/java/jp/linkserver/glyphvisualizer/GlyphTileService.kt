@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.graphics.drawable.Icon
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import java.lang.ref.WeakReference
 
 class GlyphTileService : TileService() {
@@ -41,22 +42,25 @@ class GlyphTileService : TileService() {
             GlyphVisualizerService.stop(this)
         } else {
             val s = SettingsPreferences.load(this)
+            val resolved = s.withResolvedLatency(AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this))
             GlyphVisualizerService.startVisualizer(
                 context = this,
-                sensitivity = s.sensitivity,
-                noiseGate = s.noiseGate,
-                dynamics = s.dynamics,
-                toneFocus = s.toneFocus,
-                smoothing = s.smoothing,
-                smoothingBalance = s.smoothingBalance,
-                reverseDirection = s.reverseDirection,
-                peakHoldEnabled = s.peakHoldEnabled,
-                glyphMode = s.glyphMode,
-                binaryMode = s.binaryMode,
-                levelAutoScale = s.levelAutoScale,
-                spectrumAutoScale = s.spectrumAutoScale,
-                allBrightnessAutoScale = s.allBrightnessAutoScale,
-                turnOffWhenBackDown = s.turnOffWhenBackDown
+                sensitivity = resolved.sensitivity,
+                noiseGate = resolved.noiseGate,
+                dynamics = resolved.dynamics,
+                toneFocus = resolved.toneFocus,
+                smoothing = resolved.smoothing,
+                smoothingBalance = resolved.smoothingBalance,
+                reverseDirection = resolved.reverseDirection,
+                peakHoldEnabled = resolved.peakHoldEnabled,
+                glyphMode = resolved.glyphMode,
+                binaryMode = resolved.binaryMode,
+                levelAutoScale = resolved.levelAutoScale,
+                spectrumAutoScale = resolved.spectrumAutoScale,
+                allBrightnessAutoScale = resolved.allBrightnessAutoScale,
+                autoScaleWindowSeconds = resolved.autoScaleWindowSeconds,
+                latencyMs = resolved.latencyMs,
+                turnOffWhenBackDown = resolved.turnOffWhenBackDown
             )
         }
 

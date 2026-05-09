@@ -12,18 +12,25 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.service.quicksettings.TileService
 import androidx.core.app.NotificationCompat
 import com.nothing.ketchum.Common
 import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
+import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
-import jp.linkserver.glyphvisualizer.glyph.GlyphPhone2Controller
-import jp.linkserver.glyphvisualizer.glyph.GlyphPhone3MatrixController
+import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
+import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
+import kotlin.math.roundToLong
 
 class GlyphVisualizerService : Service() {
     companion object {
@@ -51,9 +58,14 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
         private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
         private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
+        private const val EXTRA_AUTO_SCALE_WINDOW_SECONDS = "extra_auto_scale_window_seconds"
+        private const val EXTRA_LATENCY_MS = "extra_latency_ms"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
+        private const val ACTIVE_MODE_VISUALIZER = "VISUALIZER"
+        private const val ACTIVE_MODE_MEDIA_PROJECTION = "MEDIA PROJECTION"
+        private const val ACTIVE_MODE_IDLE = "IDLE"
 
         fun startVisualizer(
             context: Context,
@@ -70,6 +82,8 @@ class GlyphVisualizerService : Service() {
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
+            autoScaleWindowSeconds: Float,
+            latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
         ) {
@@ -89,6 +103,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -122,6 +138,8 @@ class GlyphVisualizerService : Service() {
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
+            autoScaleWindowSeconds: Float,
+            latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
         ) {
@@ -143,6 +161,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -174,6 +194,8 @@ class GlyphVisualizerService : Service() {
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
+            autoScaleWindowSeconds: Float,
+            latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = Float.NaN
         ) {
@@ -193,6 +215,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -235,17 +259,58 @@ class GlyphVisualizerService : Service() {
     private var smoothingBalance = 0f
     private var reverseDirection = true
     private var peakHoldEnabled = true
-    private var glyphMode = "C1_LINEAR"
+    private var glyphMode = GlyphPatternRegistry.P2_C1_LINEAR
     private var binaryMode = false
     private var levelAutoScale = false
     private var spectrumAutoScale = false
     private var allBrightnessAutoScale = false
+    private var autoScaleWindowSeconds = 30f
+    private var latencyMs = 0f
     private var turnOffWhenBackDown = false
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     private var visualizerStartRequestId = 0
+    private var visualizerStartActionAtMs = 0L
+    private var audioDeviceCallbackRegistered = false
+    private var lastAudioRouteSignature: String? = null
+    private var suppressRouteRestartUntilMs = 0L
+    private data class DelayedLevelFrame(
+        val dueAtMs: Long,
+        val level: Float,
+        val peak: Float,
+        val mode: String,
+        val lowEnergy: Float,
+        val highEnergy: Float,
+        val leftLevel: Float,
+        val rightLevel: Float,
+        val spectrumBands: FloatArray
+    )
+    private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
+    private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
     private val sensorManager by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     private var gravitySensor: Sensor? = null
+    private val restartVisualizerForRouteChangeRunnable = Runnable {
+        if (!shouldRestartVisualizerForRouteChange()) return@Runnable
+        visualizerStartRequestId += 1
+        val requestId = visualizerStartRequestId
+        AppLogger.i(
+            TAG,
+            "Restarting Visualizer(0) after route change. requestId=$requestId ${AudioRouteDiagnostics.snapshot(this)}"
+        )
+        startVisualizerMode(requestId = requestId, attempt = 1)
+    }
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
+            applyLatencyPresetForCurrentRoute("added")
+            handleAudioRouteChanged("added", addedDevices)
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<AudioDeviceInfo>) {
+            applyLatencyPresetForCurrentRoute("removed")
+            handleAudioRouteChanged("removed", removedDevices)
+        }
+    }
     private val gravityListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (!turnOffWhenBackDown) return
@@ -273,11 +338,11 @@ class GlyphVisualizerService : Service() {
         AppLogger.init(this)
         createNotificationChannel()
         glyphController = if (Common.is23112() || Common.is25111p()) {
-            GlyphPhone3MatrixController(this) { status ->
+            GlyphMatrixController(this) { status ->
                 CaptureUiStore.update { it.copy(statusText = status) }
             }
         } else {
-            GlyphPhone2Controller(this) { status ->
+            GlyphLightController(this) { status ->
                 CaptureUiStore.update { it.copy(statusText = status) }
             }
         }
@@ -285,13 +350,18 @@ class GlyphVisualizerService : Service() {
         outputMixVisualizer = OutputMixVisualizer(this)
         glyphController.bind()
         gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        lastAudioRouteSignature = AudioRouteDiagnostics.outputSignature(this)
+        applyLatencyPresetForCurrentRoute("service created")
+        registerAudioDeviceCallback()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_VISUALIZER -> {
                 try {
+                    val actionReceivedAt = SystemClock.elapsedRealtime()
                     visualizerStartRequestId += 1
+                    visualizerStartActionAtMs = actionReceivedAt
                     sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                     noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                     dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
@@ -306,6 +376,8 @@ class GlyphVisualizerService : Service() {
                     levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                     spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                     allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                    autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                    latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                     glyphController.setReverseDirection(reverseDirection)
                     glyphController.setGlyphMode(glyphMode)
@@ -314,8 +386,19 @@ class GlyphVisualizerService : Service() {
                     glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                     glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                     glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
+                    glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
                     updateBackDownSensorState()
+                    AppLogger.i(
+                        TAG,
+                        "ACTION_START_VISUALIZER received: requestId=$visualizerStartRequestId glyphMode=$glyphMode btLikely=${
+                            AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
+                        } musicActive=${AudioRouteDiagnostics.isMusicActive(this)}"
+                    )
                     startServiceNotification(getString(R.string.notification_mode_visualizer))
+                    AppLogger.i(
+                        TAG,
+                        "Foreground notification posted for visualizer: requestId=$visualizerStartRequestId elapsedMs=${SystemClock.elapsedRealtime() - actionReceivedAt}"
+                    )
                     startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1)
                 } catch (error: SecurityException) {
                     // パーミッション不足は即座に失敗（リトライ不要）
@@ -356,6 +439,8 @@ class GlyphVisualizerService : Service() {
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
@@ -364,6 +449,7 @@ class GlyphVisualizerService : Service() {
                 glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
+                glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
                 updateBackDownSensorState()
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = intent.getParcelableExtraCompat<Intent>(EXTRA_RESULT_DATA)
@@ -391,6 +477,8 @@ class GlyphVisualizerService : Service() {
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
+                autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
@@ -399,6 +487,7 @@ class GlyphVisualizerService : Service() {
                 glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
+                glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
                 updateBackDownSensorState()
                 CaptureUiStore.update {
                     it.copy(
@@ -415,6 +504,7 @@ class GlyphVisualizerService : Service() {
                         binaryMode = binaryMode,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
+                        autoScaleWindowSeconds = autoScaleWindowSeconds,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         turnOffWhenBackDown = turnOffWhenBackDown
                     )
@@ -450,6 +540,10 @@ class GlyphVisualizerService : Service() {
             sensorManager.unregisterListener(gravityListener)
         } catch (_: Throwable) {
         }
+        unregisterAudioDeviceCallback()
+        mainHandler.removeCallbacks(restartVisualizerForRouteChangeRunnable)
+        mainHandler.removeCallbacks(latencyDrainRunnable)
+        pendingLevelFrames.clear()
         super.onDestroy()
     }
 
@@ -457,6 +551,14 @@ class GlyphVisualizerService : Service() {
 
     private fun startVisualizerMode(requestId: Int, attempt: Int) {
         if (requestId != visualizerStartRequestId) return
+        val startAttemptAt = SystemClock.elapsedRealtime()
+        suppressRouteRestartUntilMs = SystemClock.uptimeMillis() + visualizerRouteRestartSuppressionMs()
+        AppLogger.i(
+            TAG,
+            "Visualizer start attempt begin: requestId=$requestId attempt=$attempt elapsedSinceActionMs=${
+                if (visualizerStartActionAtMs > 0L) startAttemptAt - visualizerStartActionAtMs else -1L
+            }"
+        )
         try {
             stopRunningCapture(clearStatus = false)
         } catch (error: Throwable) {
@@ -470,11 +572,18 @@ class GlyphVisualizerService : Service() {
             smoothingProvider = { smoothing },
             smoothingBalanceProvider = { smoothingBalance },
             onStateChanged = { status ->
+                val now = SystemClock.elapsedRealtime()
+                AppLogger.i(
+                    TAG,
+                    "Visualizer start reached active state: requestId=$requestId attempt=$attempt elapsedSinceActionMs=${
+                        if (visualizerStartActionAtMs > 0L) now - visualizerStartActionAtMs else -1L
+                    } attemptDurationMs=${now - startAttemptAt} status=$status"
+                )
                 CaptureUiStore.update {
                     it.copy(
                         statusText = status,
                         isCapturing = true,
-                        activeMode = "VISUALIZER",
+                        activeMode = ACTIVE_MODE_VISUALIZER,
                         sensitivity = sensitivity,
                             noiseGate = noiseGate,
                             dynamics = dynamics,
@@ -487,6 +596,8 @@ class GlyphVisualizerService : Service() {
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
+                            allBrightnessAutoScale = allBrightnessAutoScale,
+                            autoScaleWindowSeconds = autoScaleWindowSeconds,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -504,6 +615,37 @@ class GlyphVisualizerService : Service() {
                     spectrumBands
                 )
             },
+            onStartFailed = {
+                val maxAttempts = visualizerStartMaxAttempts()
+                if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
+                    val nextAttempt = attempt + 1
+                    val retryMs = visualizerRetryDelayMs(attempt)
+                    AppLogger.w(
+                        TAG,
+                        "Visualizer async start failed: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
+                    )
+                    CaptureUiStore.update {
+                        it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
+                    }
+                    mainHandler.postDelayed(
+                        { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
+                        retryMs
+                    )
+                } else {
+                    AppLogger.e(
+                        TAG,
+                        "Visualizer async start exhausted retries: requestId=$requestId attempts=$attempt elapsedSinceActionMs=${
+                            if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
+                        }"
+                    )
+                    val msg = getString(R.string.status_visualizer_try_media_projection)
+                    val logMsg = getString(R.string.status_visualizer_try_media_projection)
+                    AppLogger.e(TAG, logMsg)
+                    stopCapture(msg)
+                    safeStopForeground()
+                    stopSelf()
+                }
+            },
             onCrashed = {
                 // ワーカースレッドが予期せずクラッシュした場合、自動再起動
                 if (requestId == visualizerStartRequestId) {
@@ -517,11 +659,16 @@ class GlyphVisualizerService : Service() {
             }
         )
         if (!started) {
-            if (requestId == visualizerStartRequestId && attempt < 3) {
+            val maxAttempts = visualizerStartMaxAttempts()
+            if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
                 val nextAttempt = attempt + 1
-                val retryMs = 60L * attempt
+                val retryMs = visualizerRetryDelayMs(attempt)
+                AppLogger.w(
+                    TAG,
+                    "Visualizer start attempt failed: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
+                )
                 CaptureUiStore.update {
-                    it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt))
+                    it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
                 }
                 mainHandler.postDelayed(
                     { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
@@ -529,6 +676,12 @@ class GlyphVisualizerService : Service() {
                 )
                 return
             }
+            AppLogger.e(
+                TAG,
+                "Visualizer start exhausted retries: requestId=$requestId attempts=$attempt elapsedSinceActionMs=${
+                    if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
+                }"
+            )
             val msg = getString(R.string.status_visualizer_try_media_projection)
             val logMsg = getString(R.string.status_visualizer_try_media_projection)
             AppLogger.e(TAG, logMsg)
@@ -554,7 +707,7 @@ class GlyphVisualizerService : Service() {
                     it.copy(
                         statusText = status,
                         isCapturing = true,
-                        activeMode = "MEDIA PROJECTION",
+                        activeMode = ACTIVE_MODE_MEDIA_PROJECTION,
                         sensitivity = sensitivity,
                             noiseGate = noiseGate,
                             dynamics = dynamics,
@@ -567,6 +720,8 @@ class GlyphVisualizerService : Service() {
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
+                            allBrightnessAutoScale = allBrightnessAutoScale,
+                            autoScaleWindowSeconds = autoScaleWindowSeconds,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -602,14 +757,68 @@ class GlyphVisualizerService : Service() {
         rightLevel: Float,
         spectrumBands: FloatArray
     ) {
-        CaptureUiStore.update {
-            it.copy(
+        enqueueDelayedLevelFrame(
+            level = level,
+            peak = peak,
+            mode = mode,
+            lowEnergy = lowEnergy,
+            highEnergy = highEnergy,
+            leftLevel = leftLevel,
+            rightLevel = rightLevel,
+            spectrumBands = spectrumBands
+        )
+    }
+
+    private fun enqueueDelayedLevelFrame(
+        level: Float,
+        peak: Float,
+        mode: String,
+        lowEnergy: Float,
+        highEnergy: Float,
+        leftLevel: Float,
+        rightLevel: Float,
+        spectrumBands: FloatArray
+    ) {
+        val dueAtMs = SystemClock.uptimeMillis() + latencyMs.coerceIn(0f, 500f).roundToLong()
+        pendingLevelFrames.addLast(
+            DelayedLevelFrame(
+                dueAtMs = dueAtMs,
                 level = level,
                 peak = peak,
-                meterSegments = (level * 16f).toInt().coerceIn(0, 16),
-                spectrumBands = spectrumBands,
+                mode = mode,
+                lowEnergy = lowEnergy,
+                highEnergy = highEnergy,
+                leftLevel = leftLevel,
+                rightLevel = rightLevel,
+                spectrumBands = spectrumBands.copyOf()
+            )
+        )
+        drainPendingLevelFrames()
+    }
+
+    private fun drainPendingLevelFrames(forceAll: Boolean = false) {
+        mainHandler.removeCallbacks(latencyDrainRunnable)
+        val now = SystemClock.uptimeMillis()
+        while (pendingLevelFrames.isNotEmpty()) {
+            val next = pendingLevelFrames.first()
+            if (!forceAll && next.dueAtMs > now) {
+                mainHandler.postDelayed(latencyDrainRunnable, next.dueAtMs - now)
+                return
+            }
+            pendingLevelFrames.removeFirst()
+            renderLevelFrame(next)
+        }
+    }
+
+    private fun renderLevelFrame(frame: DelayedLevelFrame) {
+        CaptureUiStore.update {
+            it.copy(
+                level = frame.level,
+                peak = frame.peak,
+                meterSegments = (frame.level * 16f).toInt().coerceIn(0, 16),
+                spectrumBands = frame.spectrumBands,
                 isCapturing = true,
-                activeMode = mode,
+                activeMode = frame.mode,
                 sensitivity = sensitivity,
                 noiseGate = noiseGate,
                 dynamics = dynamics,
@@ -621,7 +830,11 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = peakHoldEnabled,
                     glyphMode = glyphMode,
                     binaryMode = binaryMode,
-                    levelAutoScale = levelAutoScale,
+                levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    autoScaleWindowSeconds = autoScaleWindowSeconds,
+                    latencyMs = latencyMs,
                     turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
@@ -633,8 +846,14 @@ class GlyphVisualizerService : Service() {
             }
             return
         }
-        glyphController.updateAnalysis(lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands)
-        glyphController.updateLevel(level)
+        glyphController.updateAnalysis(
+            frame.lowEnergy,
+            frame.highEnergy,
+            frame.leftLevel,
+            frame.rightLevel,
+            frame.spectrumBands
+        )
+        glyphController.updateLevel(frame.level)
     }
 
     private fun stopRunningCapture(clearStatus: Boolean) {
@@ -653,13 +872,15 @@ class GlyphVisualizerService : Service() {
         } catch (error: Throwable) {
             AppLogger.w(TAG, "glyphController.turnOff failed", error)
         }
+        mainHandler.removeCallbacks(latencyDrainRunnable)
+        pendingLevelFrames.clear()
         CaptureUiStore.update {
             it.copy(
                 level = 0f,
                 peak = 0f,
                 meterSegments = 0,
                 isCapturing = false,
-                activeMode = "IDLE",
+                activeMode = ACTIVE_MODE_IDLE,
                 statusText = if (clearStatus) getString(R.string.status_capture_stopped_ready) else it.statusText,
                 sensitivity = sensitivity,
                 noiseGate = noiseGate,
@@ -673,6 +894,10 @@ class GlyphVisualizerService : Service() {
                 glyphMode = glyphMode,
                 binaryMode = binaryMode,
                 levelAutoScale = levelAutoScale,
+                spectrumAutoScale = spectrumAutoScale,
+                allBrightnessAutoScale = allBrightnessAutoScale,
+                autoScaleWindowSeconds = autoScaleWindowSeconds,
+                latencyMs = latencyMs,
                 turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
@@ -710,6 +935,103 @@ class GlyphVisualizerService : Service() {
         try {
             GlyphTileService.refresh(this)
         } catch (_: Exception) {}
+    }
+
+    private fun registerAudioDeviceCallback() {
+        if (audioDeviceCallbackRegistered) return
+        try {
+            audioManager.registerAudioDeviceCallback(audioDeviceCallback, mainHandler)
+            audioDeviceCallbackRegistered = true
+            AppLogger.i(TAG, "Audio device callback registered")
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "registerAudioDeviceCallback failed", error)
+        }
+    }
+
+    private fun unregisterAudioDeviceCallback() {
+        if (!audioDeviceCallbackRegistered) return
+        try {
+            audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "unregisterAudioDeviceCallback failed", error)
+        }
+        audioDeviceCallbackRegistered = false
+    }
+
+    private fun handleAudioRouteChanged(reason: String, devices: Array<AudioDeviceInfo>) {
+        val sinks = devices.filter { it.isSink }.toTypedArray()
+        if (sinks.isEmpty()) return
+        val nextSignature = AudioRouteDiagnostics.outputSignature(this)
+        if (nextSignature == lastAudioRouteSignature) {
+            AppLogger.i(TAG, "Audio route $reason callback matched existing signature; ignoring")
+            return
+        }
+        lastAudioRouteSignature = nextSignature
+        AppLogger.i(
+            TAG,
+            "Audio route $reason: ${AudioRouteDiagnostics.describeDevices(sinks)} ${AudioRouteDiagnostics.snapshot(this)}"
+        )
+        if (!shouldRestartVisualizerForRouteChange()) return
+        if (SystemClock.uptimeMillis() < suppressRouteRestartUntilMs) {
+            AppLogger.i(TAG, "Audio route restart suppressed during visualizer startup window")
+            return
+        }
+        mainHandler.removeCallbacks(restartVisualizerForRouteChangeRunnable)
+        mainHandler.postDelayed(restartVisualizerForRouteChangeRunnable, 350L)
+    }
+
+    private fun shouldRestartVisualizerForRouteChange(): Boolean {
+        val state = CaptureUiStore.state
+        return state.isCapturing && state.activeMode == ACTIVE_MODE_VISUALIZER
+    }
+
+    private fun applyLatencyPresetForCurrentRoute(reason: String) {
+        val saved = SettingsPreferences.load(this)
+        val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
+        val resolved = saved.withResolvedLatency(bluetoothOutputActive)
+        val nextLatencyMs = resolved.latencyMs
+        if (latencyMs != nextLatencyMs) {
+            AppLogger.i(
+                TAG,
+                "Latency applied on route $reason. bluetooth=$bluetoothOutputActive latencyMs=$nextLatencyMs"
+            )
+            latencyMs = nextLatencyMs
+            pendingLevelFrames.clear()
+            mainHandler.removeCallbacks(latencyDrainRunnable)
+        }
+        CaptureUiStore.update {
+            it.copy(
+                latencyMs = latencyMs,
+                defaultOutputLatencyMs = resolved.defaultOutputLatencyMs,
+                bluetoothLatencyMs = resolved.bluetoothLatencyMs,
+                latencyAutoSwitchEnabled = resolved.latencyAutoSwitchEnabled,
+                isBluetoothOutputActive = bluetoothOutputActive
+            )
+        }
+    }
+
+    private fun visualizerStartMaxAttempts(): Int {
+        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
+            6
+        } else {
+            4
+        }
+    }
+
+    private fun visualizerRetryDelayMs(attempt: Int): Long {
+        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
+            700L * attempt
+        } else {
+            160L * attempt
+        }
+    }
+
+    private fun visualizerRouteRestartSuppressionMs(): Long {
+        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
+            4000L
+        } else {
+            1500L
+        }
     }
 
     private fun safeStopForeground() {

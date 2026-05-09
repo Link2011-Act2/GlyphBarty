@@ -18,11 +18,15 @@
     <string name="about_dev_channel_desc_stable">Stable は安定版で、バグ検証などが十分に行われた後に配布されます。</string>
     <string name="about_dev_channel_desc_unknown">このチャネルの説明は未登録です。</string>
     <string name="about_version_details_title">バージョン詳細</string>
-    <string name="about_version_details_message">バージョン: %1$s&#10;内部バージョン番号: %2$d</string>
+    <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d</string>
+    <string name="about_updates_title">アップデート情報</string>
+    <string name="about_updates_body">・デバッグ中のため、まだここは書いていません</string>
+    <string name="about_known_issues_title">既知の問題</string>
+    <string name="about_known_issues_body">・Nothing Phone (4a) ProとNothing製イヤホンの組み合わせの場合で、空間オーディオが有効だとメーターが振れない</string>
     <string name="about_support_title">サポート情報</string>
     <string name="about_support_help">不具合報告やフィードバックはこちら</string>
     <string name="about_support_open_site">GitHubを開く</string>
-    <string name="about_support_site_url" translatable="false">https://github.com</string>
+    <string name="about_support_site_url" translatable="false">https://github.com/Link2011-Act2/GlyphBarty</string>
     <string name="about_language_open_failed">言語設定を開けませんでした</string>
     <string name="about_oss_title">オープンソースライセンス</string>
     <string name="about_oss_help">このアプリで使用しているオープンソースソフトウェアのライセンス情報</string>
@@ -46,6 +50,12 @@
     <string name="settings_import_desc">保存済みの JSON ファイルから設定を読み込みます。</string>
     <string name="settings_about_title">アプリ情報</string>
     <string name="settings_about_desc">バージョン、サポート、ログ、ライセンスを確認できます。</string>
+    <string name="settings_nothing_style_title">実験的: Nothing ライクなUI</string>
+    <string name="settings_nothing_style_desc">白黒基調に赤のアクセントを使った Nothing 風の見た目に切り替えます。実験的機能のため、今後デザインが変わる場合があります。</string>
+    <string name="settings_media_projection_title">MediaProjection を表示</string>
+    <string name="settings_media_projection_desc">画面キャプチャで音声を取得するモードを使えるようにします\n通常は不要ですが、不具合が出た場合はこれを使用してみてください</string>
+    <string name="settings_glyph_meter_preview_title">実験的: より忠実なプレビュー</string>
+    <string name="settings_glyph_meter_preview_desc">画面上のメーターに、実際のセグメント数と明るさ変化を反映します</string>
     <string name="settings_open_button">開く</string>
     <string name="settings_reset_button">デフォルトに戻す</string>
     <string name="settings_export_button">エクスポート</string>
@@ -69,10 +79,12 @@
     <string name="oss_load_failed">ライセンス情報を読み込めませんでした。</string>
     <string name="oss_unknown_license">ライセンス不明</string>
     <string name="license_apache_body" translatable="false">Apache License&#10;Version 2.0, January 2004&#10;http://www.apache.org/licenses/&#10;&#10;TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION&#10;&#10;[Full Apache 2.0 License text: https://www.apache.org/licenses/LICENSE-2.0]</string>
+    <string name="license_glyph_sdk_eula_body" translatable="false">Glyph SDK End User License Agreement&#10;&#10;1. License Grant&#10;Nothing Technology Limited grants a limited, non-exclusive, non-transferable license to use the Glyph Matrix SDK solely to integrate its functionality into your applications.&#10;&#10;2. User Rights and Restrictions&#10;You may not remove proprietary notices, modify or reverse engineer the software, redistribute it, or transfer your rights except as permitted by the agreement. Commercial use is prohibited unless you obtain prior written permission from Nothing.&#10;&#10;3. Third-Party Software&#10;The software contains or relies on Android Open Source Project components under Apache License 2.0 and Java OpenJDK components under GPLv2 with the Classpath Exception.&#10;&#10;4. Intellectual Property Rights&#10;All intellectual property rights remain with Nothing. The software is licensed, not sold.&#10;&#10;5. Disclaimer of Warranty&#10;The software is provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without warranties.&#10;&#10;6. Limitation of Liability&#10;Nothing and its licensors are not liable for indirect, incidental, consequential, or similar damages arising from use of the software.&#10;&#10;7. Termination&#10;The agreement remains in effect until terminated. If you fail to comply with the terms, Nothing may terminate it immediately and you must stop using the software and delete all copies.&#10;&#10;8. Governing Law&#10;This agreement is governed by the laws of England and Wales.&#10;&#10;9. Commercial Licensing&#10;For commercial use or licensing inquiries, contact GDKsupport@nothing.tech.&#10;&#10;Source: https://github.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/blob/main/LICENSE.md</string>
 
     <!-- Content Descriptions -->
     <string name="cd_back">戻る</string>
     <string name="cd_about">このアプリについて</string>
+    <string name="cd_menu">メニュー</string>
     <string name="cd_settings">設定</string>
     <string name="cd_collapse">折りたたむ</string>
     <string name="cd_expand">展開</string>
@@ -83,18 +95,18 @@
     <string name="status_mic_permission_required">再生音の取得にはマイク権限が必要です。</string>
     <string name="status_audio_capture_cancelled">音声キャプチャがキャンセルされました。</string>
     <string name="status_audio_capture_requires_android10">音声再生キャプチャは Android 10 以降で利用できます。</string>
-    <string name="status_no_capture_start_failed">キャプチャなしモードの開始に失敗しました: %1$s</string>
+    <string name="status_no_capture_start_failed">通常モードの開始に失敗しました: %1$s</string>
     <string name="status_unknown_error">不明なエラー</string>
     <string name="status_preparing_glyph_session">Glyphセッションは待機中</string>
-    <string name="status_visualizer_service_start_failed">キャプチャなしモードを開始できませんでした: %1$s</string>
+    <string name="status_visualizer_service_start_failed">通常モードを開始できませんでした: %1$s</string>
     <string name="status_media_projection_service_start_failed">MediaProjection を開始できませんでした: %1$s</string>
     <string name="status_permission_denied">権限が拒否されました: %1$s</string>
     <string name="status_media_projection_data_missing">MediaProjection のデータが見つかりませんでした。</string>
-    <string name="status_visualizer_retrying">キャプチャなしモードの開始を再試行しています (%1$d/3)…</string>
-    <string name="status_visualizer_try_media_projection">キャプチャなしモードを利用できませんでした。MediaProjection を試してください。</string>
+    <string name="status_visualizer_retrying">通常モードの開始を再試行しています (%1$d/%2$d)…</string>
+    <string name="status_visualizer_try_media_projection">通常モードを利用できませんでした。必要であれば MediaProjection を試してください。</string>
     <string name="status_capture_stopped_ready">キャプチャを停止しました。次のセッションを開始できます。</string>
-    <string name="status_output_mix_listening">キャプチャなしモードで出力ミックスを監視しています。反応しない場合は MediaProjection を使ってください。</string>
-    <string name="status_output_mix_start_failed">キャプチャなしモードをこの端末で開始できませんでした: %1$s</string>
+    <string name="status_output_mix_listening">通常モードで出力ミックスを監視しています。</string>
+    <string name="status_output_mix_start_failed">通常モードをこの端末で開始できませんでした: %1$s</string>
     <string name="status_media_projection_unavailable">MediaProjection を作成できませんでした。</string>
     <string name="status_audio_record_initialization_failed">AudioRecord の初期化に失敗しました。</string>
     <string name="status_playback_listening">再生音を監視しています。メーターを動かすには端末で音楽を再生してください。</string>
@@ -116,13 +128,16 @@
     <string name="status_glyph_matrix_update_crashed">Glyph Matrix の更新中に問題が発生しました。再度キャプチャを開始してください。</string>
 
     <string name="log_title">ログ</string>
+    <string name="log_section_show">ログと情報を表示</string>
+    <string name="log_section_hide">ログと情報を隠す</string>
     <string name="notification_title">Glyph ピークメーター</string>
-    <string name="notification_mode_visualizer">キャプチャなし</string>
+    <string name="notification_mode_visualizer">通常</string>
     <string name="notification_mode_media_projection">MediaProjection</string>
     <string name="notification_channel_name">Glyph Visualizer</string>
 
-    <string name="hero_title">Nothing Glyph</string>
+    <string name="hero_title">Glyph Interface</string>
     <string name="hero_subtitle">再生音に連動するライブピークスタイルのビジュアライザー。</string>
+    <string name="hero_sensitivity">感度 %1$d%%</string>
     <string name="hero_gate_dynamics">ゲート %1$d%%  |  ダイナミクス %2$.2f</string>
     <string name="hero_response_speed">応答速度 %1$s</string>
     <string name="hero_tone_focus_bass">低音重視 %1$d%%</string>
@@ -134,12 +149,12 @@
     <string name="meter_label_level">レベル</string>
     <string name="meter_label_peak">ピーク</string>
     <string name="meter_label_segments">セグメント</string>
-    <string name="meter_segments_value">%1$d / 16</string>
+    <string name="meter_segments_value">%1$d / %2$d</string>
     <string name="percent_value">%1$d%%</string>
     <string name="response_speed_none">最大</string>
 
     <string name="capture_control_title">キャプチャ制御</string>
-    <string name="capture_control_hint">まずはキャプチャなしモードを試し、必要な場合だけ MediaProjection を使うのがおすすめです。</string>
+    <string name="capture_control_hint">まずは通常モードを試し、必要な場合だけ MediaProjection を使うのがおすすめです。</string>
     <string name="current_mode">現在のモード: %1$s</string>
     <string name="glyph_pattern">Glyphパターン</string>
     <string name="meter_parameters">メーター設定</string>
@@ -166,8 +181,8 @@
     <string name="mode_p4a_center">Center</string>
     <string name="mode_p4a_spectrum">Spectrum</string>
     <string name="mode_p4a_all_brightness">All Brightness</string>
-    <string name="mode_visualizer">キャプチャなしモード</string>
-    <string name="mode_media_projection">MediaProjectionモード</string>
+    <string name="mode_visualizer">通常モード</string>
+    <string name="mode_media_projection">MediaProjection モード</string>
     <string name="mode_idle">待機中</string>
 
     <string name="param_sensitivity_title">感度</string>
@@ -181,6 +196,45 @@
     <string name="param_dynamics_value">%1$.2f</string>
     <string name="param_output_gamma_title">出力Gamma</string>
     <string name="param_output_gamma_desc">光り方のカーブを調整します。高いほど大きい音が強調されます</string>
+    <string name="param_auto_scale_window_title">自動スケール保持時間</string>
+    <string name="param_auto_scale_window_desc">自動スケールが最大値と最小値をどれくらい引きずるかを調整します。短いほど追従が速くなります</string>
+    <string name="param_auto_scale_window_value">%1$.0f 秒</string>
+    <string name="latency_title">レイテンシ調整</string>
+    <string name="latency_desc">メーターとGlyph出力に遅延を加えて、再生とのタイミングを合わせます</string>
+    <string name="latency_value_ms">%1$.0f ms</string>
+    <string name="latency_slider_title">レイテンシ</string>
+    <string name="latency_slider_desc">メーターとGlyphの更新をどれだけ遅らせるかを調整します</string>
+    <string name="latency_slider_desc_default">通常出力時に使うレイテンシを調整します</string>
+    <string name="latency_slider_desc_bluetooth">Bluetooth出力時に使うレイテンシを調整します</string>
+    <string name="latency_presets_section_title">プリセット</string>
+    <string name="latency_add_preset">プリセットを追加</string>
+    <string name="latency_add_preset_dialog_title">プリセット名</string>
+    <string name="latency_add_preset_dialog_label">名前</string>
+    <string name="latency_add_preset_dialog_placeholder">例: Bluetooth イヤホン</string>
+    <string name="latency_add_preset_dialog_confirm">追加</string>
+    <string name="latency_assign_speaker">通常出力に割り当て</string>
+    <string name="latency_assign_bluetooth">Bluetooth出力に割り当て</string>
+    <string name="latency_delete_preset">プリセットを削除</string>
+    <string name="latency_auto_switch_title">プリセット自動切り替え</string>
+    <string name="latency_auto_switch_on">Bluetooth出力時とそれ以外で、値を自動切り替えします</string>
+    <string name="latency_auto_switch_off">出力先に関係なく現在のレイテンシ値を使います</string>
+    <string name="latency_route_bluetooth">Bluetooth出力時</string>
+    <string name="latency_route_default">通常出力時</string>
+    <string name="latency_active_route_bluetooth">現在の出力: Bluetooth</string>
+    <string name="latency_active_route_default">現在の出力: 通常</string>
+    <string name="latency_route_name_bluetooth">Bluetooth</string>
+    <string name="latency_route_name_default">通常</string>
+    <string name="latency_active_route_with_value">現在の出力: %1$s  (%2$.0f ms)</string>
+    <string name="latency_active_preset">現在のプリセット: %1$s</string>
+    <string name="menu_main">メイン</string>
+    <string name="menu_latency">レイテンシ調整</string>
+    <string name="menu_settings">設定</string>
+    <string name="latency_saved_presets_title">保存済みプリセット</string>
+    <string name="latency_load_button">読み込み</string>
+    <string name="latency_save_button">現在値を保存</string>
+    <string name="latency_preset_1">プリセット 1</string>
+    <string name="latency_preset_2">プリセット 2</string>
+    <string name="latency_preset_3">プリセット 3</string>
     <string name="param_response_speed_title">応答速度</string>
     <string name="param_response_speed_desc">高いほど素早く反応し、低いほど滑らかな動きになります</string>
     <string name="param_tone_focus_title">音域フォーカス</string>
@@ -198,14 +252,14 @@
     <string name="binary_mode_off">明るさをなめらかに変化</string>
 
     <string name="level_auto_scale_title">レベル自動スケール</string>
-    <string name="level_auto_scale_on">レベル範囲を自動調整</string>
+    <string name="level_auto_scale_on">レベルの最大/最小値が自動で変化します</string>
     <string name="level_auto_scale_off">固定スケール</string>
 
     <string name="spectrum_auto_scale_title">自動スケール調整</string>
     <string name="spectrum_auto_scale_on">バンドごとにレベルの最大/最小値が自動で変化します</string>
     <string name="spectrum_auto_scale_off">固定スケール</string>
 
-    <string name="all_brightness_auto_scale_title">自動縮尺調整</string>
+    <string name="all_brightness_auto_scale_title">自動スケール調整</string>
     <string name="all_brightness_auto_scale_on">レベルの最大/最小値が自動で変化します</string>
     <string name="all_brightness_auto_scale_off">固定スケール</string>
 
@@ -215,7 +269,7 @@
 
     <string name="button_no_capture">開始</string>
     <string name="button_media_projection">MediaProjection で開始</string>
-    <string name="button_media_projection_hint">一部のアプリの音声が取得できない場合の代替手段</string>
+    <string name="button_media_projection_hint">通常モードで音声が取得できない場合の代替手段</string>
     <string name="button_stop">停止</string>
     <string name="button_language_settings">言語設定</string>
 

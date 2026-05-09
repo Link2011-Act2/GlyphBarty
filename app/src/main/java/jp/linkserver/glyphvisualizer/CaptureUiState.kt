@@ -3,6 +3,7 @@ package jp.linkserver.glyphvisualizer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 
 data class CaptureUiState(
     val statusText: String = "",
@@ -21,11 +22,20 @@ data class CaptureUiState(
     val meterSegments: Int = 0,
     val spectrumBands: FloatArray = FloatArray(0),
     val activeMode: String = "IDLE",
-    val glyphMode: String = "C1_LINEAR",
+    val glyphMode: String = GlyphPatternRegistry.P2_C1_LINEAR,
     val binaryMode: Boolean = false,
     val levelAutoScale: Boolean = false,
     val spectrumAutoScale: Boolean = false,
     val allBrightnessAutoScale: Boolean = false,
+    val autoScaleWindowSeconds: Float = 30f,
+    val latencyMs: Float = 0f,
+    val defaultOutputLatencyMs: Float = 0f,
+    val bluetoothLatencyMs: Float = 0f,
+    val latencyAutoSwitchEnabled: Boolean = true,
+    val isBluetoothOutputActive: Boolean = false,
+    val mediaProjectionEnabled: Boolean = false,
+    val glyphMeterPreviewEnabled: Boolean = false,
+    val nothingStyleEnabled: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null
 )

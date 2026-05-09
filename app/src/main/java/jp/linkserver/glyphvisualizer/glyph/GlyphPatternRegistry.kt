@@ -1,0 +1,177 @@
+package jp.linkserver.glyphvisualizer.glyph
+
+import jp.linkserver.glyphvisualizer.R
+
+enum class GlyphDeviceProfile {
+    PHONE2,
+    PHONE2A,
+    PHONE3A,
+    PHONE4A,
+    PHONE3_MATRIX,
+    PHONE4A_PRO_MATRIX
+}
+
+enum class GlyphPatternKind {
+    LINEAR,
+    CENTER,
+    SPECTRUM,
+    ALL_BRIGHTNESS,
+    MATRIX_BAR,
+    MATRIX_FIELD,
+    MATRIX_CIRCLE
+}
+
+data class GlyphPatternDefinition(
+    val id: String,
+    val labelRes: Int,
+    val kind: GlyphPatternKind,
+    val supportedDevices: Set<GlyphDeviceProfile>
+)
+
+/**
+ * Add new user-facing Glyph patterns here first.
+ *
+ * The id is persisted in settings and sent to the Glyph output controllers.
+ * Controller rendering still lives in the device-specific controller, but UI
+ * availability, default mode, and mode categories are centralized here.
+ */
+object GlyphPatternRegistry {
+    // Phone (2) legacy ids are kept as-is for settings/export compatibility.
+    const val P2_C1_LINEAR = "C1_LINEAR"
+    const val P2_C1_CENTER = "C1_CENTER"
+    const val P2_D1_LINEAR = "D1"
+    const val P2_D1_CENTER = "D1_CENTER"
+    const val P2_C1_SPECTRUM = "C1_SPECTRUM"
+    const val P2_D1_SPECTRUM = "D1_SPECTRUM"
+    const val P2_ALL_BRIGHTNESS = "ALL_BRIGHTNESS"
+
+    const val P3A_C_LINEAR = "P3A_C_LINEAR"
+    const val P3A_C_CENTER = "P3A_C_CENTER"
+    const val P3A_C_SPECTRUM = "P3A_C_SPECTRUM"
+    const val P3A_CAB_LINEAR = "P3A_CAB_LINEAR"
+    const val P3A_CAB_CENTER = "P3A_CAB_CENTER"
+    const val P3A_CAB_SPECTRUM = "P3A_CAB_SPECTRUM"
+    const val P3A_ALL_BRIGHTNESS = "P3A_ALL_BRIGHTNESS"
+
+    const val P2A_C_LINEAR = "P2A_C_LINEAR"
+    const val P2A_C_CENTER = "P2A_C_CENTER"
+    const val P2A_C_SPECTRUM = "P2A_C_SPECTRUM"
+    const val P2A_ALL_BRIGHTNESS = "P2A_ALL_BRIGHTNESS"
+
+    const val P4A_LINEAR = "P4A_LINEAR"
+    const val P4A_CENTER = "P4A_CENTER"
+    const val P4A_SPECTRUM = "P4A_SPECTRUM"
+    const val P4A_ALL_BRIGHTNESS = "P4A_ALL_BRIGHTNESS"
+
+    const val P3_MATRIX_BAR = "P3_MATRIX_BAR"
+    const val P3_MATRIX_FIELD = "P3_MATRIX_FIELD"
+    const val P3_MATRIX_CIRCLE = "P3_MATRIX_CIRCLE"
+    const val P3_MATRIX_SPECTRUM = "P3_MATRIX_SPECTRUM"
+    const val P3_MATRIX_SPECTRUM_CENTER = "P3_MATRIX_SPECTRUM_CENTER"
+    const val P3_MATRIX_ALL_BRIGHTNESS = "P3_MATRIX_ALL_BRIGHTNESS"
+
+    private val matrixDevices = setOf(
+        GlyphDeviceProfile.PHONE3_MATRIX,
+        GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+    )
+
+    val all: List<GlyphPatternDefinition> = listOf(
+        GlyphPatternDefinition(P2_C1_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_D1_LINEAR, R.string.mode_d1, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_C1_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_D1_CENTER, R.string.mode_d1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_C1_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_D1_SPECTRUM, R.string.mode_d1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2)),
+        GlyphPatternDefinition(P2_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2)),
+
+        GlyphPatternDefinition(P2A_C_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2A)),
+        GlyphPatternDefinition(P2A_C_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2A)),
+        GlyphPatternDefinition(P2A_C_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2A)),
+        GlyphPatternDefinition(P2A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2A)),
+
+        GlyphPatternDefinition(P3A_C_LINEAR, R.string.mode_p3a_c_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_CAB_LINEAR, R.string.mode_p3a_cab_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_C_CENTER, R.string.mode_p3a_c_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_CAB_CENTER, R.string.mode_p3a_cab_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_C_SPECTRUM, R.string.mode_p3a_c_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_CAB_SPECTRUM, R.string.mode_p3a_cab_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A)),
+        GlyphPatternDefinition(P3A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE3A)),
+
+        GlyphPatternDefinition(P4A_LINEAR, R.string.mode_p4a_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE4A)),
+        GlyphPatternDefinition(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE4A)),
+        GlyphPatternDefinition(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE4A)),
+        GlyphPatternDefinition(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE4A)),
+
+        GlyphPatternDefinition(P3_MATRIX_SPECTRUM, R.string.mode_matrix_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices),
+        GlyphPatternDefinition(P3_MATRIX_SPECTRUM_CENTER, R.string.mode_matrix_spectrum_center, GlyphPatternKind.SPECTRUM, matrixDevices),
+        GlyphPatternDefinition(P3_MATRIX_BAR, R.string.mode_matrix_bar, GlyphPatternKind.MATRIX_BAR, matrixDevices),
+        GlyphPatternDefinition(P3_MATRIX_FIELD, R.string.mode_matrix_field, GlyphPatternKind.MATRIX_FIELD, matrixDevices),
+        GlyphPatternDefinition(P3_MATRIX_CIRCLE, R.string.mode_matrix_circle, GlyphPatternKind.MATRIX_CIRCLE, matrixDevices),
+        GlyphPatternDefinition(P3_MATRIX_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, matrixDevices)
+    )
+
+    private val byId = all.associateBy { it.id }
+
+    fun patternsFor(profile: GlyphDeviceProfile): List<GlyphPatternDefinition> {
+        return all.filter { profile in it.supportedDevices }
+    }
+
+    fun isSupported(profile: GlyphDeviceProfile, id: String): Boolean {
+        return byId[id]?.supportedDevices?.contains(profile) == true
+    }
+
+    fun isSpectrum(id: String): Boolean {
+        return byId[id]?.kind == GlyphPatternKind.SPECTRUM
+    }
+
+    fun isAllBrightness(id: String): Boolean {
+        return byId[id]?.kind == GlyphPatternKind.ALL_BRIGHTNESS
+    }
+
+    fun kindOf(id: String): GlyphPatternKind? {
+        return byId[id]?.kind
+    }
+
+    fun isLevelAutoScale(id: String): Boolean {
+        return when (byId[id]?.kind) {
+            GlyphPatternKind.LINEAR,
+            GlyphPatternKind.CENTER,
+            GlyphPatternKind.MATRIX_BAR,
+            GlyphPatternKind.MATRIX_FIELD,
+            GlyphPatternKind.MATRIX_CIRCLE -> true
+            else -> false
+        }
+    }
+
+    fun uiMeterSegmentCount(profile: GlyphDeviceProfile, id: String): Int {
+        return when (id) {
+            P2_C1_LINEAR, P2_C1_CENTER -> 16
+            P2_D1_LINEAR, P2_D1_CENTER -> 8
+            P2A_C_LINEAR, P2A_C_CENTER -> 24
+            P3A_C_LINEAR, P3A_C_CENTER -> 20
+            P3A_CAB_LINEAR, P3A_CAB_CENTER -> 20
+            P4A_LINEAR, P4A_CENTER -> 6
+            else -> when (byId[id]?.kind) {
+                GlyphPatternKind.MATRIX_BAR,
+                GlyphPatternKind.MATRIX_FIELD,
+                GlyphPatternKind.MATRIX_CIRCLE -> when (profile) {
+                    GlyphDeviceProfile.PHONE3_MATRIX -> 25
+                    GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> 13
+                    else -> 16
+                }
+                GlyphPatternKind.SPECTRUM,
+                GlyphPatternKind.ALL_BRIGHTNESS -> 16
+                GlyphPatternKind.LINEAR,
+                GlyphPatternKind.CENTER -> when (profile) {
+                    GlyphDeviceProfile.PHONE2 -> 16
+                    GlyphDeviceProfile.PHONE2A -> 24
+                    GlyphDeviceProfile.PHONE3A -> 20
+                    GlyphDeviceProfile.PHONE4A -> 6
+                    GlyphDeviceProfile.PHONE3_MATRIX,
+                    GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> 16
+                }
+                else -> 16
+            }
+        }
+    }
+}

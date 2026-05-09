@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.audiofx.Visualizer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 import kotlin.concurrent.thread
@@ -16,6 +17,8 @@ class OutputMixVisualizer(
 ) {
     companion object {
         private const val TAG = "OutputMixVisualizer"
+        private const val BLUETOOTH_PREPARE_DELAY_MS = 80L
+        private const val BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS = 300L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -42,68 +45,112 @@ class OutputMixVisualizer(
             rightLevel: Float,
             spectrumBands: FloatArray
         ) -> Unit,
+        onStartFailed: () -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
         stop()
+        val startAt = SystemClock.elapsedRealtime()
 
         return try {
-            // Visualizer(0) は OutputMix セッションの解放タイミングによって
-            // 間欠的に失敗するため、最大3回リトライする
-            var instance: Visualizer? = null
-            var lastError: Throwable? = null
-            repeat(3) {
-                if (instance != null) return@repeat
-                try {
-                    instance = Visualizer(0)
-                } catch (e: Throwable) {
-                    lastError = e
-                    AppLogger.w(TAG, "Visualizer(0) init attempt ${it + 1}/3 failed", e)
-                    Thread.sleep(40)
-                }
-            }
-            if (instance == null) throw lastError ?: RuntimeException("Visualizer init failed")
-            val vis = instance!!
-            val captureSize = Visualizer.getCaptureSizeRange()[1]
-            // Some devices may return an already-enabled state; force disabled before config.
-            try {
-                vis.enabled = false
-            } catch (_: Throwable) {
-            }
-            try {
-                vis.setCaptureSize(captureSize)
-            } catch (stateError: IllegalStateException) {
-                // Retry once after forcing disabled state again.
-                try {
-                    vis.enabled = false
-                } catch (_: Throwable) {
-                }
-                vis.setCaptureSize(captureSize)
-            }
-            vis.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED)
-            vis.setMeasurementMode(Visualizer.MEASUREMENT_MODE_PEAK_RMS)
-            vis.enabled = true
-            val samplingHz = (vis.samplingRate / 1000).coerceAtLeast(8_000)
-            // Downsample to ~8820 Hz for SpectrumAnalyzer (n=256 gives 34 Hz/bin resolution)
-            val spectrumDecimation = (samplingHz / 8820).coerceAtLeast(1)
-            val spectrumSampleRate = samplingHz / spectrumDecimation
-            visualizer = vis
             isRunning = true
-
             workerThread = thread(start = true, isDaemon = true, name = "output-mix-visualizer") {
+                var activeStarted = false
                 try {
+                    AppLogger.i(TAG, "Starting Visualizer(0) output-mix capture. ${AudioRouteDiagnostics.snapshot(context)}")
+                    val bluetoothLikelyConnected = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(context)
+                    val musicActive = AudioRouteDiagnostics.isMusicActive(context)
+                    val prepareDelayMs = when {
+                        bluetoothLikelyConnected && musicActive -> BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
+                        bluetoothLikelyConnected -> BLUETOOTH_PREPARE_DELAY_MS
+                        else -> 0L
+                    }
+                    if (prepareDelayMs > 0L) {
+                        AppLogger.i(
+                            TAG,
+                            "Bluetooth-like output detected; waiting ${prepareDelayMs}ms before Visualizer(0) init (musicActive=$musicActive)"
+                        )
+                        Thread.sleep(prepareDelayMs)
+                        AppLogger.i(
+                            TAG,
+                            "Visualizer(0) prepare wait finished in ${SystemClock.elapsedRealtime() - startAt}ms"
+                        )
+                    }
+                    if (!isRunning || Thread.currentThread().isInterrupted) return@thread
+
+                    var instance: Visualizer? = null
+                    var lastError: Throwable? = null
+                    val initAttempts = if (bluetoothLikelyConnected && musicActive) 5 else 3
+                    repeat(initAttempts) {
+                        if (instance != null || !isRunning || Thread.currentThread().isInterrupted) return@repeat
+                        try {
+                            instance = Visualizer(0)
+                            AppLogger.i(
+                                TAG,
+                                "Visualizer(0) init attempt ${it + 1}/$initAttempts succeeded at ${SystemClock.elapsedRealtime() - startAt}ms"
+                            )
+                        } catch (e: Throwable) {
+                            lastError = e
+                            AppLogger.w(TAG, "Visualizer(0) init attempt ${it + 1}/$initAttempts failed", e)
+                            val retryDelayMs = if (bluetoothLikelyConnected && musicActive) {
+                                220L * (it + 1)
+                            } else {
+                                120L * (it + 1)
+                            }
+                            Thread.sleep(retryDelayMs)
+                        }
+                    }
+                    if (!isRunning || Thread.currentThread().isInterrupted) return@thread
+                    if (instance == null) throw lastError ?: RuntimeException("Visualizer init failed")
+                    val vis = instance!!
+                    val captureSize = Visualizer.getCaptureSizeRange()[1]
+                    try {
+                        vis.enabled = false
+                    } catch (_: Throwable) {
+                    }
+                    try {
+                        vis.setCaptureSize(captureSize)
+                    } catch (stateError: IllegalStateException) {
+                        try {
+                            vis.enabled = false
+                        } catch (_: Throwable) {
+                        }
+                        vis.setCaptureSize(captureSize)
+                    }
+                    vis.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED)
+                    vis.setMeasurementMode(Visualizer.MEASUREMENT_MODE_PEAK_RMS)
+                    vis.enabled = true
+                    val samplingHz = (vis.samplingRate / 1000).coerceAtLeast(8_000)
+                    val spectrumDecimation = (samplingHz / 8820).coerceAtLeast(1)
+                    val spectrumSampleRate = samplingHz / spectrumDecimation
+                    AppLogger.i(
+                        TAG,
+                        "Visualizer configured: captureSize=$captureSize samplingHz=$samplingHz spectrumSampleRate=$spectrumSampleRate totalStartMs=${SystemClock.elapsedRealtime() - startAt}"
+                    )
+                    visualizer = vis
+                    activeStarted = true
+                    mainHandler.post {
+                        if (isRunning) {
+                            onStateChanged(context.getString(R.string.status_output_mix_listening))
+                        }
+                    }
+
                     val waveform = ByteArray(captureSize)
                     val monoSamples = FloatArray(captureSize)
                     val spectrumSamples = FloatArray(captureSize / spectrumDecimation)
                     val measurement = Visualizer.MeasurementPeakRms()
                     var smoothedLevel = 0f
                     var displayedLevel = 0f
+                    var waveformErrorLogged = false
+                    var measurementErrorLogged = false
 
                     while (isRunning && !Thread.currentThread().isInterrupted) {
                         var waveformRms = 0f
                         var waveformPeak = 0f
                         var lowEnergy = 0f
                         var highEnergy = 0f
-                        if (vis.getWaveForm(waveform) == Visualizer.SUCCESS) {
+                        val waveformStatus = vis.getWaveForm(waveform)
+                        if (waveformStatus == Visualizer.SUCCESS) {
+                            waveformErrorLogged = false
                             var squareSum = 0.0
                             var lowState = 0f
                             var previous = 0f
@@ -123,14 +170,22 @@ class OutputMixVisualizer(
                             waveformRms = sqrt(squareSum / waveform.size).toFloat()
                             lowEnergy = (lowEnergy / waveform.size).coerceIn(0f, 1f)
                             highEnergy = (highEnergy / waveform.size).coerceIn(0f, 1f)
+                        } else if (!waveformErrorLogged) {
+                            AppLogger.w(TAG, "Visualizer.getWaveForm returned status=$waveformStatus")
+                            waveformErrorLogged = true
                         }
 
                         var measurementPeak = 0f
-                        if (vis.getMeasurementPeakRms(measurement) == Visualizer.SUCCESS) {
+                        val measurementStatus = vis.getMeasurementPeakRms(measurement)
+                        if (measurementStatus == Visualizer.SUCCESS) {
+                            measurementErrorLogged = false
                             val peakMb = measurement.mPeak.toFloat()
                             if (peakMb > -9600f) {
                                 measurementPeak = 10f.pow(peakMb / 2000f).coerceIn(0f, 1f)
                             }
+                        } else if (!measurementErrorLogged) {
+                            AppLogger.w(TAG, "Visualizer.getMeasurementPeakRms returned status=$measurementStatus")
+                            measurementErrorLogged = true
                         }
 
                         val baseLevel =
@@ -195,15 +250,22 @@ class OutputMixVisualizer(
                             break
                         }
                     }
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
                 } catch (error: Throwable) {
                     AppLogger.e(TAG, "output-mix-visualizer worker crashed", error)
                     if (isRunning) {
                         isRunning = false
-                        mainHandler.post { onCrashed() }
+                        mainHandler.post {
+                            if (activeStarted) {
+                                onCrashed()
+                            } else {
+                                onStartFailed()
+                            }
+                        }
                     }
                 }
             }
-            onStateChanged(context.getString(R.string.status_output_mix_listening))
             true
         } catch (error: Throwable) {
             stop()
@@ -219,6 +281,7 @@ class OutputMixVisualizer(
     }
 
     fun stop() {
+        AppLogger.i(TAG, "Stopping Visualizer(0) output-mix capture")
         isRunning = false
         val t = workerThread
         workerThread = null

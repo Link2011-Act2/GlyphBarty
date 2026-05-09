@@ -55,14 +55,67 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = Slate
 )
 
+private val NothingDarkColorScheme = darkColorScheme(
+    primary = NothingWhite,
+    onPrimary = NothingBlack,
+    primaryContainer = Color(0xFFE7E7E7),
+    onPrimaryContainer = NothingBlack,
+    secondary = Color(0xFFD8D8D8),
+    onSecondary = NothingBlack,
+    secondaryContainer = Color(0xFF1B1B1B),
+    onSecondaryContainer = NothingWhite,
+    tertiary = NothingRed,
+    onTertiary = NothingWhite,
+    tertiaryContainer = Color(0xFF2B1113),
+    onTertiaryContainer = Color(0xFFFFDAD9),
+    background = NothingBlack,
+    surface = NothingBlack,
+    surfaceContainer = Color(0xFF050505),
+    surfaceContainerHigh = Color(0xFF121212),
+    surfaceContainerHighest = Color(0xFF181818),
+    surfaceDim = Color(0xFF030303),
+    onSurface = NothingWhite,
+    onSurfaceVariant = Color(0xFFD0D0D0),
+    outline = Color(0xFF707070),
+    outlineVariant = Color(0xFF3A3A3A)
+)
+
+private val NothingLightColorScheme = lightColorScheme(
+    primary = NothingBlack,
+    onPrimary = NothingWhite,
+    primaryContainer = NothingBlack,
+    onPrimaryContainer = NothingWhite,
+    secondary = NothingBlack,
+    onSecondary = NothingWhite,
+    secondaryContainer = Color(0xFFE2E2E2),
+    onSecondaryContainer = NothingBlack,
+    tertiary = NothingRed,
+    onTertiary = NothingWhite,
+    tertiaryContainer = Color(0xFFFFDAD9),
+    onTertiaryContainer = Color(0xFF410005),
+    background = NothingLightSurface,
+    surface = NothingLightSurface,
+    surfaceContainer = NothingWhite,
+    surfaceContainerHigh = NothingWhite,
+    surfaceContainerHighest = NothingWhite,
+    surfaceDim = Color(0xFFD6D6D6),
+    onSurface = NothingBlack,
+    onSurfaceVariant = Color(0xFF565656),
+    outline = Color(0xFFBDBDBD),
+    outlineVariant = Color(0xFFE7E7E7)
+)
+
 @Composable
 fun GlyphBartyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
+    nothingStyle: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
+        nothingStyle && darkTheme -> NothingDarkColorScheme
+        nothingStyle -> NothingLightColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -74,7 +127,7 @@ fun GlyphBartyTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = if (nothingStyle) NothingTypography else Typography,
         content = content
     )
 }
