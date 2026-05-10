@@ -69,7 +69,16 @@ MIT Licenseです
 
 
 
-## スクリーンショット/実際の動作
+## スクリーンショット
 
+日本語も対応しています
+### UIモード: Nothingライク (実験的)
+<img width="200" alt="Screenshot_20260509-175528" src="https://github.com/user-attachments/assets/37540215-0de6-4538-9c0e-245998338871" />
+<img width="200" alt="Screenshot_20260509-175606" src="https://github.com/user-attachments/assets/9877e6e0-0596-4bde-906b-6f73447b3b72" />
+<img width="200" alt="Screenshot_20260509-175645" src="https://github.com/user-attachments/assets/1b65655c-fa0f-4adf-8b72-a45794762159" />
 
+### UIモード: Material 3
+<img width="200" alt="Screenshot_20260509-180436" src="https://github.com/user-attachments/assets/bcacfab9-a186-4183-b900-7cc44fd8b3b3" />
+<img width="200" alt="Screenshot_20260509-180445" src="https://github.com/user-attachments/assets/f9ea9c16-6af0-400b-b1cd-bd8200beb254" />
+<img width="200" alt="Screenshot_20260509-180451" src="https://github.com/user-attachments/assets/045296bf-59f9-4fa0-b7fb-950326dd6f7a" />
 
