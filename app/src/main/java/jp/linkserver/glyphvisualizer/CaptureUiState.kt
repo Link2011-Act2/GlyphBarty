@@ -23,6 +23,7 @@ data class CaptureUiState(
     val activeMode: String = "IDLE",
     val glyphMode: String = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
     val binaryMode: Boolean = false,
+    val baseIndicatorEnabled: Boolean = false,
     val levelAutoScale: Boolean = false,
     val spectrumAutoScale: Boolean = false,
     val allBrightnessAutoScale: Boolean = false,

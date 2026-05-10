@@ -47,6 +47,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
@@ -76,6 +78,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
@@ -219,7 +222,11 @@ class MainActivity : ComponentActivity() {
             return@registerForActivityResult
         }
 
-        applyParameterState(importedState)
+        applyParameterState(
+            importedState.copy(
+                baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled
+            )
+        )
         Toast.makeText(this, getString(R.string.settings_import_success), Toast.LENGTH_SHORT).show()
     }
 
@@ -245,15 +252,16 @@ class MainActivity : ComponentActivity() {
             smoothing = uiState.smoothing,
             smoothingBalance = uiState.smoothingBalance,
             reverseDirection = uiState.reverseDirection,
-              peakHoldEnabled = uiState.peakHoldEnabled,
-              glyphMode = uiState.glyphMode,
-                            binaryMode = uiState.binaryMode,
-                            levelAutoScale = uiState.levelAutoScale,
-                                                        spectrumAutoScale = uiState.spectrumAutoScale,
-                                                                                                                allBrightnessAutoScale = uiState.allBrightnessAutoScale,
-                            autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
-                            latencyMs = uiState.latencyMs,
-                                                        turnOffWhenBackDown = uiState.turnOffWhenBackDown
+            peakHoldEnabled = uiState.peakHoldEnabled,
+            glyphMode = uiState.glyphMode,
+            binaryMode = uiState.binaryMode,
+            baseIndicatorEnabled = uiState.baseIndicatorEnabled,
+            levelAutoScale = uiState.levelAutoScale,
+            spectrumAutoScale = uiState.spectrumAutoScale,
+            allBrightnessAutoScale = uiState.allBrightnessAutoScale,
+            autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
+            latencyMs = uiState.latencyMs,
+            turnOffWhenBackDown = uiState.turnOffWhenBackDown
         )
     }
 
@@ -282,9 +290,10 @@ class MainActivity : ComponentActivity() {
                 isBluetoothOutputActive = resolvedLatencySettings.isBluetoothOutputActive,
                 reverseDirection = resolvedLatencySettings.reverseDirection,
                     peakHoldEnabled = resolvedLatencySettings.peakHoldEnabled,
-                    glyphMode = normalizedMode,
-                    binaryMode = resolvedLatencySettings.binaryMode,
-                    levelAutoScale = resolvedLatencySettings.levelAutoScale,
+                glyphMode = normalizedMode,
+                binaryMode = resolvedLatencySettings.binaryMode,
+                baseIndicatorEnabled = resolvedLatencySettings.baseIndicatorEnabled,
+                levelAutoScale = resolvedLatencySettings.levelAutoScale,
                     spectrumAutoScale = resolvedLatencySettings.spectrumAutoScale,
                     mediaProjectionEnabled = resolvedLatencySettings.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = resolvedLatencySettings.glyphMeterPreviewEnabled,
@@ -327,6 +336,7 @@ class MainActivity : ComponentActivity() {
                     isPhone3aDevice = isPhone3aDevice,
                     isPhone4aDevice = isPhone4aDevice,
                     binaryMode = uiState.binaryMode,
+                    baseIndicatorEnabled = uiState.baseIndicatorEnabled,
                     levelAutoScale = uiState.levelAutoScale,
                     spectrumAutoScale = uiState.spectrumAutoScale,
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
@@ -397,6 +407,10 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
+                    onBaseIndicatorEnabledChanged = { enabled ->
+                        CaptureUiStore.update { it.copy(baseIndicatorEnabled = enabled) }
+                        syncCurrentParameters()
+                    },
                     onReverseDirectionChanged = { newValue ->
                         CaptureUiStore.update { it.copy(reverseDirection = newValue) }
                         val updated = CaptureUiStore.state
@@ -412,6 +426,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -441,6 +456,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -466,6 +482,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -491,6 +508,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -516,6 +534,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -541,6 +560,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.binaryMode,
+                                updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
@@ -635,6 +655,7 @@ class MainActivity : ComponentActivity() {
             routeAware.peakHoldEnabled,
             routeAware.glyphMode,
             routeAware.binaryMode,
+            routeAware.baseIndicatorEnabled,
             routeAware.levelAutoScale,
             routeAware.spectrumAutoScale,
             routeAware.allBrightnessAutoScale,
@@ -667,6 +688,7 @@ class MainActivity : ComponentActivity() {
                 peakHoldEnabled = parameters.peakHoldEnabled,
                 glyphMode = parameters.glyphMode,
                 binaryMode = parameters.binaryMode,
+                baseIndicatorEnabled = parameters.baseIndicatorEnabled,
                 levelAutoScale = parameters.levelAutoScale,
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
@@ -686,6 +708,7 @@ class MainActivity : ComponentActivity() {
             updated.peakHoldEnabled,
             updated.glyphMode,
             updated.binaryMode,
+            updated.baseIndicatorEnabled,
             updated.levelAutoScale,
             updated.spectrumAutoScale,
             updated.allBrightnessAutoScale,
@@ -755,6 +778,7 @@ class MainActivity : ComponentActivity() {
                 uiState.peakHoldEnabled,
                 uiState.glyphMode,
                 uiState.binaryMode,
+                uiState.baseIndicatorEnabled,
                 uiState.levelAutoScale,
                 uiState.spectrumAutoScale,
                 uiState.allBrightnessAutoScale,
@@ -823,6 +847,7 @@ private fun GlyphVisualizerApp(
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
     binaryMode: Boolean,
+    baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -843,6 +868,7 @@ private fun GlyphVisualizerApp(
     onLatencyMsChangeFinished: () -> Unit,
     onLatencyAutoSwitchChanged: (Boolean) -> Unit,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
+    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
@@ -864,7 +890,7 @@ private fun GlyphVisualizerApp(
     var screen by remember { mutableStateOf(Screen.MAIN) }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = drawerOpen || screen != Screen.MAIN) {
+        BackHandler(enabled = drawerOpen || screen != Screen.MAIN) {
         when {
             drawerOpen -> drawerOpen = false
             screen == Screen.OSS -> screen = Screen.ABOUT
@@ -947,6 +973,7 @@ private fun GlyphVisualizerApp(
                         isPhone3aDevice = isPhone3aDevice,
                         isPhone4aDevice = isPhone4aDevice,
                         binaryMode = binaryMode,
+                        baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
@@ -972,6 +999,7 @@ private fun GlyphVisualizerApp(
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                        onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
                         onStartVisualizerClick = {
@@ -1064,6 +1092,7 @@ private fun MainScreenContent(
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
     binaryMode: Boolean,
+    baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -1089,6 +1118,7 @@ private fun MainScreenContent(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onStartVisualizerClick: () -> Unit,
@@ -1205,6 +1235,7 @@ private fun MainScreenContent(
                         isPhone3aDevice = isPhone3aDevice,
                         isPhone4aDevice = isPhone4aDevice,
                         binaryMode = binaryMode,
+                        baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
@@ -1229,7 +1260,8 @@ private fun MainScreenContent(
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                            onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
+                        onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
+                        onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                             startPending = startPending,
                             onStartVisualizerClick = onStartVisualizerClick,
                             onStartProjectionClick = onStartProjectionClick,
@@ -2658,6 +2690,7 @@ private fun ControlCard(
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
     binaryMode: Boolean,
+    baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -2679,6 +2712,7 @@ private fun ControlCard(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onResetParametersClick: () -> Unit,
@@ -2874,6 +2908,30 @@ private fun ControlCard(
                             colors = glyphPatternChipColors()
                         )
                     }
+                }
+            }
+
+            if (isPhone4aDevice) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.base_indicator_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            text = stringResource(R.string.base_indicator_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Checkbox(
+                        checked = baseIndicatorEnabled,
+                        onCheckedChange = onBaseIndicatorEnabledChanged
+                    )
                 }
             }
 
@@ -3274,6 +3332,7 @@ private fun GlyphVisualizerPreview() {
             isPhone3aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3A,
             isPhone4aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A,
             binaryMode = false,
+            baseIndicatorEnabled = false,
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
@@ -3294,6 +3353,7 @@ private fun GlyphVisualizerPreview() {
             onLatencyMsChangeFinished = {},
             onLatencyAutoSwitchChanged = {},
             onGlyphMeterPreviewEnabledChanged = {},
+            onBaseIndicatorEnabledChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onBinaryModeChanged = {},

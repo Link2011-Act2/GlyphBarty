@@ -56,6 +56,8 @@
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
     <string name="settings_ui_mode_material">Material 3</string>
+    <string name="base_indicator_title">ベースインジケーター</string>
+    <string name="base_indicator_desc">Phone (4a) の赤いLEDを低音に応じて点灯させます。</string>
     <string name="settings_media_projection_title">MediaProjection を表示</string>
     <string name="settings_media_projection_desc">画面キャプチャで音声を取得するモードを使えるようにします\n通常は不要ですが、不具合が出た場合はこれを使用してみてください</string>
     <string name="settings_glyph_meter_preview_title">実験的: より忠実なプレビュー</string>

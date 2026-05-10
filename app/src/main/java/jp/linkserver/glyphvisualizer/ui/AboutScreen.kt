@@ -64,13 +64,15 @@ fun AboutScreen(
     val channelLabel = when {
         channelName.equals("IntDev", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_intdev)
         channelName.equals("Beta", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_beta)
-        channelName.equals("Stable", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_stable)
+        channelName.equals("Stable", ignoreCase = true) ||
+            channelName.equals("Release", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_stable)
         else -> stringResource(R.string.about_dev_channel_value_unknown)
     }
     val channelDescResId = when {
         channelName.equals("IntDev", ignoreCase = true) -> R.string.about_dev_channel_desc_intdev
         channelName.equals("Beta", ignoreCase = true) -> R.string.about_dev_channel_desc_beta
-        channelName.equals("Stable", ignoreCase = true) -> R.string.about_dev_channel_desc_stable
+        channelName.equals("Stable", ignoreCase = true) ||
+            channelName.equals("Release", ignoreCase = true) -> R.string.about_dev_channel_desc_stable
         else -> R.string.about_dev_channel_desc_unknown
     }
 

@@ -7,7 +7,6 @@ import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
-import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
 import com.nothing.ketchum.GlyphException
 import com.nothing.ketchum.GlyphFrame
 import com.nothing.ketchum.GlyphManager
@@ -30,32 +29,88 @@ class GlyphLightController(
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
+        private const val PHONE4A_BASE_INDICATOR_DECAY = 0.8f
+        private const val PHONE4A_BASE_INDICATOR_PEAK_FALLOFF = 0.9995f
+        private const val PHONE4A_BASE_INDICATOR_EPSILON = 0.000001f
+        private const val PHONE4A_BASE_INDICATOR_GAMMA = 2.4f
+    }
 
-        private val MODE_C1_LINEAR = Patterns.P2_C1_LINEAR
-        private val MODE_C1_CENTER = Patterns.P2_C1_CENTER
-        private val MODE_D1 = Patterns.P2_D1_LINEAR
-        private val MODE_D1_CENTER = Patterns.P2_D1_CENTER
-        private val MODE_C1_SPECTRUM = Patterns.P2_C1_SPECTRUM
-        private val MODE_D1_SPECTRUM = Patterns.P2_D1_SPECTRUM
-        private val MODE_ALL_BRIGHTNESS = Patterns.P2_ALL_BRIGHTNESS
+    private interface BaseIndicatorRenderer {
+        fun accepts(profile: GlyphDeviceProfile): Boolean
+        fun setSmoothing(smoothing: Float, smoothingBalance: Float)
+        fun updateAnalysis(level: Float)
+        fun reset()
+        fun apply(colors: IntArray, binaryMode: Boolean, outputGamma: Float)
+    }
 
-        private val MODE_P3A_C_LINEAR = Patterns.P3A_C_LINEAR
-        private val MODE_P3A_C_CENTER = Patterns.P3A_C_CENTER
-        private val MODE_P3A_C_SPECTRUM = Patterns.P3A_C_SPECTRUM
-        private val MODE_P3A_CAB_LINEAR = Patterns.P3A_CAB_LINEAR
-        private val MODE_P3A_CAB_CENTER = Patterns.P3A_CAB_CENTER
-        private val MODE_P3A_CAB_SPECTRUM = Patterns.P3A_CAB_SPECTRUM
-        private val MODE_P3A_ALL_BRIGHTNESS = Patterns.P3A_ALL_BRIGHTNESS
+    private class Phone4aBaseIndicatorRenderer : BaseIndicatorRenderer {
+        private var bandLevel = 0f
+        private var smoothedLevel = 0f
+        private var displayedLevel = 0f
+        private var peakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+        private var smoothing = 0.45f
+        private var smoothingBalance = 0f
 
-        private val MODE_P2A_C_LINEAR = Patterns.P2A_C_LINEAR
-        private val MODE_P2A_C_CENTER = Patterns.P2A_C_CENTER
-        private val MODE_P2A_C_SPECTRUM = Patterns.P2A_C_SPECTRUM
-        private val MODE_P2A_ALL_BRIGHTNESS = Patterns.P2A_ALL_BRIGHTNESS
+        override fun accepts(profile: GlyphDeviceProfile): Boolean {
+            return profile == GlyphDeviceProfile.PHONE4A
+        }
 
-        private val MODE_P4A_LINEAR = Patterns.P4A_LINEAR
-        private val MODE_P4A_CENTER = Patterns.P4A_CENTER
-        private val MODE_P4A_SPECTRUM = Patterns.P4A_SPECTRUM
-        private val MODE_P4A_ALL_BRIGHTNESS = Patterns.P4A_ALL_BRIGHTNESS
+        override fun setSmoothing(smoothing: Float, smoothingBalance: Float) {
+            this.smoothing = smoothing.coerceIn(0.05f, 0.6f)
+            this.smoothingBalance = smoothingBalance.coerceIn(-1f, 1f)
+        }
+
+        override fun updateAnalysis(level: Float) {
+            bandLevel = level.coerceIn(0f, 1f)
+        }
+
+        override fun reset() {
+            bandLevel = 0f
+            smoothedLevel = 0f
+            displayedLevel = 0f
+            peakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+        }
+
+        override fun apply(colors: IntArray, binaryMode: Boolean, outputGamma: Float) {
+            if (colors.isEmpty()) return
+
+            val current = bandLevel.coerceIn(0f, 1f)
+            val noReleaseSmoothing = smoothing >= 0.54f
+            val primarySmoothing = if (noReleaseSmoothing) {
+                1f
+            } else {
+                (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
+            }
+            val release = if (noReleaseSmoothing) 1f else smoothing
+
+            if (current > smoothedLevel) {
+                smoothedLevel = current
+            } else {
+                smoothedLevel += (current - smoothedLevel) * primarySmoothing
+            }
+
+            if (smoothedLevel > displayedLevel) {
+                displayedLevel = smoothedLevel
+            } else {
+                displayedLevel += (smoothedLevel - displayedLevel) * release
+            }
+
+            peakLevel = max(
+                displayedLevel,
+                peakLevel * PHONE4A_BASE_INDICATOR_PEAK_FALLOFF
+            ).coerceAtLeast(PHONE4A_BASE_INDICATOR_EPSILON)
+
+            val normalized = (displayedLevel / peakLevel).coerceIn(0f, 1f)
+            val shaped = normalized * normalized
+            val gammaMapped = shaped.pow(PHONE4A_BASE_INDICATOR_GAMMA)
+            val brightness = if (binaryMode) {
+                if (gammaMapped >= 0.5f) MAX_LIGHT else 0
+            } else {
+                (gammaMapped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+            }
+
+            colors[colors.lastIndex] = brightness
+        }
     }
 
     private data class DeviceSpec(
@@ -74,16 +129,23 @@ class GlyphLightController(
     private var isBound = false
     private var isSessionOpen = false
     private var reverseDirection = true
-    private var glyphMode = MODE_C1_LINEAR
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
+    private var baseIndicatorEnabled = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
+    private var smoothing = 0.45f
+    private var smoothingBalance = 0f
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
+    private var lastPreviewLevel = 0f
+    private var baseIndicatorMin = 0f
+    private var baseIndicatorMax = 1f
+    private var lastBaseIndicatorUpdateMs = 0L
     private var allBrightnessMin = 0f
     private var allBrightnessMax = 1f
     private var lastAllBrightnessUpdateMs = 0L
@@ -104,6 +166,9 @@ class GlyphLightController(
     private var bLinearFrame: GlyphFrame? = null
     private var d1Frame: GlyphFrame? = null
     private var fullGlyphBrightness = IntArray(0)
+    private val baseIndicatorRenderers: List<BaseIndicatorRenderer> = listOf(
+        Phone4aBaseIndicatorRenderer()
+    )
     // SDK 接続待ちの間に届いたレベルを保持し、接続後に再送する
     @Volatile private var pendingLevel: Float = -1f
 
@@ -207,11 +272,16 @@ class GlyphLightController(
             glyphMode = mode
             resetSpectrumScaleTracking()
             resetLevelScaleTracking()
+            resetBaseIndicatorTracking()
         }
     }
 
     override fun setBinaryMode(binary: Boolean) {
         binaryMode = binary
+    }
+
+    override fun setBaseIndicatorEnabled(enabled: Boolean) {
+        baseIndicatorEnabled = enabled
     }
 
     override fun setOutputGamma(gamma: Float) {
@@ -222,6 +292,7 @@ class GlyphLightController(
         if (levelAutoScaleEnabled != enabled) {
             levelAutoScaleEnabled = enabled
             resetLevelScaleTracking()
+            resetBaseIndicatorTracking()
         }
     }
 
@@ -229,6 +300,7 @@ class GlyphLightController(
         if (spectrumAutoScaleEnabled != enabled) {
             spectrumAutoScaleEnabled = enabled
             resetSpectrumScaleTracking()
+            resetBaseIndicatorTracking()
         }
     }
 
@@ -236,6 +308,7 @@ class GlyphLightController(
         if (allBrightnessAutoScaleEnabled != enabled) {
             allBrightnessAutoScaleEnabled = enabled
             resetAllBrightnessScaleTracking()
+            resetBaseIndicatorTracking()
         }
     }
 
@@ -243,6 +316,15 @@ class GlyphLightController(
         val nextWindowMs = seconds.coerceIn(10f, 60f) * 1_000f
         if (autoScaleWindowMs != nextWindowMs) {
             autoScaleWindowMs = nextWindowMs
+            resetBaseIndicatorTracking()
+        }
+    }
+
+    override fun setSmoothing(smoothing: Float, smoothingBalance: Float) {
+        this.smoothing = smoothing.coerceIn(0.05f, 0.6f)
+        this.smoothingBalance = smoothingBalance.coerceIn(-1f, 1f)
+        baseIndicatorRenderers.forEach {
+            it.setSmoothing(this.smoothing, this.smoothingBalance)
         }
     }
 
@@ -251,9 +333,11 @@ class GlyphLightController(
         highEnergy: Float,
         leftLevel: Float,
         rightLevel: Float,
-        spectrumBands: FloatArray?
+        spectrumBands: FloatArray?,
+        phone4aBaseBandLevel: Float
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
+        updateBaseIndicatorAnalysis(phone4aBaseBandLevel)
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
         val raw = spectrumBands ?: FloatArray(0)
         this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(raw))
@@ -341,19 +425,12 @@ class GlyphLightController(
         }
         pendingLevel = -1f
         val renderLevel = normalizeLevelForMode(clamped)
+        lastPreviewLevel = renderLevel
 
         val spec = deviceSpec ?: return
-        val cFrame = cLinearFrame ?: return
 
         try {
-            when (spec.profile) {
-                GlyphDeviceProfile.PHONE2 -> updatePhone2Level(spec, cFrame, renderLevel)
-                GlyphDeviceProfile.PHONE2A -> updatePhone2aLevel(spec, cFrame, renderLevel)
-                GlyphDeviceProfile.PHONE3A -> updatePhone3aLevel(spec, cFrame, renderLevel)
-                GlyphDeviceProfile.PHONE4A -> updatePhone4aLevel(spec, cFrame, renderLevel)
-                GlyphDeviceProfile.PHONE3_MATRIX,
-                GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> Unit
-            }
+            renderLightPattern(spec, renderLevel)
         } catch (_: GlyphException) {
         }
     }
@@ -379,86 +456,66 @@ class GlyphLightController(
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
-        return Patterns.isLevelAutoScale(glyphMode)
+        return GlyphPatternRegistry.isLevelAutoScale(glyphMode)
     }
 
-    private fun updatePhone2aLevel(spec: DeviceSpec, cFrame: GlyphFrame, level: Float) {
-        when (glyphMode) {
-            MODE_P2A_C_CENTER, MODE_C1_CENTER -> updateCenterRange(level, spec.cRange)
-            MODE_P2A_C_SPECTRUM, MODE_C1_SPECTRUM -> updateSpectrumRanges(level, listOf(spec.cRange))
-            MODE_P2A_ALL_BRIGHTNESS, MODE_ALL_BRIGHTNESS -> updateAllBrightness(level)
-            MODE_P2A_C_LINEAR, MODE_C1_LINEAR -> displayLinear(level, cFrame, spec.cRange.count())
-            else -> displayLinear(level, cFrame, spec.cRange.count())
+    private fun renderLightPattern(spec: DeviceSpec, level: Float) {
+        val recipe = GlyphPatternRegistry.recipeFor(glyphMode)
+            ?: GlyphPatternRegistry.recipeFor(GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice())
+            ?: return
+        val ranges = resolveLightRanges(spec, recipe.lightZones)
+
+        if (spec.profile == GlyphDeviceProfile.PHONE4A) {
+            updatePhone4aFrame(spec, level) { colors ->
+                applyRecipeToColors(colors, ranges, recipe.renderMode, level)
+            }
+            return
         }
-    }
 
-    private fun updatePhone2Level(spec: DeviceSpec, cFrame: GlyphFrame, level: Float) {
-        when (glyphMode) {
-            MODE_ALL_BRIGHTNESS -> updateAllBrightness(level)
-            MODE_C1_CENTER -> updateCenterRange(level, spec.cRange)
-            MODE_D1_CENTER -> updateCenterRange(level, spec.d1Range ?: spec.cRange)
-            MODE_C1_SPECTRUM -> updateSpectrumRanges(level, listOf(spec.cRange))
-            MODE_D1 -> {
-                val d1Range = spec.d1Range
-                if (d1Range != null) {
-                    updateLinearRanges(level, listOf(d1Range))
+        when (recipe.renderMode) {
+            GlyphPatternRenderMode.LINEAR -> updateLinearRanges(level, ranges)
+            GlyphPatternRenderMode.CENTER -> {
+                if (ranges.size <= 1) {
+                    updateCenterRange(level, ranges.firstOrNull() ?: spec.cRange)
                 } else {
-                    displayLinear(level, cFrame, spec.cRange.count())
+                    updateCenterRanges(level, ranges)
                 }
             }
-            MODE_D1_SPECTRUM -> {
-                val range = spec.d1Range ?: spec.cRange
-                updateSpectrumRanges(level, listOf(range))
+            GlyphPatternRenderMode.SPECTRUM -> updateSpectrumRanges(level, ranges)
+            GlyphPatternRenderMode.ALL_BRIGHTNESS -> updateAllBrightness(level)
+            else -> updateLinearRanges(level, ranges.ifEmpty { listOf(spec.cRange) })
+        }
+    }
+
+    private fun resolveLightRanges(spec: DeviceSpec, zones: List<GlyphLightZone>): List<IntRange> {
+        val resolved = zones.mapNotNull { zone ->
+            when (zone) {
+                GlyphLightZone.C -> spec.cRange
+                GlyphLightZone.A -> spec.aRange
+                GlyphLightZone.B -> spec.bRange
+                GlyphLightZone.CAB -> spec.cabRange
+                GlyphLightZone.D1 -> spec.d1Range
             }
-            else -> displayLinear(level, cFrame, spec.cRange.count())
         }
+        return if (resolved.isEmpty()) listOf(spec.cRange) else resolved
     }
 
-    private fun updatePhone3aLevel(spec: DeviceSpec, cFrame: GlyphFrame, level: Float) {
-        val cabRange = spec.cabRange ?: spec.cRange
-        val cabFrame = cabLinearFrame ?: cFrame
-        val abcRanges = listOfNotNull(spec.cRange, spec.aRange, spec.bRange)
-
-        when (glyphMode) {
-            MODE_P3A_C_CENTER -> updateCenterRange(level, spec.cRange)
-            MODE_P3A_C_SPECTRUM -> updateSpectrumRanges(level, listOf(spec.cRange))
-            MODE_P3A_CAB_LINEAR -> updateLinearRanges(level, abcRanges)
-            MODE_P3A_CAB_CENTER -> updateCenterRanges(level, abcRanges)
-            MODE_P3A_CAB_SPECTRUM -> updateSpectrumRanges(level, abcRanges)
-            MODE_P3A_ALL_BRIGHTNESS, MODE_ALL_BRIGHTNESS -> updateAllBrightness(level)
-
-            // Backward compatibility for old saved modes.
-            MODE_C1_CENTER -> updateCenterRange(level, spec.cRange)
-            MODE_D1 -> displayLinear(level, cabFrame, cabRange.count())
-
-            MODE_P3A_C_LINEAR, MODE_C1_LINEAR -> displayLinear(level, cFrame, spec.cRange.count())
-            else -> displayLinear(level, cFrame, spec.cRange.count())
+    private fun applyRecipeToColors(
+        colors: IntArray,
+        ranges: List<IntRange>,
+        renderMode: GlyphPatternRenderMode,
+        level: Float
+    ) {
+        when (renderMode) {
+            GlyphPatternRenderMode.LINEAR -> ranges.forEach { applyLinearRange(colors, it, level) }
+            GlyphPatternRenderMode.CENTER -> ranges.forEach { applyCenterRange(colors, it, level) }
+            GlyphPatternRenderMode.SPECTRUM -> ranges.forEach { applySpectrumRange(colors, it, level) }
+            GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
+                val primaryRange = ranges.firstOrNull() ?: return
+                applyAllBrightnessRange(colors, primaryRange, level)
+            }
+            else -> ranges.forEach { applyLinearRange(colors, it, level) }
         }
-    }
-
-    private fun updatePhone4aLevel(spec: DeviceSpec, cFrame: GlyphFrame, level: Float) {
-        when (glyphMode) {
-            MODE_P4A_CENTER -> updateCenterRange(level, spec.cRange)
-            MODE_P4A_SPECTRUM -> updateSpectrumRanges(level, listOf(spec.cRange))
-            MODE_P4A_ALL_BRIGHTNESS -> updateAllBrightness(level)
-            MODE_P4A_LINEAR -> displayLinear(level, cFrame, spec.cRange.count())
-            else -> displayLinear(level, cFrame, spec.cRange.count())
-        }
-    }
-
-    private fun displayLinear(level: Float, frame: GlyphFrame, segments: Int) {
-        val progress = (level.coerceIn(0f, 1f) * 100).toInt()
-        glyphManager.displayProgress(
-            frame,
-            if (binaryMode) binarySnap(level, segments) else progress,
-            reverseDirection
-        )
-    }
-
-    private fun binarySnap(level: Float, segments: Int): Int {
-        if (segments <= 0) return 0
-        val fullSegs = (level.coerceIn(0f, 1f) * segments).toInt()
-        return (fullSegs * 100f / segments).toInt()
     }
 
     private fun updateLinearRanges(level: Float, ranges: List<IntRange>) {
@@ -486,7 +543,7 @@ class GlyphLightController(
         val fullLit = virtualLit.toInt().coerceIn(0, count)
         val edgeBrightness = if (binaryMode) 0 else ((virtualLit - fullLit) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
 
-        val channels = if (reverseDirection) range.reversed().toList() else range.toList()
+        val channels = if (shouldReverseLightOrder()) range.reversed().toList() else range.toList()
         channels.forEachIndexed { index, channel ->
             val brightness = when {
                 index < fullLit -> MAX_LIGHT
@@ -517,7 +574,7 @@ class GlyphLightController(
     }
 
     private fun applySpectrumRange(colors: IntArray, range: IntRange, level: Float) {
-        val channels = if (reverseDirection) range.reversed().toList() else range.toList()
+        val channels = if (shouldReverseLightOrder()) range.reversed().toList() else range.toList()
         if (channels.isEmpty()) return
 
         val count = channels.size
@@ -555,6 +612,13 @@ class GlyphLightController(
         return ((lowEnergy * (1f - position)) + (highEnergy * position)).coerceIn(0f, 1f)
     }
 
+    private fun shouldReverseLightOrder(): Boolean {
+        return when (deviceSpec?.profile) {
+            GlyphDeviceProfile.PHONE4A -> !reverseDirection
+            else -> reverseDirection
+        }
+    }
+
     private fun updateAllBrightness(level: Float) {
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
@@ -580,6 +644,28 @@ class GlyphLightController(
         glyphManager.setFrameColors(fullGlyphBrightness)
     }
 
+    private fun applyAllBrightnessRange(colors: IntArray, range: IntRange, level: Float) {
+        val clamped = level.coerceIn(0f, 1f)
+        if (clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) return
+        val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
+            normalizeAllBrightnessLevel(clamped)
+        } else clamped
+        if (normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) return
+        val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+            .coerceIn(0f, 1f)
+        val shaped = normalized.pow(outputGamma)
+        val brightness = if (binaryMode) {
+            MAX_LIGHT
+        } else {
+            (ALL_BRIGHTNESS_MIN_LIGHT + ((MAX_LIGHT - ALL_BRIGHTNESS_MIN_LIGHT) * shaped)).roundToInt()
+        }
+        for (channel in range) {
+            if (channel in colors.indices) {
+                colors[channel] = brightness
+            }
+        }
+    }
+
     private fun normalizeAllBrightnessLevel(level: Float): Float {
         val now = SystemClock.elapsedRealtime()
         val elapsed = if (lastAllBrightnessUpdateMs <= 0L) 0L else (now - lastAllBrightnessUpdateMs).coerceAtLeast(0L)
@@ -602,7 +688,7 @@ class GlyphLightController(
     private fun updateCenterRange(level: Float, channelRange: IntRange) {
         val spec = deviceSpec ?: return
         if (!spec.centerSupported || channelRange.count() < 2) {
-            cLinearFrame?.let { displayLinear(level, it, spec.cRange.count()) }
+            updateLinearRanges(level, listOf(channelRange))
             return
         }
 
@@ -612,7 +698,7 @@ class GlyphLightController(
             return
         }
 
-        if (spec.profile == GlyphDeviceProfile.PHONE2 && glyphMode == MODE_D1_CENTER && 29 in channelRange) {
+        if (spec.profile == GlyphDeviceProfile.PHONE2 && 29 in channelRange && channelRange.count() == 8) {
             val centerChannel = 29
             val leftChannels = (channelRange.first until centerChannel).toList().asReversed()
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
@@ -762,6 +848,8 @@ class GlyphLightController(
     }
 
     override fun turnOff() {
+        lastPreviewLevel = 0f
+        resetBaseIndicators()
         silenceStartedAt = 0L
         sessionReleasedForSilence = false
         try {
@@ -770,6 +858,81 @@ class GlyphLightController(
             AppLogger.w(TAG, "turnOff ignored because session is not ready", error)
         }
     }
+
+    private fun updatePhone4aFrame(
+        spec: DeviceSpec,
+        level: Float,
+        populateMain: (IntArray) -> Unit
+    ) {
+        val colors = IntArray(spec.channelCount)
+        populateMain(colors)
+        if (baseIndicatorEnabled) {
+            applyBaseIndicator(spec.profile, colors)
+        }
+        if (colors.none { it > 0 }) {
+            turnOff()
+        } else {
+            glyphManager.setFrameColors(colors)
+        }
+    }
+
+    private fun updateBaseIndicatorAnalysis(level: Float) {
+        val profile = deviceSpec?.profile ?: return
+        baseIndicatorRenderers
+            .firstOrNull { it.accepts(profile) }
+            ?.updateAnalysis(normalizeBaseIndicatorLevel(level.coerceIn(0f, 1f)))
+    }
+
+    private fun applyBaseIndicator(profile: GlyphDeviceProfile, colors: IntArray) {
+        baseIndicatorRenderers
+            .firstOrNull { it.accepts(profile) }
+            ?.apply(colors, binaryMode, outputGamma)
+    }
+
+    private fun resetBaseIndicators() {
+        baseIndicatorRenderers.forEach { it.reset() }
+        resetBaseIndicatorTracking()
+    }
+
+    private fun normalizeBaseIndicatorLevel(level: Float): Float {
+        if (!isBaseIndicatorAutoScaleEnabled()) return level
+
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = if (lastBaseIndicatorUpdateMs <= 0L) 0L else {
+            (now - lastBaseIndicatorUpdateMs).coerceAtLeast(0L)
+        }
+        lastBaseIndicatorUpdateMs = now
+        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
+
+        baseIndicatorMin = min(level, (baseIndicatorMin + drift).coerceIn(0f, 1f))
+        baseIndicatorMax = max(level, (baseIndicatorMax - drift).coerceIn(0f, 1f))
+
+        val range = (baseIndicatorMax - baseIndicatorMin).coerceAtLeast(0.05f)
+        return ((level - baseIndicatorMin) / range).coerceIn(0f, 1f)
+    }
+
+    private fun isBaseIndicatorAutoScaleEnabled(): Boolean {
+        return when (GlyphPatternRegistry.kindOf(glyphMode)) {
+            GlyphPatternKind.SPECTRUM -> spectrumAutoScaleEnabled
+            GlyphPatternKind.ALL_BRIGHTNESS -> allBrightnessAutoScaleEnabled
+            GlyphPatternKind.LINEAR,
+            GlyphPatternKind.CENTER,
+            GlyphPatternKind.MATRIX_BAR,
+            GlyphPatternKind.MATRIX_FIELD,
+            GlyphPatternKind.MATRIX_CIRCLE -> levelAutoScaleEnabled
+            null -> false
+        }
+    }
+
+    private fun resetBaseIndicatorTracking() {
+        baseIndicatorMin = 0f
+        baseIndicatorMax = 1f
+        lastBaseIndicatorUpdateMs = 0L
+    }
+
+    override fun previewLevel(): Float = lastPreviewLevel.coerceIn(0f, 1f)
+
+    override fun previewSpectrumBands(): FloatArray = spectrumBands.copyOf()
 
     private fun releaseSessionForSilence() {
         try {

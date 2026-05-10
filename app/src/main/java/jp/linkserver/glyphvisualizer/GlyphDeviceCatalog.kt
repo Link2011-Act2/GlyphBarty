@@ -85,7 +85,7 @@ object GlyphDeviceCatalog {
                 defaultGlyphMode = GlyphPatternRegistry.P4A_LINEAR,
                 lightSpec = GlyphLightDeviceSpec(
                     sdkDeviceId = Glyph.DEVICE_25111,
-                    channelCount = 6,
+                    channelCount = 7,
                     cRange = 0..5,
                     centerSupported = true
                 )

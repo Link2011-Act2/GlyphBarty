@@ -24,6 +24,7 @@ object SettingsPreferences {
             peakHoldEnabled = state.peakHoldEnabled,
             glyphMode = state.glyphMode,
             binaryMode = state.binaryMode,
+            baseIndicatorEnabled = state.baseIndicatorEnabled,
             levelAutoScale = state.levelAutoScale,
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
@@ -64,6 +65,7 @@ object SettingsPreferences {
             peakHoldEnabled = prefs.getBoolean("peak_hold_enabled", defaults.peakHoldEnabled),
             glyphMode = prefs.getString("glyph_mode", defaults.glyphMode) ?: defaults.glyphMode,
             binaryMode = prefs.getBoolean("binary_mode", defaults.binaryMode),
+            baseIndicatorEnabled = prefs.getBoolean("base_indicator_enabled", defaults.baseIndicatorEnabled),
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
@@ -94,6 +96,7 @@ object SettingsPreferences {
             .putBoolean("peak_hold_enabled", parameters.peakHoldEnabled)
             .putString("glyph_mode", parameters.glyphMode)
             .putBoolean("binary_mode", parameters.binaryMode)
+            .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)
@@ -158,6 +161,7 @@ object SettingsPreferences {
             peakHoldEnabled = parameters.optBoolean("peakHoldEnabled", defaults.peakHoldEnabled),
             glyphMode = parameters.optString("glyphMode", defaults.glyphMode),
             binaryMode = parameters.optBoolean("binaryMode", defaults.binaryMode),
+            baseIndicatorEnabled = parameters.optBoolean("baseIndicatorEnabled", defaults.baseIndicatorEnabled),
             levelAutoScale = parameters.optBoolean("levelAutoScale", defaults.levelAutoScale),
             spectrumAutoScale = parameters.optBoolean("spectrumAutoScale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = parameters.optBoolean("allBrightnessAutoScale", defaults.allBrightnessAutoScale),

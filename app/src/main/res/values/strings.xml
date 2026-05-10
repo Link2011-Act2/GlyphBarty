@@ -56,6 +56,8 @@
     <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
     <string name="settings_ui_mode_nothing">Nothing-like</string>
     <string name="settings_ui_mode_material">Material 3</string>
+    <string name="base_indicator_title">Base indicator</string>
+    <string name="base_indicator_desc">Drive the red Phone (4a) LED from low-frequency energy.</string>
     <string name="settings_media_projection_title">Show MediaProjection</string>
     <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.&#10;You usually do not need this, but if you run into issues, try using it.</string>
     <string name="settings_glyph_meter_preview_title">Experimental: More faithful preview</string>

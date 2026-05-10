@@ -48,7 +48,8 @@ class AudioPlaybackVisualizer(
             highEnergy: Float,
             leftLevel: Float,
             rightLevel: Float,
-            spectrumBands: FloatArray
+            spectrumBands: FloatArray,
+            phone4aBaseBandLevel: Float
         ) -> Unit
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -226,7 +227,7 @@ class AudioPlaybackVisualizer(
                     displayedRight += (rightLevel - displayedRight) * release
                 }
                 val peakValue = displayedLevel
-                val spectrumBands = SpectrumAnalyzer.computeLogBands(
+                val spectrumAnalysis = SpectrumAnalyzer.analyzeLogBands(
                     samples = monoSamples,
                     sampleRateHz = 44_100,
                     bandCount = 25
@@ -240,7 +241,8 @@ class AudioPlaybackVisualizer(
                         highEnergy,
                         displayedLeft,
                         displayedRight,
-                        spectrumBands
+                        spectrumAnalysis.bands,
+                        spectrumAnalysis.normalizedRangePeak
                     )
                 }
             }

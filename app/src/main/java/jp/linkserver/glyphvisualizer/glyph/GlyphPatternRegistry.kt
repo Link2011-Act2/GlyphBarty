@@ -21,11 +21,37 @@ enum class GlyphPatternKind {
     MATRIX_CIRCLE
 }
 
+enum class GlyphPatternRenderMode {
+    LINEAR,
+    CENTER,
+    SPECTRUM,
+    ALL_BRIGHTNESS,
+    MATRIX_BAR,
+    MATRIX_FIELD,
+    MATRIX_CIRCLE,
+    MATRIX_SPECTRUM,
+    MATRIX_SPECTRUM_CENTER
+}
+
+enum class GlyphLightZone {
+    C,
+    A,
+    B,
+    CAB,
+    D1
+}
+
+data class GlyphPatternRecipe(
+    val renderMode: GlyphPatternRenderMode,
+    val lightZones: List<GlyphLightZone> = emptyList()
+)
+
 data class GlyphPatternDefinition(
     val id: String,
     val labelRes: Int,
     val kind: GlyphPatternKind,
-    val supportedDevices: Set<GlyphDeviceProfile>
+    val supportedDevices: Set<GlyphDeviceProfile>,
+    val recipe: GlyphPatternRecipe
 )
 
 /**
@@ -75,39 +101,53 @@ object GlyphPatternRegistry {
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     )
 
+    private fun pattern(
+        id: String,
+        labelRes: Int,
+        kind: GlyphPatternKind,
+        supportedDevices: Set<GlyphDeviceProfile>,
+        recipe: GlyphPatternRecipe
+    ) = GlyphPatternDefinition(
+        id = id,
+        labelRes = labelRes,
+        kind = kind,
+        supportedDevices = supportedDevices,
+        recipe = recipe
+    )
+
     val all: List<GlyphPatternDefinition> = listOf(
-        GlyphPatternDefinition(P2_C1_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_D1_LINEAR, R.string.mode_d1, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_C1_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_D1_CENTER, R.string.mode_d1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_C1_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_D1_SPECTRUM, R.string.mode_d1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2)),
-        GlyphPatternDefinition(P2_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2)),
+        pattern(P2_C1_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
+        pattern(P2_D1_LINEAR, R.string.mode_d1, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.D1))),
+        pattern(P2_C1_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
+        pattern(P2_D1_CENTER, R.string.mode_d1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.D1))),
+        pattern(P2_C1_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P2_D1_SPECTRUM, R.string.mode_d1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.D1))),
+        pattern(P2_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
-        GlyphPatternDefinition(P2A_C_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2A)),
-        GlyphPatternDefinition(P2A_C_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2A)),
-        GlyphPatternDefinition(P2A_C_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2A)),
-        GlyphPatternDefinition(P2A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2A)),
+        pattern(P2A_C_LINEAR, R.string.mode_c1_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE2A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
+        pattern(P2A_C_CENTER, R.string.mode_c1_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE2A), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
+        pattern(P2A_C_SPECTRUM, R.string.mode_c1_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE2A), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P2A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE2A), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
-        GlyphPatternDefinition(P3A_C_LINEAR, R.string.mode_p3a_c_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_CAB_LINEAR, R.string.mode_p3a_cab_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_C_CENTER, R.string.mode_p3a_c_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_CAB_CENTER, R.string.mode_p3a_cab_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_C_SPECTRUM, R.string.mode_p3a_c_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_CAB_SPECTRUM, R.string.mode_p3a_cab_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A)),
-        GlyphPatternDefinition(P3A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE3A)),
+        pattern(P3A_C_LINEAR, R.string.mode_p3a_c_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
+        pattern(P3A_CAB_LINEAR, R.string.mode_p3a_cab_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C, GlyphLightZone.A, GlyphLightZone.B))),
+        pattern(P3A_C_CENTER, R.string.mode_p3a_c_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
+        pattern(P3A_CAB_CENTER, R.string.mode_p3a_cab_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C, GlyphLightZone.A, GlyphLightZone.B))),
+        pattern(P3A_C_SPECTRUM, R.string.mode_p3a_c_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P3A_CAB_SPECTRUM, R.string.mode_p3a_cab_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C, GlyphLightZone.A, GlyphLightZone.B))),
+        pattern(P3A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
-        GlyphPatternDefinition(P4A_LINEAR, R.string.mode_p4a_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE4A)),
-        GlyphPatternDefinition(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE4A)),
-        GlyphPatternDefinition(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE4A)),
-        GlyphPatternDefinition(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE4A)),
+        pattern(P4A_LINEAR, R.string.mode_p4a_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
+        pattern(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
+        pattern(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
-        GlyphPatternDefinition(P3_MATRIX_SPECTRUM, R.string.mode_matrix_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices),
-        GlyphPatternDefinition(P3_MATRIX_SPECTRUM_CENTER, R.string.mode_matrix_spectrum_center, GlyphPatternKind.SPECTRUM, matrixDevices),
-        GlyphPatternDefinition(P3_MATRIX_BAR, R.string.mode_matrix_bar, GlyphPatternKind.MATRIX_BAR, matrixDevices),
-        GlyphPatternDefinition(P3_MATRIX_FIELD, R.string.mode_matrix_field, GlyphPatternKind.MATRIX_FIELD, matrixDevices),
-        GlyphPatternDefinition(P3_MATRIX_CIRCLE, R.string.mode_matrix_circle, GlyphPatternKind.MATRIX_CIRCLE, matrixDevices),
-        GlyphPatternDefinition(P3_MATRIX_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, matrixDevices)
+        pattern(P3_MATRIX_SPECTRUM, R.string.mode_matrix_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM)),
+        pattern(P3_MATRIX_SPECTRUM_CENTER, R.string.mode_matrix_spectrum_center, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER)),
+        pattern(P3_MATRIX_BAR, R.string.mode_matrix_bar, GlyphPatternKind.MATRIX_BAR, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_BAR)),
+        pattern(P3_MATRIX_FIELD, R.string.mode_matrix_field, GlyphPatternKind.MATRIX_FIELD, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_FIELD)),
+        pattern(P3_MATRIX_CIRCLE, R.string.mode_matrix_circle, GlyphPatternKind.MATRIX_CIRCLE, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_CIRCLE)),
+        pattern(P3_MATRIX_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS))
     )
 
     private val byId = all.associateBy { it.id }
@@ -115,6 +155,10 @@ object GlyphPatternRegistry {
     fun patternsFor(profile: GlyphDeviceProfile): List<GlyphPatternDefinition> {
         return all.filter { profile in it.supportedDevices }
     }
+
+    fun definition(id: String): GlyphPatternDefinition? = byId[id]
+
+    fun recipeFor(id: String): GlyphPatternRecipe? = byId[id]?.recipe
 
     fun isSupported(profile: GlyphDeviceProfile, id: String): Boolean {
         return byId[id]?.supportedDevices?.contains(profile) == true

@@ -43,7 +43,8 @@ class OutputMixVisualizer(
             highEnergy: Float,
             leftLevel: Float,
             rightLevel: Float,
-            spectrumBands: FloatArray
+            spectrumBands: FloatArray,
+            phone4aBaseBandLevel: Float
         ) -> Unit,
         onStartFailed: () -> Unit = {},
         onCrashed: () -> Unit = {}
@@ -226,7 +227,7 @@ class OutputMixVisualizer(
                         for (i in spectrumSamples.indices) {
                             spectrumSamples[i] = monoSamples[i * spectrumDecimation]
                         }
-                        val spectrumBands = SpectrumAnalyzer.computeLogBands(
+                        val spectrumAnalysis = SpectrumAnalyzer.analyzeLogBands(
                             samples = spectrumSamples,
                             sampleRateHz = spectrumSampleRate,
                             bandCount = 25
@@ -240,7 +241,8 @@ class OutputMixVisualizer(
                                 highEnergy,
                                 displayedLevel,
                                 displayedLevel,
-                                spectrumBands
+                                spectrumAnalysis.bands,
+                                spectrumAnalysis.normalizedRangePeak
                             )
                         }
 

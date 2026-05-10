@@ -6,14 +6,33 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 object SpectrumAnalyzer {
+    data class AnalysisResult(
+        val bands: FloatArray,
+        val normalizedRangePeak: Float
+    )
+
     fun computeLogBands(
         samples: FloatArray,
         sampleRateHz: Int,
         bandCount: Int,
         minFreqHz: Float = 40f
     ): FloatArray {
+        return analyzeLogBands(samples, sampleRateHz, bandCount, minFreqHz).bands
+    }
+
+    fun analyzeLogBands(
+        samples: FloatArray,
+        sampleRateHz: Int,
+        bandCount: Int,
+        minFreqHz: Float = 40f,
+        rangeLowHz: Float = 60f,
+        rangeHighHz: Float = 120f
+    ): AnalysisResult {
         if (samples.size < 64 || bandCount <= 0 || sampleRateHz <= 0) {
-            return FloatArray(bandCount.coerceAtLeast(0))
+            return AnalysisResult(
+                bands = FloatArray(bandCount.coerceAtLeast(0)),
+                normalizedRangePeak = 0f
+            )
         }
 
         val n = highestPowerOfTwo(samples.size.coerceAtMost(256))
@@ -60,12 +79,33 @@ object SpectrumAnalyzer {
             if (v > maxBand) maxBand = v
         }
 
+        var rangePeak = 0f
+        val targetLow = minOf(rangeLowHz, rangeHighHz).coerceAtLeast(safeMin)
+        val targetHigh = maxOf(rangeLowHz, rangeHighHz).coerceAtMost(safeMax)
+
+        for (band in 0 until bandCount) {
+            val f0 = safeMin * ratio.pow(band / bandCount.toFloat())
+            val f1 = safeMin * ratio.pow((band + 1f) / bandCount.toFloat())
+            val overlapsTarget = f1 > targetLow && f0 < targetHigh
+            if (overlapsTarget && bands[band] > rangePeak) {
+                rangePeak = bands[band]
+            }
+        }
+
         if (maxBand > 0f) {
             for (i in bands.indices) {
                 bands[i] = (bands[i] / maxBand).coerceIn(0f, 1f)
             }
         }
-        return bands
+
+        return AnalysisResult(
+            bands = bands,
+            normalizedRangePeak = if (maxBand > 0f) {
+                (rangePeak / maxBand).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        )
     }
 
     private fun highestPowerOfTwo(v: Int): Int {

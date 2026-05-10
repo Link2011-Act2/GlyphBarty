@@ -55,6 +55,7 @@ class GlyphTileService : TileService() {
                 peakHoldEnabled = resolved.peakHoldEnabled,
                 glyphMode = resolved.glyphMode,
                 binaryMode = resolved.binaryMode,
+                baseIndicatorEnabled = resolved.baseIndicatorEnabled,
                 levelAutoScale = resolved.levelAutoScale,
                 spectrumAutoScale = resolved.spectrumAutoScale,
                 allBrightnessAutoScale = resolved.allBrightnessAutoScale,

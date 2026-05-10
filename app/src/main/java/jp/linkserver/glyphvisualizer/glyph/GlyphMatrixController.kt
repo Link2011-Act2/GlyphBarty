@@ -11,7 +11,6 @@ import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
-import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry as Patterns
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -35,12 +34,6 @@ class GlyphMatrixController(
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
         private const val ALL_BRIGHTNESS_MIN_LIGHT_MATRIX = 60
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
-        private val MODE_P3_MATRIX_BAR = Patterns.P3_MATRIX_BAR
-        private val MODE_P3_MATRIX_FIELD = Patterns.P3_MATRIX_FIELD
-        private val MODE_P3_MATRIX_CIRCLE = Patterns.P3_MATRIX_CIRCLE
-        private val MODE_P3_MATRIX_SPECTRUM = Patterns.P3_MATRIX_SPECTRUM
-        private val MODE_P3_MATRIX_SPECTRUM_CENTER = Patterns.P3_MATRIX_SPECTRUM_CENTER
-        private val MODE_P3_MATRIX_ALL_BRIGHTNESS = Patterns.P3_MATRIX_ALL_BRIGHTNESS
         private const val FRAME_INTERVAL_MS = 16L // ~60fps
     }
 
@@ -48,7 +41,7 @@ class GlyphMatrixController(
     private var isBound = false
     private var isSessionOpen = false
     private var reverseDirection = true
-    private var glyphMode = MODE_P3_MATRIX_BAR
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
@@ -57,6 +50,7 @@ class GlyphMatrixController(
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
+    private var lastPreviewLevel = 0f
     private var allBrightnessMin = 0f
     private var allBrightnessMax = 1f
     private var lastAllBrightnessUpdateMs = 0L
@@ -201,12 +195,15 @@ class GlyphMatrixController(
         }
     }
 
+    override fun setSmoothing(smoothing: Float, smoothingBalance: Float) = Unit
+
     override fun updateAnalysis(
         lowEnergy: Float,
         highEnergy: Float,
         leftLevel: Float,
         rightLevel: Float,
-        spectrumBands: FloatArray?
+        spectrumBands: FloatArray?,
+        phone4aBaseBandLevel: Float
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
@@ -321,7 +318,7 @@ class GlyphMatrixController(
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
-        return Patterns.isLevelAutoScale(glyphMode)
+        return GlyphPatternRegistry.isLevelAutoScale(glyphMode)
     }
 
     private fun normalizeAllBrightnessLevel(level: Float): Float {
@@ -348,6 +345,7 @@ class GlyphMatrixController(
 
         val clamped = level.coerceIn(0f, 1f)
         val renderLevel = normalizeLevelForMode(clamped)
+        lastPreviewLevel = renderLevel
         val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
@@ -371,9 +369,11 @@ class GlyphMatrixController(
         if (now - lastRenderAt < FRAME_INTERVAL_MS) return
         lastRenderAt = now
 
+        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
+            ?: GlyphPatternRenderMode.MATRIX_BAR
         val litRows = (renderLevel * matrixLength).roundToInt().coerceIn(0, matrixLength)
-        if (glyphMode == MODE_P3_MATRIX_BAR && litRows == lastLitRows) return
-        if (glyphMode == MODE_P3_MATRIX_ALL_BRIGHTNESS && renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
+        if (renderMode == GlyphPatternRenderMode.MATRIX_BAR && litRows == lastLitRows) return
+        if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS && renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
             turnOff()
             return
         }
@@ -453,8 +453,8 @@ class GlyphMatrixController(
             }
         }
 
-        when (glyphMode) {
-            MODE_P3_MATRIX_FIELD -> {
+        when (renderMode) {
+            GlyphPatternRenderMode.MATRIX_FIELD -> {
                 // 端っこまで広げたフィールド：全幅を使用
                 for (row in 0 until litRows.coerceIn(0, matrixLength)) {
                     val y = if (reverseDirection) row else (matrixLength - 1 - row)
@@ -464,7 +464,7 @@ class GlyphMatrixController(
                     }
                 }
             }
-            MODE_P3_MATRIX_CIRCLE -> {
+            GlyphPatternRenderMode.MATRIX_CIRCLE -> {
                 // 中心からの距離で円を描画
                 val center = (matrixLength - 1) / 2f
                 val maxRadius = (matrixLength - 1) / 2f
@@ -518,9 +518,9 @@ class GlyphMatrixController(
                     }
                 }
             }
-            MODE_P3_MATRIX_SPECTRUM -> drawSpectrum(centerLowToHigh = false)
-            MODE_P3_MATRIX_SPECTRUM_CENTER -> drawSpectrum(centerLowToHigh = true)
-            MODE_P3_MATRIX_ALL_BRIGHTNESS -> {
+            GlyphPatternRenderMode.MATRIX_SPECTRUM -> drawSpectrum(centerLowToHigh = false)
+            GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER -> drawSpectrum(centerLowToHigh = true)
+            GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
                 val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
                     normalizeAllBrightnessLevel(renderLevel)
                 } else {
@@ -570,6 +570,7 @@ class GlyphMatrixController(
     }
 
     override fun turnOff() {
+        lastPreviewLevel = 0f
         silenceStartedAt = 0L
         matrixReleasedForSilence = false
         try {
@@ -602,6 +603,10 @@ class GlyphMatrixController(
             "Matrix device spec is unavailable for the current device."
         }
     }
+
+    override fun previewLevel(): Float = lastPreviewLevel.coerceIn(0f, 1f)
+
+    override fun previewSpectrumBands(): FloatArray = spectrumBands.copyOf()
 
     private fun buildColumnMaxPixels(length: Int, deviceProfile: GlyphDeviceProfile): IntArray {
         if (cachedMaxPixelsLength == length && cachedMaxPixelsByColumn != null) {

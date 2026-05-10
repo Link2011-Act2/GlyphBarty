@@ -54,6 +54,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_PEAK_HOLD_ENABLED = "extra_peak_hold_enabled"
         private const val EXTRA_GLYPH_MODE = "extra_glyph_mode"
         private const val EXTRA_BINARY_MODE = "extra_binary_mode"
+        private const val EXTRA_BASE_INDICATOR_ENABLED = "extra_base_indicator_enabled"
         private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
         private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
         private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
@@ -78,6 +79,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
@@ -99,6 +101,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -134,6 +137,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
@@ -157,6 +161,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -190,6 +195,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             binaryMode: Boolean,
+            baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
@@ -211,6 +217,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
+                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -260,6 +267,7 @@ class GlyphVisualizerService : Service() {
     private var peakHoldEnabled = true
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
+    private var baseIndicatorEnabled = false
     private var levelAutoScale = false
     private var spectrumAutoScale = false
     private var allBrightnessAutoScale = false
@@ -283,7 +291,8 @@ class GlyphVisualizerService : Service() {
         val highEnergy: Float,
         val leftLevel: Float,
         val rightLevel: Float,
-        val spectrumBands: FloatArray
+        val spectrumBands: FloatArray,
+        val phone4aBaseBandLevel: Float
     )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
@@ -372,6 +381,7 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                     glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                     binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                    baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                     levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                     spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                     allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -381,7 +391,9 @@ class GlyphVisualizerService : Service() {
                     glyphController.setReverseDirection(reverseDirection)
                     glyphController.setGlyphMode(glyphMode)
                     glyphController.setBinaryMode(binaryMode)
+                    glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
                     glyphController.setOutputGamma(outputGamma)
+                    glyphController.setSmoothing(smoothing, smoothingBalance)
                     glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                     glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                     glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
@@ -435,6 +447,7 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -444,7 +457,9 @@ class GlyphVisualizerService : Service() {
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
                 glyphController.setBinaryMode(binaryMode)
+                glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
                 glyphController.setOutputGamma(outputGamma)
+                glyphController.setSmoothing(smoothing, smoothingBalance)
                 glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
@@ -473,6 +488,7 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
+                baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -482,7 +498,9 @@ class GlyphVisualizerService : Service() {
                 glyphController.setReverseDirection(reverseDirection)
                 glyphController.setGlyphMode(glyphMode)
                 glyphController.setBinaryMode(binaryMode)
+                glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
                 glyphController.setOutputGamma(outputGamma)
+                glyphController.setSmoothing(smoothing, smoothingBalance)
                 glyphController.setLevelAutoScaleEnabled(levelAutoScale)
                 glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
                 glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
@@ -501,6 +519,7 @@ class GlyphVisualizerService : Service() {
                         peakHoldEnabled = peakHoldEnabled,
                         glyphMode = glyphMode,
                         binaryMode = binaryMode,
+                        baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
@@ -520,6 +539,7 @@ class GlyphVisualizerService : Service() {
                 safeStopForeground()
                 stopSelf()
             }
+
         }
         return START_NOT_STICKY
     }
@@ -602,7 +622,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel ->
                 publishLevel(
                     level,
                     peak,
@@ -611,7 +631,8 @@ class GlyphVisualizerService : Service() {
                     highEnergy,
                     leftLevel,
                     rightLevel,
-                    spectrumBands
+                    spectrumBands,
+                    phone4aBaseBandLevel
                 )
             },
             onStartFailed = {
@@ -726,7 +747,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel ->
                 publishLevel(
                     level,
                     peak,
@@ -735,7 +756,8 @@ class GlyphVisualizerService : Service() {
                     highEnergy,
                     leftLevel,
                     rightLevel,
-                    spectrumBands
+                    spectrumBands,
+                    phone4aBaseBandLevel
                 )
             }
         )
@@ -754,7 +776,8 @@ class GlyphVisualizerService : Service() {
         highEnergy: Float,
         leftLevel: Float,
         rightLevel: Float,
-        spectrumBands: FloatArray
+        spectrumBands: FloatArray,
+        phone4aBaseBandLevel: Float
     ) {
         enqueueDelayedLevelFrame(
             level = level,
@@ -764,7 +787,8 @@ class GlyphVisualizerService : Service() {
             highEnergy = highEnergy,
             leftLevel = leftLevel,
             rightLevel = rightLevel,
-            spectrumBands = spectrumBands
+            spectrumBands = spectrumBands,
+            phone4aBaseBandLevel = phone4aBaseBandLevel
         )
     }
 
@@ -776,7 +800,8 @@ class GlyphVisualizerService : Service() {
         highEnergy: Float,
         leftLevel: Float,
         rightLevel: Float,
-        spectrumBands: FloatArray
+        spectrumBands: FloatArray,
+        phone4aBaseBandLevel: Float
     ) {
         val dueAtMs = SystemClock.uptimeMillis() + latencyMs.coerceIn(0f, 500f).roundToLong()
         pendingLevelFrames.addLast(
@@ -789,7 +814,8 @@ class GlyphVisualizerService : Service() {
                 highEnergy = highEnergy,
                 leftLevel = leftLevel,
                 rightLevel = rightLevel,
-                spectrumBands = spectrumBands.copyOf()
+                spectrumBands = spectrumBands.copyOf(),
+                phone4aBaseBandLevel = phone4aBaseBandLevel
             )
         )
         drainPendingLevelFrames()
@@ -810,32 +836,44 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
-        CaptureUiStore.update {
-            it.copy(
-                level = frame.level,
-                peak = frame.peak,
-                meterSegments = (frame.level * 16f).toInt().coerceIn(0, 16),
-                spectrumBands = frame.spectrumBands,
-                isCapturing = true,
-                activeMode = frame.mode
+        val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
+        if (useGlyphPreviewValues) {
+            glyphController.updateAnalysis(
+                frame.lowEnergy,
+                frame.highEnergy,
+                frame.leftLevel,
+                frame.rightLevel,
+                frame.spectrumBands,
+                frame.phone4aBaseBandLevel
             )
-        }
-        if (isBackDownSuppressed) {
+            glyphController.updateLevel(frame.level)
+        } else if (isBackDownSuppressed) {
             try {
                 glyphController.turnOff()
             } catch (error: Throwable) {
                 AppLogger.w(TAG, "glyphController.turnOff failed while back-down suppressing", error)
             }
-            return
         }
-        glyphController.updateAnalysis(
-            frame.lowEnergy,
-            frame.highEnergy,
-            frame.leftLevel,
-            frame.rightLevel,
+        val previewLevel = if (useGlyphPreviewValues) {
+            glyphController.previewLevel().coerceIn(0f, 1f)
+        } else {
+            frame.level.coerceIn(0f, 1f)
+        }
+        val previewSpectrumBands = if (useGlyphPreviewValues) {
+            glyphController.previewSpectrumBands()
+        } else {
             frame.spectrumBands
-        )
-        glyphController.updateLevel(frame.level)
+        }
+        CaptureUiStore.update {
+            it.copy(
+                level = previewLevel,
+                peak = frame.peak,
+                meterSegments = (previewLevel * 16f).toInt().coerceIn(0, 16),
+                spectrumBands = if (previewSpectrumBands.isNotEmpty()) previewSpectrumBands else frame.spectrumBands,
+                isCapturing = true,
+                activeMode = frame.mode
+            )
+        }
     }
 
     private fun stopRunningCapture(clearStatus: Boolean) {
