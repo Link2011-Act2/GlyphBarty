@@ -15,12 +15,12 @@
     <string name="about_dev_channel_value_unknown">不明</string>
     <string name="about_dev_channel_desc_intdev">IntDev は内部検証時に使用されます。開発者のみに公開され、仕様変更や不安定な挙動が含まれる可能性があります。</string>
     <string name="about_dev_channel_desc_beta">Beta はプレリリースのバージョンです。GitHubなどで公開されますが、不安定な挙動になる可能性があります。</string>
-    <string name="about_dev_channel_desc_stable">Stable は安定版で、バグ検証などが十分に行われた後に配布されます。</string>
+    <string name="about_dev_channel_desc_stable">Stable/Releaseは安定版で、ある程度検証が行われてから公開されます。</string>
     <string name="about_dev_channel_desc_unknown">このチャネルの説明は未登録です。</string>
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d</string>
     <string name="about_updates_title">アップデート情報</string>
-    <string name="about_updates_body">・デバッグ中のため、まだここは書いていません</string>
+    <string name="about_updates_body">・最初のリリース版\n・なのでまだ書くことはありません、アップデートをお待ちください</string>
     <string name="about_known_issues_title">既知の問題</string>
     <string name="about_known_issues_body">・Nothing Phone (4a) ProとNothing製イヤホンの組み合わせの場合で、空間オーディオが有効だとメーターが振れない</string>
     <string name="about_support_title">サポート情報</string>
@@ -56,8 +56,8 @@
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
     <string name="settings_ui_mode_material">Material 3</string>
-    <string name="base_indicator_title">ベースインジケーター</string>
-    <string name="base_indicator_desc">Phone (4a) の赤いLEDを低音に応じて点灯させます。</string>
+    <string name="base_indicator_title">調整中: ベースインジケーター</string>
+    <string name="base_indicator_desc">赤いLEDを低音に応じて点灯させます。現在挙動を調整中です。</string>
     <string name="settings_media_projection_title">MediaProjection を表示</string>
     <string name="settings_media_projection_desc">画面キャプチャで音声を取得するモードを使えるようにします\n通常は不要ですが、不具合が出た場合はこれを使用してみてください</string>
     <string name="settings_glyph_meter_preview_title">実験的: より忠実なプレビュー</string>

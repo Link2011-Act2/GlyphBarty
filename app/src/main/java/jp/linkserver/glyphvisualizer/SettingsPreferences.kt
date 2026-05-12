@@ -12,7 +12,7 @@ object SettingsPreferences {
 
     fun parameterStateOf(state: CaptureUiState): CaptureUiState {
         val defaults = defaultParameters()
-        return defaults.copy(
+        return normalizeDormantFlags(defaults.copy(
             sensitivity = state.sensitivity,
             noiseGate = state.noiseGate,
             dynamics = state.dynamics,
@@ -37,7 +37,7 @@ object SettingsPreferences {
             glyphMeterPreviewEnabled = state.glyphMeterPreviewEnabled,
             nothingStyleEnabled = state.nothingStyleEnabled,
             turnOffWhenBackDown = state.turnOffWhenBackDown
-        )
+        ))
     }
 
     fun load(context: Context): CaptureUiState {
@@ -53,7 +53,7 @@ object SettingsPreferences {
             bluetooth = true,
             defaultValue = defaults.bluetoothLatencyMs
         )
-        return defaults.copy(
+        return normalizeDormantFlags(defaults.copy(
             sensitivity = prefs.getFloatCompat("sensitivity", defaults.sensitivity),
             noiseGate = prefs.getFloatCompat("noise_gate", defaults.noiseGate),
             dynamics = prefs.getFloatCompat("dynamics", defaults.dynamics),
@@ -78,7 +78,7 @@ object SettingsPreferences {
             glyphMeterPreviewEnabled = prefs.getBoolean("glyph_meter_preview_enabled", defaults.glyphMeterPreviewEnabled),
             nothingStyleEnabled = prefs.getBoolean("nothing_style_enabled", defaults.nothingStyleEnabled),
             turnOffWhenBackDown = prefs.getBoolean("turn_off_when_back_down", defaults.turnOffWhenBackDown),
-        )
+        ))
     }
 
     fun save(context: Context, state: CaptureUiState) {
@@ -149,7 +149,7 @@ object SettingsPreferences {
             root
         }
         val defaults = defaultParameters()
-        return defaults.copy(
+        return normalizeDormantFlags(defaults.copy(
             sensitivity = parameters.optDouble("sensitivity", defaults.sensitivity.toDouble()).toFloat(),
             noiseGate = parameters.optDouble("noiseGate", defaults.noiseGate.toDouble()).toFloat(),
             dynamics = parameters.optDouble("dynamics", defaults.dynamics.toDouble()).toFloat(),
@@ -166,7 +166,12 @@ object SettingsPreferences {
             spectrumAutoScale = parameters.optBoolean("spectrumAutoScale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = parameters.optBoolean("allBrightnessAutoScale", defaults.allBrightnessAutoScale),
             autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat()
-        )
+        ))
+    }
+
+    private fun normalizeDormantFlags(state: CaptureUiState): CaptureUiState {
+        // Hidden for now because some devices already enforce a similar OS-level behavior.
+        return state.copy(turnOffWhenBackDown = false)
     }
 
     private fun loadLegacyLatencyForRoute(

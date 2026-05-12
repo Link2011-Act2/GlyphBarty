@@ -242,7 +242,7 @@ class AudioPlaybackVisualizer(
                         displayedLeft,
                         displayedRight,
                         spectrumAnalysis.bands,
-                        spectrumAnalysis.normalizedRangePeak
+                        spectrumAnalysis.rangePeak
                     )
                 }
             }

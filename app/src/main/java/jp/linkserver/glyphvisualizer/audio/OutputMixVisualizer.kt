@@ -242,7 +242,7 @@ class OutputMixVisualizer(
                                 displayedLevel,
                                 displayedLevel,
                                 spectrumAnalysis.bands,
-                                spectrumAnalysis.normalizedRangePeak
+                                spectrumAnalysis.rangePeak
                             )
                         }
 

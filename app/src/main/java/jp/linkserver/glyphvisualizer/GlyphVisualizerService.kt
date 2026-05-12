@@ -66,6 +66,7 @@ class GlyphVisualizerService : Service() {
         private const val ACTIVE_MODE_VISUALIZER = "VISUALIZER"
         private const val ACTIVE_MODE_MEDIA_PROJECTION = "MEDIA PROJECTION"
         private const val ACTIVE_MODE_IDLE = "IDLE"
+        private const val GLYPH_WARMUP_RESYNC_DELAY_MS = 900L
 
         fun startVisualizer(
             context: Context,
@@ -296,6 +297,12 @@ class GlyphVisualizerService : Service() {
     )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
+    private var latestLevelFrame: DelayedLevelFrame? = null
+    private val glyphWarmupResyncRunnable = Runnable {
+        if (CaptureUiStore.state.activeMode == ACTIVE_MODE_IDLE) return@Runnable
+        applyGlyphControllerSettings()
+        latestLevelFrame?.let { renderLevelFrame(it) }
+    }
     private val sensorManager by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     private var gravitySensor: Sensor? = null
     private val restartVisualizerForRouteChangeRunnable = Runnable {
@@ -388,17 +395,7 @@ class GlyphVisualizerService : Service() {
                     autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                     latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-                    glyphController.setReverseDirection(reverseDirection)
-                    glyphController.setGlyphMode(glyphMode)
-                    glyphController.setBinaryMode(binaryMode)
-                    glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
-                    glyphController.setOutputGamma(outputGamma)
-                    glyphController.setSmoothing(smoothing, smoothingBalance)
-                    glyphController.setLevelAutoScaleEnabled(levelAutoScale)
-                    glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
-                    glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
-                    glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
-                    updateBackDownSensorState()
+                    applyGlyphControllerSettings()
                     AppLogger.i(
                         TAG,
                         "ACTION_START_VISUALIZER received: requestId=$visualizerStartRequestId glyphMode=$glyphMode btLikely=${
@@ -410,6 +407,7 @@ class GlyphVisualizerService : Service() {
                         TAG,
                         "Foreground notification posted for visualizer: requestId=$visualizerStartRequestId elapsedMs=${SystemClock.elapsedRealtime() - actionReceivedAt}"
                     )
+                    scheduleGlyphWarmupResync()
                     startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1)
                 } catch (error: SecurityException) {
                     // パーミッション不足は即座に失敗（リトライ不要）
@@ -454,21 +452,12 @@ class GlyphVisualizerService : Service() {
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-                glyphController.setReverseDirection(reverseDirection)
-                glyphController.setGlyphMode(glyphMode)
-                glyphController.setBinaryMode(binaryMode)
-                glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
-                glyphController.setOutputGamma(outputGamma)
-                glyphController.setSmoothing(smoothing, smoothingBalance)
-                glyphController.setLevelAutoScaleEnabled(levelAutoScale)
-                glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
-                glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
-                glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
-                updateBackDownSensorState()
+                applyGlyphControllerSettings()
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = intent.getParcelableExtraCompat<Intent>(EXTRA_RESULT_DATA)
                 if (resultCode != 0 && data != null) {
                     startServiceNotification(getString(R.string.notification_mode_media_projection), mediaProjection = true)
+                    scheduleGlyphWarmupResync()
                     startMediaProjectionMode(resultCode, data)
                 } else {
                     stopCapture(getString(R.string.status_media_projection_data_missing))
@@ -495,17 +484,7 @@ class GlyphVisualizerService : Service() {
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-                glyphController.setReverseDirection(reverseDirection)
-                glyphController.setGlyphMode(glyphMode)
-                glyphController.setBinaryMode(binaryMode)
-                glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
-                glyphController.setOutputGamma(outputGamma)
-                glyphController.setSmoothing(smoothing, smoothingBalance)
-                glyphController.setLevelAutoScaleEnabled(levelAutoScale)
-                glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
-                glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
-                glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
-                updateBackDownSensorState()
+                applyGlyphControllerSettings()
                 CaptureUiStore.update {
                     it.copy(
                         sensitivity = sensitivity,
@@ -562,6 +541,7 @@ class GlyphVisualizerService : Service() {
         unregisterAudioDeviceCallback()
         mainHandler.removeCallbacks(restartVisualizerForRouteChangeRunnable)
         mainHandler.removeCallbacks(latencyDrainRunnable)
+        mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
         pendingLevelFrames.clear()
         super.onDestroy()
     }
@@ -804,20 +784,20 @@ class GlyphVisualizerService : Service() {
         phone4aBaseBandLevel: Float
     ) {
         val dueAtMs = SystemClock.uptimeMillis() + latencyMs.coerceIn(0f, 500f).roundToLong()
-        pendingLevelFrames.addLast(
-            DelayedLevelFrame(
-                dueAtMs = dueAtMs,
-                level = level,
-                peak = peak,
-                mode = mode,
-                lowEnergy = lowEnergy,
-                highEnergy = highEnergy,
-                leftLevel = leftLevel,
-                rightLevel = rightLevel,
-                spectrumBands = spectrumBands.copyOf(),
-                phone4aBaseBandLevel = phone4aBaseBandLevel
-            )
+        val frame = DelayedLevelFrame(
+            dueAtMs = dueAtMs,
+            level = level,
+            peak = peak,
+            mode = mode,
+            lowEnergy = lowEnergy,
+            highEnergy = highEnergy,
+            leftLevel = leftLevel,
+            rightLevel = rightLevel,
+            spectrumBands = spectrumBands.copyOf(),
+            phone4aBaseBandLevel = phone4aBaseBandLevel
         )
+        latestLevelFrame = frame
+        pendingLevelFrames.addLast(frame)
         drainPendingLevelFrames()
     }
 
@@ -837,7 +817,7 @@ class GlyphVisualizerService : Service() {
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
         val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
-        if (useGlyphPreviewValues) {
+        if (!isBackDownSuppressed) {
             glyphController.updateAnalysis(
                 frame.lowEnergy,
                 frame.highEnergy,
@@ -893,7 +873,9 @@ class GlyphVisualizerService : Service() {
             AppLogger.w(TAG, "glyphController.turnOff failed", error)
         }
         mainHandler.removeCallbacks(latencyDrainRunnable)
+        mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
         pendingLevelFrames.clear()
+        latestLevelFrame = null
         CaptureUiStore.update {
             it.copy(
                 level = 0f,
@@ -922,6 +904,25 @@ class GlyphVisualizerService : Service() {
             )
         }
         isBackDownSuppressed = false
+    }
+
+    private fun applyGlyphControllerSettings() {
+        glyphController.setReverseDirection(reverseDirection)
+        glyphController.setGlyphMode(glyphMode)
+        glyphController.setBinaryMode(binaryMode)
+        glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
+        glyphController.setOutputGamma(outputGamma)
+        glyphController.setSmoothing(smoothing, smoothingBalance)
+        glyphController.setLevelAutoScaleEnabled(levelAutoScale)
+        glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
+        glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
+        glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
+        updateBackDownSensorState()
+    }
+
+    private fun scheduleGlyphWarmupResync() {
+        mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
+        mainHandler.postDelayed(glyphWarmupResyncRunnable, GLYPH_WARMUP_RESYNC_DELAY_MS)
     }
 
     private fun updateBackDownSensorState() {

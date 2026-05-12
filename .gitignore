@@ -12,6 +12,7 @@
 /.kotlin/
 /build/
 /app/build/
+/app/release/
 /captures/
 .externalNativeBuild/
 .cxx/

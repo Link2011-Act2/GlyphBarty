@@ -1468,15 +1468,16 @@ private fun HomeDrawerOverlay(
     onDismiss: () -> Unit,
     onNavigate: (Screen) -> Unit
 ) {
-    val drawerColor = if (nothingStyleEnabled && isSystemInDarkTheme()) {
-        Color(0xFF1C2028)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
+    val darkTheme = isSystemInDarkTheme()
+    val drawerColor = when {
+        nothingStyleEnabled && darkTheme -> Color(0xFF050505)
+        nothingStyleEnabled -> Color(0xFFF5F5F5)
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val selectedColor = if (nothingStyleEnabled && isSystemInDarkTheme()) {
-        Color(0xFF4A566E)
-    } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val selectedColor = when {
+        nothingStyleEnabled && darkTheme -> Color(0xFF2A2A2A)
+        nothingStyleEnabled -> Color(0xFFE7E7E7)
+        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1522,6 +1523,7 @@ private fun HomeDrawerOverlay(
                     title = stringResource(R.string.menu_main),
                     icon = Icons.Default.PlayArrow,
                     selected = currentScreen == Screen.MAIN,
+                    nothingStyleEnabled = nothingStyleEnabled,
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.MAIN) }
                 )
@@ -1529,6 +1531,7 @@ private fun HomeDrawerOverlay(
                     title = stringResource(R.string.menu_latency),
                     icon = Icons.Default.Equalizer,
                     selected = currentScreen == Screen.LATENCY,
+                    nothingStyleEnabled = nothingStyleEnabled,
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.LATENCY) }
                 )
@@ -1543,9 +1546,18 @@ private fun HomeDrawerItem(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     selected: Boolean,
+    nothingStyleEnabled: Boolean,
     selectedColor: Color,
     onClick: () -> Unit
 ) {
+    val iconAndTextColor = when {
+        nothingStyleEnabled && selected && isSystemInDarkTheme() -> Color(0xFFF2F2F2)
+        nothingStyleEnabled && selected -> Color(0xFF151515)
+        selected -> MaterialTheme.colorScheme.onSurface
+        nothingStyleEnabled -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(28.dp),
@@ -1560,22 +1572,14 @@ private fun HomeDrawerItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                tint = iconAndTextColor,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                color = iconAndTextColor
             )
         }
     }
@@ -3222,31 +3226,8 @@ private fun ControlCard(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.turn_off_when_back_down_title),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = if (turnOffWhenBackDown) {
-                            stringResource(R.string.turn_off_when_back_down_on)
-                        } else {
-                            stringResource(R.string.turn_off_when_back_down_off)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = turnOffWhenBackDown,
-                    onCheckedChange = onTurnOffWhenBackDownChanged
-                )
-            }
+            // Kept in state/service for possible future revival, but hidden in UI because
+            // some devices already force this behavior at the OS level.
 
         }
     }

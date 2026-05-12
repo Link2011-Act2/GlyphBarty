@@ -15,8 +15,8 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 20
-        versionName = "1.3.0-IntDev"
+        versionCode = 1
+        versionName = "1.0.0-Release"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,6 +48,19 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    androidResources {
+        localeFilters += listOf("en", "ja")
+    }
+    packaging {
+        resources {
+            excludes += setOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+                "/META-INF/DEPENDENCIES"
+            )
+        }
     }
 }
 

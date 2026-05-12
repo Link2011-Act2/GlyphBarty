@@ -29,10 +29,21 @@ class GlyphLightController(
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
-        private const val PHONE4A_BASE_INDICATOR_DECAY = 0.8f
-        private const val PHONE4A_BASE_INDICATOR_PEAK_FALLOFF = 0.9995f
         private const val PHONE4A_BASE_INDICATOR_EPSILON = 0.000001f
-        private const val PHONE4A_BASE_INDICATOR_GAMMA = 2.4f
+        private const val PHONE4A_BASE_INDICATOR_GAMMA = 2.0f
+        private const val PHONE4A_BASE_INDICATOR_TRACKING_ATTACK = 0.82f
+        private const val PHONE4A_BASE_INDICATOR_TRACKING_RELEASE = 0.28f
+        private const val PHONE4A_BASE_INDICATOR_ONSET_GAIN = 6.2f
+        private const val PHONE4A_BASE_INDICATOR_ONSET_GATE = 0.075f
+        private const val PHONE4A_BASE_INDICATOR_MIN_RISE = 0.018f
+        private const val PHONE4A_BASE_INDICATOR_MIN_INPUT_LEVEL = 0.10f
+        private const val PHONE4A_BASE_INDICATOR_ONSET_PEAK_FALLOFF = 0.86f
+        private const val PHONE4A_BASE_INDICATOR_MIN_PEAK_REFERENCE = 0.30f
+        private const val PHONE4A_BASE_INDICATOR_OUTPUT_OFF_THRESHOLD = 0.018f
+        private const val PHONE4A_BASE_INDICATOR_MIN_ENVELOPE_DECAY = 0.50f
+        private const val PHONE4A_BASE_INDICATOR_MAX_ENVELOPE_DECAY = 0.70f
+        private const val PHONE4A_BASE_INDICATOR_RAW_GATE = 0.055f
+        private const val PHONE4A_BASE_INDICATOR_RAW_GAIN = 2.4f
     }
 
     private interface BaseIndicatorRenderer {
@@ -45,9 +56,10 @@ class GlyphLightController(
 
     private class Phone4aBaseIndicatorRenderer : BaseIndicatorRenderer {
         private var bandLevel = 0f
-        private var smoothedLevel = 0f
-        private var displayedLevel = 0f
-        private var peakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+        private var trackedBandLevel = 0f
+        private var previousTrackedBandLevel = 0f
+        private var onsetPeakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+        private var outputEnvelope = 0f
         private var smoothing = 0.45f
         private var smoothingBalance = 0f
 
@@ -66,47 +78,62 @@ class GlyphLightController(
 
         override fun reset() {
             bandLevel = 0f
-            smoothedLevel = 0f
-            displayedLevel = 0f
-            peakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+            trackedBandLevel = 0f
+            previousTrackedBandLevel = 0f
+            onsetPeakLevel = PHONE4A_BASE_INDICATOR_EPSILON
+            outputEnvelope = 0f
         }
 
         override fun apply(colors: IntArray, binaryMode: Boolean, outputGamma: Float) {
             if (colors.isEmpty()) return
 
             val current = bandLevel.coerceIn(0f, 1f)
-            val noReleaseSmoothing = smoothing >= 0.54f
-            val primarySmoothing = if (noReleaseSmoothing) {
-                1f
+            val trackingAlpha = if (current > trackedBandLevel) {
+                PHONE4A_BASE_INDICATOR_TRACKING_ATTACK
             } else {
-                (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
+                PHONE4A_BASE_INDICATOR_TRACKING_RELEASE
             }
-            val release = if (noReleaseSmoothing) 1f else smoothing
+            trackedBandLevel += (current - trackedBandLevel) * trackingAlpha
 
-            if (current > smoothedLevel) {
-                smoothedLevel = current
+            val rawRise = if (trackedBandLevel >= PHONE4A_BASE_INDICATOR_MIN_INPUT_LEVEL) {
+                (trackedBandLevel - previousTrackedBandLevel).coerceAtLeast(0f)
             } else {
-                smoothedLevel += (current - smoothedLevel) * primarySmoothing
+                0f
             }
+            previousTrackedBandLevel = trackedBandLevel
+            val rise = if (rawRise >= PHONE4A_BASE_INDICATOR_MIN_RISE) rawRise else 0f
 
-            if (smoothedLevel > displayedLevel) {
-                displayedLevel = smoothedLevel
+            val onset = (rise * PHONE4A_BASE_INDICATOR_ONSET_GAIN).coerceIn(0f, 1f)
+            val gatedOnset = if (onset <= PHONE4A_BASE_INDICATOR_ONSET_GATE) {
+                0f
             } else {
-                displayedLevel += (smoothedLevel - displayedLevel) * release
+                (
+                    (onset - PHONE4A_BASE_INDICATOR_ONSET_GATE) /
+                        (1f - PHONE4A_BASE_INDICATOR_ONSET_GATE)
+                    ).coerceIn(0f, 1f)
             }
-
-            peakLevel = max(
-                displayedLevel,
-                peakLevel * PHONE4A_BASE_INDICATOR_PEAK_FALLOFF
+            onsetPeakLevel = max(
+                gatedOnset,
+                onsetPeakLevel * PHONE4A_BASE_INDICATOR_ONSET_PEAK_FALLOFF
             ).coerceAtLeast(PHONE4A_BASE_INDICATOR_EPSILON)
-
-            val normalized = (displayedLevel / peakLevel).coerceIn(0f, 1f)
-            val shaped = normalized * normalized
-            val gammaMapped = shaped.pow(PHONE4A_BASE_INDICATOR_GAMMA)
+            val normalized = (
+                gatedOnset / max(onsetPeakLevel, PHONE4A_BASE_INDICATOR_MIN_PEAK_REFERENCE)
+            ).coerceIn(0f, 1f)
+            val envelopeDecay = (0.46f + (smoothing.coerceIn(0.05f, 0.6f) * 0.50f))
+                .coerceIn(
+                    PHONE4A_BASE_INDICATOR_MIN_ENVELOPE_DECAY,
+                    PHONE4A_BASE_INDICATOR_MAX_ENVELOPE_DECAY
+                )
+            outputEnvelope = max(normalized, outputEnvelope * envelopeDecay)
+            val gammaMapped = outputEnvelope.pow(PHONE4A_BASE_INDICATOR_GAMMA)
             val brightness = if (binaryMode) {
                 if (gammaMapped >= 0.5f) MAX_LIGHT else 0
             } else {
-                (gammaMapped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+                if (gammaMapped <= PHONE4A_BASE_INDICATOR_OUTPUT_OFF_THRESHOLD) {
+                    0
+                } else {
+                    (gammaMapped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+                }
             }
 
             colors[colors.lastIndex] = brightness
@@ -878,9 +905,16 @@ class GlyphLightController(
 
     private fun updateBaseIndicatorAnalysis(level: Float) {
         val profile = deviceSpec?.profile ?: return
+        val rawLevel = level.coerceIn(0f, 1f)
+        val gatedLevel = if (rawLevel <= PHONE4A_BASE_INDICATOR_RAW_GATE) {
+            0f
+        } else {
+            ((rawLevel - PHONE4A_BASE_INDICATOR_RAW_GATE) * PHONE4A_BASE_INDICATOR_RAW_GAIN)
+                .coerceIn(0f, 1f)
+        }
         baseIndicatorRenderers
             .firstOrNull { it.accepts(profile) }
-            ?.updateAnalysis(normalizeBaseIndicatorLevel(level.coerceIn(0f, 1f)))
+            ?.updateAnalysis(normalizeBaseIndicatorLevel(gatedLevel))
     }
 
     private fun applyBaseIndicator(profile: GlyphDeviceProfile, colors: IntArray) {

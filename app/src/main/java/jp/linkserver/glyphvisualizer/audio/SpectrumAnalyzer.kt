@@ -8,7 +8,8 @@ import kotlin.math.sqrt
 object SpectrumAnalyzer {
     data class AnalysisResult(
         val bands: FloatArray,
-        val normalizedRangePeak: Float
+        val normalizedRangePeak: Float,
+        val rangePeak: Float
     )
 
     fun computeLogBands(
@@ -31,7 +32,8 @@ object SpectrumAnalyzer {
         if (samples.size < 64 || bandCount <= 0 || sampleRateHz <= 0) {
             return AnalysisResult(
                 bands = FloatArray(bandCount.coerceAtLeast(0)),
-                normalizedRangePeak = 0f
+                normalizedRangePeak = 0f,
+                rangePeak = 0f
             )
         }
 
@@ -104,7 +106,8 @@ object SpectrumAnalyzer {
                 (rangePeak / maxBand).coerceIn(0f, 1f)
             } else {
                 0f
-            }
+            },
+            rangePeak = rangePeak.coerceIn(0f, 1f)
         )
     }
 
