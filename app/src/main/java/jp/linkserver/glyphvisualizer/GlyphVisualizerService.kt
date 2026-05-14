@@ -59,6 +59,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
         private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
         private const val EXTRA_AUTO_SCALE_WINDOW_SECONDS = "extra_auto_scale_window_seconds"
+        private const val EXTRA_AUTO_SCALE_OFFSET = "extra_auto_scale_offset"
         private const val EXTRA_LATENCY_MS = "extra_latency_ms"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
@@ -85,6 +86,7 @@ class GlyphVisualizerService : Service() {
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
             autoScaleWindowSeconds: Float,
+            autoScaleOffset: Float,
             latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
@@ -107,6 +109,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
@@ -143,6 +146,7 @@ class GlyphVisualizerService : Service() {
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
             autoScaleWindowSeconds: Float,
+            autoScaleOffset: Float,
             latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
@@ -167,6 +171,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
@@ -201,6 +206,7 @@ class GlyphVisualizerService : Service() {
             spectrumAutoScale: Boolean,
             allBrightnessAutoScale: Boolean,
             autoScaleWindowSeconds: Float,
+            autoScaleOffset: Float,
             latencyMs: Float,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = Float.NaN
@@ -223,6 +229,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
@@ -264,7 +271,7 @@ class GlyphVisualizerService : Service() {
     private var toneFocus = -0.2f
     private var smoothing = 0.55f
     private var smoothingBalance = 0f
-    private var reverseDirection = true
+    private var reverseDirection = false
     private var peakHoldEnabled = true
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
@@ -273,6 +280,7 @@ class GlyphVisualizerService : Service() {
     private var spectrumAutoScale = false
     private var allBrightnessAutoScale = false
     private var autoScaleWindowSeconds = 30f
+    private var autoScaleOffset = 0f
     private var latencyMs = 0f
     private var turnOffWhenBackDown = false
     private var isBackDownSuppressed = false
@@ -393,6 +401,7 @@ class GlyphVisualizerService : Service() {
                     spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                     allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                     autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                    autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                     latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                     applyGlyphControllerSettings()
@@ -450,6 +459,7 @@ class GlyphVisualizerService : Service() {
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
@@ -482,6 +492,7 @@ class GlyphVisualizerService : Service() {
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
+                autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
@@ -502,6 +513,7 @@ class GlyphVisualizerService : Service() {
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
+                        autoScaleOffset = autoScaleOffset,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         turnOffWhenBackDown = turnOffWhenBackDown
                     )
@@ -597,6 +609,7 @@ class GlyphVisualizerService : Service() {
                             spectrumAutoScale = spectrumAutoScale,
                             allBrightnessAutoScale = allBrightnessAutoScale,
                             autoScaleWindowSeconds = autoScaleWindowSeconds,
+                            autoScaleOffset = autoScaleOffset,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -722,6 +735,7 @@ class GlyphVisualizerService : Service() {
                             spectrumAutoScale = spectrumAutoScale,
                             allBrightnessAutoScale = allBrightnessAutoScale,
                             autoScaleWindowSeconds = autoScaleWindowSeconds,
+                            autoScaleOffset = autoScaleOffset,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -899,6 +913,7 @@ class GlyphVisualizerService : Service() {
                 spectrumAutoScale = spectrumAutoScale,
                 allBrightnessAutoScale = allBrightnessAutoScale,
                 autoScaleWindowSeconds = autoScaleWindowSeconds,
+                autoScaleOffset = autoScaleOffset,
                 latencyMs = latencyMs,
                 turnOffWhenBackDown = turnOffWhenBackDown
             )
@@ -917,6 +932,7 @@ class GlyphVisualizerService : Service() {
         glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
         glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
         glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
+        glyphController.setAutoScaleOffset(autoScaleOffset)
         updateBackDownSensorState()
     }
 

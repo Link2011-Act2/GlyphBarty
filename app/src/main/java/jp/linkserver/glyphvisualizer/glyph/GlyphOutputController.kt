@@ -12,6 +12,7 @@ interface GlyphOutputController {
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}
     fun setAllBrightnessAutoScaleEnabled(enabled: Boolean) {}
     fun setAutoScaleWindowSeconds(seconds: Float) {}
+    fun setAutoScaleOffset(offset: Float) {}
     fun setSmoothing(smoothing: Float, smoothingBalance: Float) {}
     fun updateAnalysis(
         lowEnergy: Float,

@@ -15,8 +15,8 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0-Release"
+        versionCode = 2
+        versionName = "1.1.0-IntDev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,6 +48,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     androidResources {
         localeFilters += listOf("en", "ja")

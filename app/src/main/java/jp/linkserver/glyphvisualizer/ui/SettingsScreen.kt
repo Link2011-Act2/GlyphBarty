@@ -39,6 +39,8 @@ fun SettingsScreen(
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     glyphMeterPreviewEnabled: Boolean,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
+    automaticUpdateCheckEnabled: Boolean,
+    onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
@@ -46,6 +48,7 @@ fun SettingsScreen(
     val openFailedText = stringResource(R.string.about_language_open_failed)
     var localMediaProjectionEnabled by rememberSaveable { mutableStateOf(mediaProjectionEnabled) }
     var localGlyphMeterPreviewEnabled by rememberSaveable { mutableStateOf(glyphMeterPreviewEnabled) }
+    var localAutomaticUpdateCheckEnabled by rememberSaveable { mutableStateOf(automaticUpdateCheckEnabled) }
     var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
 
     LaunchedEffect(mediaProjectionEnabled) {
@@ -53,6 +56,9 @@ fun SettingsScreen(
     }
     LaunchedEffect(glyphMeterPreviewEnabled) {
         localGlyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+    }
+    LaunchedEffect(automaticUpdateCheckEnabled) {
+        localAutomaticUpdateCheckEnabled = automaticUpdateCheckEnabled
     }
     LaunchedEffect(nothingStyleEnabled) {
         localNothingStyleEnabled = nothingStyleEnabled
@@ -120,6 +126,18 @@ fun SettingsScreen(
                     )
                     SettingsDivider()
                     SettingsToggleEntry(
+                        title = stringResource(R.string.settings_automatic_update_check_title),
+                        description = stringResource(R.string.settings_automatic_update_check_desc),
+                        checked = localAutomaticUpdateCheckEnabled,
+                        onCheckedChange = { checked ->
+                            localAutomaticUpdateCheckEnabled = checked
+                            onAutomaticUpdateCheckEnabledChanged(checked)
+                        },
+                        nothingStyle = true,
+                        position = SettingsGroupPosition.Middle
+                    )
+                    SettingsDivider()
+                    SettingsToggleEntry(
                         title = stringResource(R.string.settings_media_projection_title),
                         description = stringResource(R.string.settings_media_projection_desc),
                         checked = localMediaProjectionEnabled,
@@ -176,6 +194,18 @@ fun SettingsScreen(
                     onCheckedChange = { checked ->
                         localGlyphMeterPreviewEnabled = checked
                         onGlyphMeterPreviewEnabledChanged(checked)
+                    },
+                    nothingStyle = false,
+                    position = SettingsGroupPosition.Single
+                )
+
+                SettingsToggleEntry(
+                    title = stringResource(R.string.settings_automatic_update_check_title),
+                    description = stringResource(R.string.settings_automatic_update_check_desc),
+                    checked = localAutomaticUpdateCheckEnabled,
+                    onCheckedChange = { checked ->
+                        localAutomaticUpdateCheckEnabled = checked
+                        onAutomaticUpdateCheckEnabledChanged(checked)
                     },
                     nothingStyle = false,
                     position = SettingsGroupPosition.Single

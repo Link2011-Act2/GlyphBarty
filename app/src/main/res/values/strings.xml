@@ -18,9 +18,31 @@
     <string name="about_dev_channel_desc_stable">Stable/Release is the stable channel, published after a reasonable level of testing has been completed.</string>
     <string name="about_dev_channel_desc_unknown">No description is available for this channel.</string>
     <string name="about_version_details_title">Version details</string>
-    <string name="about_version_details_message">Version: %1$s&#10;Internal version code: %2$d</string>
+    <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d</string>
     <string name="about_updates_title">What\'s new</string>
-    <string name="about_updates_body">- This is the first version of the app. There isn\'t much to report yet, so please stay tuned for future updates!</string>
+    <string name="about_updates_body">• Added a feature that notifies you when a new version is released\n• Fixed an issue where the meter direction was reversed by default\n• Added support for reversing the meter in Center modes\n• Added an auto scale offset parameter so you can tame overly aggressive movement</string>
+    <string name="about_update_check_button">Check for updates</string>
+    <string name="about_update_checking">Checking GitHub Releases…</string>
+    <string name="about_update_latest">You are using the latest version.</string>
+    <string name="about_update_available">New version available: %1$s</string>
+    <string name="about_update_check_failed">Could not check updates: %1$s</string>
+    <string name="about_update_test_mode_title">Test: show latest Release</string>
+    <string name="about_update_test_mode_desc">Temporarily treats the latest GitHub Release as an update even when it is not newer.</string>
+    <string name="about_update_ignore_interval_test_title">Test: ignore daily check limit</string>
+    <string name="about_update_ignore_interval_test_desc">Temporarily checks GitHub Releases every time the app opens or this screen is shown.</string>
+    <string name="update_screen_title">Update available</string>
+    <string name="update_release_notes_title">Release notes</string>
+    <string name="update_release_notes_empty">No release notes were provided for this version.</string>
+    <string name="update_download_install_button">Download / install</string>
+    <string name="update_asset_name">Asset: %1$s</string>
+    <string name="update_downloading">Downloading APK…</string>
+    <string name="update_downloading_progress">Downloading APK… %1$d%% (%2$s MB / %3$s MB)</string>
+    <string name="update_downloading_progress_unknown_total">Downloading APK… %1$s MB</string>
+    <string name="update_opening_installer">Opening package installer…</string>
+    <string name="update_install_permission_required">Allow installing unknown apps, then return here and tap the button again.</string>
+    <string name="update_download_failed">Download failed: %1$s</string>
+    <string name="update_notification_title">Update available</string>
+    <string name="update_notification_dont_show">Don\'t show again</string>
     <string name="about_known_issues_title">Known issues</string>
     <string name="about_known_issues_body">- On Nothing Phone (4a) Pro with Nothing earbuds, the meter may not move when spatial audio is enabled.</string>
     <string name="about_support_title">Support</string>
@@ -59,9 +81,11 @@
     <string name="base_indicator_title">Experimental: Base indicator</string>
     <string name="base_indicator_desc">Drive the red LED from low-frequency energy. This feature is still being tuned.</string>
     <string name="settings_media_projection_title">Show MediaProjection</string>
-    <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.&#10;You usually do not need this, but if you run into issues, try using it.</string>
+    <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.\nYou usually do not need this, but if you run into issues, try using it.</string>
     <string name="settings_glyph_meter_preview_title">Experimental: More faithful preview</string>
     <string name="settings_glyph_meter_preview_desc">Reflect the actual segment count and brightness changes on the on-screen meter.</string>
+    <string name="settings_automatic_update_check_title">Experimental: Automatically check updates</string>
+    <string name="settings_automatic_update_check_desc">Shows an in-app notice when a new version is published on GitHub.</string>
     <string name="settings_open_button">Open</string>
     <string name="settings_reset_button">Reset</string>
     <string name="settings_export_button">Export</string>
@@ -84,8 +108,8 @@
     <string name="oss_button_show_text">Show text</string>
     <string name="oss_load_failed">Failed to load license information.</string>
     <string name="oss_unknown_license">Unknown license</string>
-    <string name="license_apache_body" translatable="false">Apache License&#10;Version 2.0, January 2004&#10;http://www.apache.org/licenses/&#10;&#10;TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION&#10;&#10;[Full Apache 2.0 License text: https://www.apache.org/licenses/LICENSE-2.0]</string>
-    <string name="license_glyph_sdk_eula_body" translatable="false">Glyph SDK End User License Agreement&#10;&#10;1. License Grant&#10;Nothing Technology Limited grants a limited, non-exclusive, non-transferable license to use the Glyph Matrix SDK solely to integrate its functionality into your applications.&#10;&#10;2. User Rights and Restrictions&#10;You may not remove proprietary notices, modify or reverse engineer the software, redistribute it, or transfer your rights except as permitted by the agreement. Commercial use is prohibited unless you obtain prior written permission from Nothing.&#10;&#10;3. Third-Party Software&#10;The software contains or relies on Android Open Source Project components under Apache License 2.0 and Java OpenJDK components under GPLv2 with the Classpath Exception.&#10;&#10;4. Intellectual Property Rights&#10;All intellectual property rights remain with Nothing. The software is licensed, not sold.&#10;&#10;5. Disclaimer of Warranty&#10;The software is provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without warranties.&#10;&#10;6. Limitation of Liability&#10;Nothing and its licensors are not liable for indirect, incidental, consequential, or similar damages arising from use of the software.&#10;&#10;7. Termination&#10;The agreement remains in effect until terminated. If you fail to comply with the terms, Nothing may terminate it immediately and you must stop using the software and delete all copies.&#10;&#10;8. Governing Law&#10;This agreement is governed by the laws of England and Wales.&#10;&#10;9. Commercial Licensing&#10;For commercial use or licensing inquiries, contact GDKsupport@nothing.tech.&#10;&#10;Source: https://github.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/blob/main/LICENSE.md</string>
+    <string name="license_apache_body" translatable="false">Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n[Full Apache 2.0 License text: https://www.apache.org/licenses/LICENSE-2.0]</string>
+    <string name="license_glyph_sdk_eula_body" translatable="false">Glyph SDK End User License Agreement\n\n1. License Grant\nNothing Technology Limited grants a limited, non-exclusive, non-transferable license to use the Glyph Matrix SDK solely to integrate its functionality into your applications.\n\n2. User Rights and Restrictions\nYou may not remove proprietary notices, modify or reverse engineer the software, redistribute it, or transfer your rights except as permitted by the agreement. Commercial use is prohibited unless you obtain prior written permission from Nothing.\n\n3. Third-Party Software\nThe software contains or relies on Android Open Source Project components under Apache License 2.0 and Java OpenJDK components under GPLv2 with the Classpath Exception.\n\n4. Intellectual Property Rights\nAll intellectual property rights remain with Nothing. The software is licensed, not sold.\n\n5. Disclaimer of Warranty\nThe software is provided &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; without warranties.\n\n6. Limitation of Liability\nNothing and its licensors are not liable for indirect, incidental, consequential, or similar damages arising from use of the software.\n\n7. Termination\nThe agreement remains in effect until terminated. If you fail to comply with the terms, Nothing may terminate it immediately and you must stop using the software and delete all copies.\n\n8. Governing Law\nThis agreement is governed by the laws of England and Wales.\n\n9. Commercial Licensing\nFor commercial use or licensing inquiries, contact GDKsupport@nothing.tech.\n\nSource: https://github.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/blob/main/LICENSE.md</string>
 
     <!-- Content Descriptions -->
     <string name="cd_back">Back</string>
@@ -205,6 +229,8 @@
     <string name="param_auto_scale_window_title">Auto scale window</string>
     <string name="param_auto_scale_window_desc">Adjusts how long auto scale remembers recent min/max levels. Shorter values adapt faster.</string>
     <string name="param_auto_scale_window_value">%1$.0f s</string>
+    <string name="param_auto_scale_offset_title">Auto scale offset</string>
+    <string name="param_auto_scale_offset_desc">When auto scale is enabled, expands the meter\'s minimum and maximum range. Higher values make auto scale change more gently.</string>
     <string name="latency_title">Latency adjustment</string>
     <string name="latency_desc">Delay the meter and Glyph output to match playback timing.</string>
     <string name="latency_value_ms">%1$.0f ms</string>
@@ -249,9 +275,9 @@
     <string name="param_tone_focus_treble">Treble %1$d%%</string>
     <string name="param_tone_focus_balanced">Balanced</string>
 
-    <string name="glyph_direction_title">Glyph direction</string>
-    <string name="glyph_direction_top_to_bottom">Top to bottom</string>
-    <string name="glyph_direction_bottom_to_top">Bottom to top</string>
+    <string name="glyph_direction_title">Reverse meter direction</string>
+    <string name="glyph_direction_top_to_bottom">Reversed direction</string>
+    <string name="glyph_direction_bottom_to_top">Normal direction</string>
 
     <string name="binary_mode_title">Binary mode</string>
     <string name="binary_mode_on">Segments fully on/off only</string>

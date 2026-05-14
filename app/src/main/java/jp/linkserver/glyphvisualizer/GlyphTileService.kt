@@ -60,6 +60,7 @@ class GlyphTileService : TileService() {
                 spectrumAutoScale = resolved.spectrumAutoScale,
                 allBrightnessAutoScale = resolved.allBrightnessAutoScale,
                 autoScaleWindowSeconds = resolved.autoScaleWindowSeconds,
+                autoScaleOffset = resolved.autoScaleOffset,
                 latencyMs = resolved.latencyMs,
                 turnOffWhenBackDown = resolved.turnOffWhenBackDown
             )

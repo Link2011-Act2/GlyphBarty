@@ -29,12 +29,14 @@ object SettingsPreferences {
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
             autoScaleWindowSeconds = state.autoScaleWindowSeconds,
+            autoScaleOffset = state.autoScaleOffset,
             latencyMs = state.latencyMs,
             defaultOutputLatencyMs = state.defaultOutputLatencyMs,
             bluetoothLatencyMs = state.bluetoothLatencyMs,
             latencyAutoSwitchEnabled = state.latencyAutoSwitchEnabled,
             mediaProjectionEnabled = state.mediaProjectionEnabled,
             glyphMeterPreviewEnabled = state.glyphMeterPreviewEnabled,
+            automaticUpdateCheckEnabled = state.automaticUpdateCheckEnabled,
             nothingStyleEnabled = state.nothingStyleEnabled,
             turnOffWhenBackDown = state.turnOffWhenBackDown
         ))
@@ -70,12 +72,14 @@ object SettingsPreferences {
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
             autoScaleWindowSeconds = prefs.getFloatCompat("auto_scale_window_seconds", defaults.autoScaleWindowSeconds),
+            autoScaleOffset = prefs.getFloatCompat("auto_scale_offset", defaults.autoScaleOffset),
             latencyMs = prefs.getFloatCompat("latency_ms", defaults.latencyMs),
             defaultOutputLatencyMs = prefs.getFloatCompat("default_output_latency_ms", legacyNormalLatencyMs),
             bluetoothLatencyMs = prefs.getFloatCompat("bluetooth_latency_ms", legacyBluetoothLatencyMs),
             latencyAutoSwitchEnabled = prefs.getBoolean("latency_auto_switch_enabled", defaults.latencyAutoSwitchEnabled),
             mediaProjectionEnabled = prefs.getBoolean("media_projection_enabled", defaults.mediaProjectionEnabled),
             glyphMeterPreviewEnabled = prefs.getBoolean("glyph_meter_preview_enabled", defaults.glyphMeterPreviewEnabled),
+            automaticUpdateCheckEnabled = prefs.getBoolean("automatic_update_check_enabled", defaults.automaticUpdateCheckEnabled),
             nothingStyleEnabled = prefs.getBoolean("nothing_style_enabled", defaults.nothingStyleEnabled),
             turnOffWhenBackDown = prefs.getBoolean("turn_off_when_back_down", defaults.turnOffWhenBackDown),
         ))
@@ -101,12 +105,14 @@ object SettingsPreferences {
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)
             .putFloat("auto_scale_window_seconds", parameters.autoScaleWindowSeconds)
+            .putFloat("auto_scale_offset", parameters.autoScaleOffset)
             .putFloat("latency_ms", parameters.latencyMs)
             .putFloat("default_output_latency_ms", parameters.defaultOutputLatencyMs)
             .putFloat("bluetooth_latency_ms", parameters.bluetoothLatencyMs)
             .putBoolean("latency_auto_switch_enabled", parameters.latencyAutoSwitchEnabled)
             .putBoolean("media_projection_enabled", parameters.mediaProjectionEnabled)
             .putBoolean("glyph_meter_preview_enabled", parameters.glyphMeterPreviewEnabled)
+            .putBoolean("automatic_update_check_enabled", parameters.automaticUpdateCheckEnabled)
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
             .putBoolean("turn_off_when_back_down", parameters.turnOffWhenBackDown)
             .apply()
@@ -135,6 +141,7 @@ object SettingsPreferences {
                     put("spectrumAutoScale", parameters.spectrumAutoScale)
                     put("allBrightnessAutoScale", parameters.allBrightnessAutoScale)
                     put("autoScaleWindowSeconds", parameters.autoScaleWindowSeconds.toDouble())
+                    put("autoScaleOffset", parameters.autoScaleOffset.toDouble())
                 }
             )
         }
@@ -165,7 +172,8 @@ object SettingsPreferences {
             levelAutoScale = parameters.optBoolean("levelAutoScale", defaults.levelAutoScale),
             spectrumAutoScale = parameters.optBoolean("spectrumAutoScale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = parameters.optBoolean("allBrightnessAutoScale", defaults.allBrightnessAutoScale),
-            autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat()
+            autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat(),
+            autoScaleOffset = parameters.optDouble("autoScaleOffset", defaults.autoScaleOffset.toDouble()).toFloat()
         ))
     }
 

@@ -155,7 +155,7 @@ class GlyphLightController(
     private val glyphManager = GlyphManager.getInstance(context.applicationContext)
     private var isBound = false
     private var isSessionOpen = false
-    private var reverseDirection = true
+    private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
     private var baseIndicatorEnabled = false
@@ -166,6 +166,7 @@ class GlyphLightController(
     private var smoothing = 0.45f
     private var smoothingBalance = 0f
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
+    private var autoScaleOffset = 0f
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
@@ -340,9 +341,20 @@ class GlyphLightController(
     }
 
     override fun setAutoScaleWindowSeconds(seconds: Float) {
-        val nextWindowMs = seconds.coerceIn(10f, 60f) * 1_000f
+        val nextWindowMs = seconds.coerceIn(5f, 60f) * 1_000f
         if (autoScaleWindowMs != nextWindowMs) {
             autoScaleWindowMs = nextWindowMs
+            resetBaseIndicatorTracking()
+        }
+    }
+
+    override fun setAutoScaleOffset(offset: Float) {
+        val nextOffset = offset.coerceIn(0f, 0.4f)
+        if (autoScaleOffset != nextOffset) {
+            autoScaleOffset = nextOffset
+            resetLevelScaleTracking()
+            resetSpectrumScaleTracking()
+            resetAllBrightnessScaleTracking()
             resetBaseIndicatorTracking()
         }
     }
@@ -412,8 +424,7 @@ class GlyphLightController(
             spectrumBandMins[i] = minTrack
             spectrumBandMaxs[i] = maxTrack
 
-            val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
-            out[i] = ((v - minTrack) / range).coerceIn(0f, 1f)
+            out[i] = normalizeWithAutoScaleOffset(v, minTrack, maxTrack)
         }
         return out
     }
@@ -472,8 +483,7 @@ class GlyphLightController(
         levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
         levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
 
-        val range = (levelMax - levelMin).coerceAtLeast(0.05f)
-        return ((level - levelMin) / range).coerceIn(0f, 1f)
+        return normalizeWithAutoScaleOffset(level, levelMin, levelMax)
     }
 
     private fun resetLevelScaleTracking() {
@@ -702,8 +712,7 @@ class GlyphLightController(
         allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
         allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))
 
-        val range = (allBrightnessMax - allBrightnessMin).coerceAtLeast(0.05f)
-        return ((level - allBrightnessMin) / range).coerceIn(0f, 1f)
+        return normalizeWithAutoScaleOffset(level, allBrightnessMin, allBrightnessMax)
     }
 
     private fun resetAllBrightnessScaleTracking() {
@@ -740,22 +749,21 @@ class GlyphLightController(
             }
 
             val colors = IntArray(spec.channelCount)
-            val centerBrightness = if (fullSlots >= 1) MAX_LIGHT else edgeBrightness
-            if (centerBrightness > 0 && centerChannel in colors.indices) {
-                colors[centerChannel] = centerBrightness
-            }
-
-            for (pair in 1..pairCount) {
-                val brightness = when {
-                    pair < fullSlots -> MAX_LIGHT
-                    pair == fullSlots -> edgeBrightness
-                    else -> 0
+            val slots = if (isCenterDirectionReversed()) {
+                (pairCount downTo 1).map { pair ->
+                    listOf(leftChannels[pair - 1], rightChannels[pair - 1])
+                } + listOf(listOf(centerChannel))
+            } else {
+                listOf(listOf(centerChannel)) + (1..pairCount).map { pair ->
+                    listOf(leftChannels[pair - 1], rightChannels[pair - 1])
                 }
+            }
+            slots.forEachIndexed { index, channels ->
+                val brightness = brightnessForCenterSlot(index, fullSlots, edgeBrightness)
                 if (brightness > 0) {
-                    val leftChannel = leftChannels[pair - 1]
-                    val rightChannel = rightChannels[pair - 1]
-                    if (leftChannel in colors.indices) colors[leftChannel] = brightness
-                    if (rightChannel in colors.indices) colors[rightChannel] = brightness
+                    channels.forEach { channel ->
+                        if (channel in colors.indices) colors[channel] = brightness
+                    }
                 }
             }
 
@@ -764,25 +772,22 @@ class GlyphLightController(
         }
 
         val pairCount = channelRange.count() / 2
-        val centerLeft = channelRange.first + pairCount - 1
-        val centerRight = centerLeft + 1
-
         val virtualPairs = clamped * pairCount
         val fullPairs = virtualPairs.toInt()
-        val edgeBrightness = if (binaryMode) 0 else ((virtualPairs - fullPairs) * MAX_LIGHT).roundToInt()
+        val edgeBrightness = if (binaryMode) {
+            0
+        } else {
+            ((virtualPairs - fullPairs) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+        }
 
         val colors = IntArray(spec.channelCount)
-        for (pair in 1..pairCount) {
-            val brightness = when {
-                pair <= fullPairs -> MAX_LIGHT
-                pair == fullPairs + 1 -> edgeBrightness
-                else -> 0
-            }
-            if (brightness > 0) {
-                val leftChannel = centerLeft - (pair - 1)
-                val rightChannel = centerRight + (pair - 1)
-                if (leftChannel in channelRange) colors[leftChannel] = brightness
-                if (rightChannel in channelRange) colors[rightChannel] = brightness
+        val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
+        slots.forEachIndexed { index, channels ->
+            val brightness = brightnessForCenterSlot(index, fullPairs, edgeBrightness)
+            channels.forEach { channel ->
+                if (brightness > 0 && channel in channelRange && channel in colors.indices) {
+                    colors[channel] = brightness
+                }
             }
         }
         glyphManager.setFrameColors(colors)
@@ -809,70 +814,56 @@ class GlyphLightController(
         val count = channelRange.count()
         if (count < 1) return
 
-        val channels = channelRange.toList()
-
-        if (count % 2 == 1) {
-            // 奇数: 中心1点 + 両側ペア展開
-            // B(5ch): B3が中心 → (B2,B4) → (B1,B5)
-            // A(11ch): A6が中心 → (A5,A7) → ... → (A1,A11)
-            val centerIdx = count / 2
-            val pairCount = count / 2
-            val totalSlots = 1 + pairCount
-
-            val virtualSlots = level * totalSlots
-            val fullSlots = virtualSlots.toInt()
-            val edgeBrightness = if (binaryMode) 0
-                else ((virtualSlots - fullSlots) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
-
-            // スロット0: 中心
-            val centerBrightness = if (fullSlots >= 1) MAX_LIGHT else edgeBrightness
-            if (centerBrightness > 0 && channels[centerIdx] in colors.indices) {
-                colors[channels[centerIdx]] = centerBrightness
-            }
-
-            // スロット1..pairCount: ペア展開
-            for (pair in 1..pairCount) {
-                val brightness = when {
-                    pair < fullSlots -> MAX_LIGHT
-                    pair == fullSlots -> edgeBrightness
-                    else -> 0
-                }
-                if (brightness > 0) {
-                    val left = channels[centerIdx - pair]
-                    val right = channels[centerIdx + pair]
-                    if (left in colors.indices) colors[left] = brightness
-                    if (right in colors.indices) colors[right] = brightness
-                }
-            }
+        val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
+        val virtualSlots = level * slots.size
+        val fullSlots = virtualSlots.toInt().coerceIn(0, slots.size)
+        val edgeBrightness = if (binaryMode) {
+            0
         } else {
-            // 偶数: 中心ペア + 両側展開
-            val pairCount = count / 2
-            val centerLeft = channelRange.first + pairCount - 1
-            val centerRight = centerLeft + 1
-            val virtualPairs = level * pairCount
-            val fullPairs = virtualPairs.toInt()
-            val edgeBrightness = if (binaryMode) 0
-                else ((virtualPairs - fullPairs) * MAX_LIGHT).roundToInt()
+            ((virtualSlots - fullSlots) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+        }
 
-            for (pair in 1..pairCount) {
-                val brightness = when {
-                    pair <= fullPairs -> MAX_LIGHT
-                    pair == fullPairs + 1 -> edgeBrightness
-                    else -> 0
-                }
-                if (brightness > 0) {
-                    val leftChannel = centerLeft - (pair - 1)
-                    val rightChannel = centerRight + (pair - 1)
-                    if (leftChannel in channelRange && leftChannel in colors.indices) {
-                        colors[leftChannel] = brightness
-                    }
-                    if (rightChannel in channelRange && rightChannel in colors.indices) {
-                        colors[rightChannel] = brightness
+        slots.forEachIndexed { index, slotChannels ->
+            val brightness = brightnessForCenterSlot(index, fullSlots, edgeBrightness)
+            if (brightness > 0) {
+                slotChannels.forEach { channel ->
+                    if (channel in channelRange && channel in colors.indices) {
+                        colors[channel] = brightness
                     }
                 }
             }
         }
     }
+
+    private fun centerPairSlots(channels: List<Int>, reversed: Boolean): List<List<Int>> {
+        if (channels.isEmpty()) return emptyList()
+        val count = channels.size
+        val slots = if (count % 2 == 1) {
+            val centerIdx = count / 2
+            val pairCount = count / 2
+            listOf(listOf(channels[centerIdx])) + (1..pairCount).map { pair ->
+                listOf(channels[centerIdx - pair], channels[centerIdx + pair])
+            }
+        } else {
+            val pairCount = count / 2
+            val centerLeft = pairCount - 1
+            val centerRight = pairCount
+            (0 until pairCount).map { offset ->
+                listOf(channels[centerLeft - offset], channels[centerRight + offset])
+            }
+        }
+        return if (reversed) slots.asReversed() else slots
+    }
+
+    private fun brightnessForCenterSlot(index: Int, fullSlots: Int, edgeBrightness: Int): Int {
+        return when {
+            index < fullSlots -> MAX_LIGHT
+            index == fullSlots -> edgeBrightness
+            else -> 0
+        }
+    }
+
+    private fun isCenterDirectionReversed(): Boolean = reverseDirection
 
     override fun turnOff() {
         lastPreviewLevel = 0f
@@ -941,8 +932,15 @@ class GlyphLightController(
         baseIndicatorMin = min(level, (baseIndicatorMin + drift).coerceIn(0f, 1f))
         baseIndicatorMax = max(level, (baseIndicatorMax - drift).coerceIn(0f, 1f))
 
-        val range = (baseIndicatorMax - baseIndicatorMin).coerceAtLeast(0.05f)
-        return ((level - baseIndicatorMin) / range).coerceIn(0f, 1f)
+        return normalizeWithAutoScaleOffset(level, baseIndicatorMin, baseIndicatorMax)
+    }
+
+    private fun normalizeWithAutoScaleOffset(value: Float, minTrack: Float, maxTrack: Float): Float {
+        val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
+        val adjustedMin = minTrack - (range * autoScaleOffset)
+        val adjustedMax = maxTrack + (range * autoScaleOffset)
+        val adjustedRange = (adjustedMax - adjustedMin).coerceAtLeast(0.05f)
+        return ((value - adjustedMin) / adjustedRange).coerceIn(0f, 1f)
     }
 
     private fun isBaseIndicatorAutoScaleEnabled(): Boolean {

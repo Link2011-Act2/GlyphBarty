@@ -40,13 +40,14 @@ class GlyphMatrixController(
     private val glyphMatrixManager = GlyphMatrixManager.getInstance(context.applicationContext)
     private var isBound = false
     private var isSessionOpen = false
-    private var reverseDirection = true
+    private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
     private var allBrightnessAutoScaleEnabled = false
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
+    private var autoScaleOffset = 0f
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
@@ -189,9 +190,19 @@ class GlyphMatrixController(
     }
 
     override fun setAutoScaleWindowSeconds(seconds: Float) {
-        val nextWindowMs = seconds.coerceIn(10f, 60f) * 1_000f
+        val nextWindowMs = seconds.coerceIn(5f, 60f) * 1_000f
         if (autoScaleWindowMs != nextWindowMs) {
             autoScaleWindowMs = nextWindowMs
+        }
+    }
+
+    override fun setAutoScaleOffset(offset: Float) {
+        val nextOffset = offset.coerceIn(0f, 0.4f)
+        if (autoScaleOffset != nextOffset) {
+            autoScaleOffset = nextOffset
+            resetLevelScaleTracking()
+            resetSpectrumScaleTracking()
+            resetAllBrightnessScaleTracking()
         }
     }
 
@@ -278,8 +289,7 @@ class GlyphMatrixController(
             spectrumBandMins[i] = minTrack
             spectrumBandMaxs[i] = maxTrack
 
-            val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
-            normalizedSpectrumBands[i] = ((v - minTrack) / range).coerceIn(0f, 1f)
+            normalizedSpectrumBands[i] = normalizeWithAutoScaleOffset(v, minTrack, maxTrack)
         }
         return normalizedSpectrumBands
     }
@@ -313,8 +323,7 @@ class GlyphMatrixController(
         levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
         levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
 
-        val range = (levelMax - levelMin).coerceAtLeast(0.05f)
-        return ((level - levelMin) / range).coerceIn(0f, 1f)
+        return normalizeWithAutoScaleOffset(level, levelMin, levelMax)
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
@@ -330,8 +339,15 @@ class GlyphMatrixController(
         allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
         allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))
 
-        val range = (allBrightnessMax - allBrightnessMin).coerceAtLeast(0.05f)
-        return ((level - allBrightnessMin) / range).coerceIn(0f, 1f)
+        return normalizeWithAutoScaleOffset(level, allBrightnessMin, allBrightnessMax)
+    }
+
+    private fun normalizeWithAutoScaleOffset(value: Float, minTrack: Float, maxTrack: Float): Float {
+        val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
+        val adjustedMin = minTrack - (range * autoScaleOffset)
+        val adjustedMax = maxTrack + (range * autoScaleOffset)
+        val adjustedRange = (adjustedMax - adjustedMin).coerceAtLeast(0.05f)
+        return ((value - adjustedMin) / adjustedRange).coerceIn(0f, 1f)
     }
 
     override fun updateLevel(level: Float) {

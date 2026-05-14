@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,15 +48,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
+import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
+import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
     onOssLicenses: () -> Unit = {},
+    onUpdateAvailable: (AppUpdateInfo) -> Unit = {},
     nothingStyleEnabled: Boolean = false
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val versionInfo = remember { resolveAppVersionInfo(context) }
     val versionName = versionInfo.first
     val versionCode = versionInfo.second
@@ -78,6 +90,40 @@ fun AboutScreen(
 
     var showChannelDialog by remember { mutableStateOf(false) }
     var showVersionDetailsDialog by remember { mutableStateOf(false) }
+    var checkingUpdates by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    val repositoryUrl = stringResource(R.string.about_support_site_url)
+
+    fun startUpdateCheck(manual: Boolean) {
+        if (checkingUpdates) return
+        checkingUpdates = true
+        updateStatus = if (manual) context.getString(R.string.about_update_checking) else null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                checkGitHubReleaseUpdate(
+                    repositoryUrl = repositoryUrl,
+                    showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
+                )
+            }
+            markUpdateCheckFinished(context)
+            checkingUpdates = false
+            result
+                .onSuccess { updateInfo ->
+                    if (updateInfo != null) {
+                        updateStatus = context.getString(R.string.about_update_available, updateInfo.tagName)
+                        onUpdateAvailable(updateInfo)
+                    } else if (manual) {
+                        updateStatus = context.getString(R.string.about_update_latest)
+                    }
+                }
+                .onFailure { error ->
+                    updateStatus = context.getString(
+                        R.string.about_update_check_failed,
+                        error.localizedMessage ?: error.javaClass.simpleName
+                    )
+                }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -197,6 +243,28 @@ fun AboutScreen(
                         text = stringResource(R.string.about_updates_body),
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedButton(
+                    onClick = { startUpdateCheck(manual = true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !checkingUpdates
+                ) {
+                    if (checkingUpdates) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(end = 10.dp)
+                                .size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    Text(stringResource(R.string.about_update_check_button))
+                }
+                updateStatus?.let { status ->
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

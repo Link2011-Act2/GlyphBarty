@@ -16,6 +16,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -106,6 +107,7 @@ import androidx.compose.ui.res.stringResource
 import jp.linkserver.glyphvisualizer.ui.AboutScreen
 import jp.linkserver.glyphvisualizer.ui.OssLicensesScreen
 import jp.linkserver.glyphvisualizer.ui.SettingsScreen
+import jp.linkserver.glyphvisualizer.ui.UpdateOverviewScreen
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,19 +121,30 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
+import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
+import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
+import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
+import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
+import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
+import jp.linkserver.glyphvisualizer.update.shouldCheckForUpdates
 
 private const val RESPONSE_SPEED_NONE_THRESHOLD = 0.54f
 
@@ -140,6 +153,7 @@ private enum class Screen {
     LATENCY,
     SETTINGS,
     ABOUT,
+    UPDATE,
     OSS
 }
 
@@ -260,6 +274,7 @@ class MainActivity : ComponentActivity() {
             spectrumAutoScale = uiState.spectrumAutoScale,
             allBrightnessAutoScale = uiState.allBrightnessAutoScale,
             autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
+            autoScaleOffset = uiState.autoScaleOffset,
             latencyMs = uiState.latencyMs,
             turnOffWhenBackDown = uiState.turnOffWhenBackDown
         )
@@ -283,6 +298,7 @@ class MainActivity : ComponentActivity() {
                 smoothing = resolvedLatencySettings.smoothing,
                 smoothingBalance = resolvedLatencySettings.smoothingBalance,
                 autoScaleWindowSeconds = resolvedLatencySettings.autoScaleWindowSeconds,
+                autoScaleOffset = resolvedLatencySettings.autoScaleOffset,
                 latencyMs = resolvedLatencySettings.latencyMs,
                 defaultOutputLatencyMs = resolvedLatencySettings.defaultOutputLatencyMs,
                 bluetoothLatencyMs = resolvedLatencySettings.bluetoothLatencyMs,
@@ -297,6 +313,7 @@ class MainActivity : ComponentActivity() {
                     spectrumAutoScale = resolvedLatencySettings.spectrumAutoScale,
                     mediaProjectionEnabled = resolvedLatencySettings.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = resolvedLatencySettings.glyphMeterPreviewEnabled,
+                    automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
                     nothingStyleEnabled = resolvedLatencySettings.nothingStyleEnabled,
                     turnOffWhenBackDown = resolvedLatencySettings.turnOffWhenBackDown,
                 allBrightnessAutoScale = resolvedLatencySettings.allBrightnessAutoScale,
@@ -320,6 +337,7 @@ class MainActivity : ComponentActivity() {
                     smoothing = uiState.smoothing,
                     smoothingBalance = uiState.smoothingBalance,
                     autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
+                    autoScaleOffset = uiState.autoScaleOffset,
                     latencyMs = uiState.latencyMs,
                     defaultOutputLatencyMs = uiState.defaultOutputLatencyMs,
                     bluetoothLatencyMs = uiState.bluetoothLatencyMs,
@@ -342,6 +360,7 @@ class MainActivity : ComponentActivity() {
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
                     mediaProjectionEnabled = uiState.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
+                    automaticUpdateCheckEnabled = uiState.automaticUpdateCheckEnabled,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
                     turnOffWhenBackDown = uiState.turnOffWhenBackDown,
                     onSensitivityChanged = { newValue ->
@@ -378,6 +397,12 @@ class MainActivity : ComponentActivity() {
                     onAutoScaleWindowSecondsChangeFinished = {
                         syncCurrentParameters()
                     },
+                    onAutoScaleOffsetChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(autoScaleOffset = newValue) }
+                    },
+                    onAutoScaleOffsetChangeFinished = {
+                        syncCurrentParameters()
+                    },
                     onLatencyMsChanged = { newValue ->
                         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
                         CaptureUiStore.update {
@@ -407,6 +432,11 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
+                    onAutomaticUpdateCheckEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(automaticUpdateCheckEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
                     onBaseIndicatorEnabledChanged = { enabled ->
                         CaptureUiStore.update { it.copy(baseIndicatorEnabled = enabled) }
                         syncCurrentParameters()
@@ -431,6 +461,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -461,6 +492,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -487,6 +519,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -513,6 +546,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -539,6 +573,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -565,6 +600,7 @@ class MainActivity : ComponentActivity() {
                                 updated.spectrumAutoScale,
                                 updated.allBrightnessAutoScale,
                                 updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
                                 updated.latencyMs,
                                 updated.turnOffWhenBackDown,
                                 updated.outputGamma
@@ -629,7 +665,8 @@ class MainActivity : ComponentActivity() {
             outputGamma = parameters.outputGamma.coerceIn(0.6f, 2.6f),
             toneFocus = parameters.toneFocus.coerceIn(-1f, 1f),
             smoothing = parameters.smoothing.coerceIn(0.08f, 0.55f),
-            autoScaleWindowSeconds = parameters.autoScaleWindowSeconds.coerceIn(10f, 60f),
+            autoScaleWindowSeconds = parameters.autoScaleWindowSeconds.coerceIn(5f, 60f),
+            autoScaleOffset = parameters.autoScaleOffset.coerceIn(0f, 0.4f),
             latencyMs = parameters.latencyMs.coerceIn(0f, 500f),
             defaultOutputLatencyMs = parameters.defaultOutputLatencyMs.coerceIn(0f, 500f),
             bluetoothLatencyMs = parameters.bluetoothLatencyMs.coerceIn(0f, 500f),
@@ -660,6 +697,7 @@ class MainActivity : ComponentActivity() {
             routeAware.spectrumAutoScale,
             routeAware.allBrightnessAutoScale,
             routeAware.autoScaleWindowSeconds,
+            routeAware.autoScaleOffset,
             routeAware.latencyMs,
             routeAware.turnOffWhenBackDown,
             routeAware.outputGamma
@@ -684,6 +722,7 @@ class MainActivity : ComponentActivity() {
                 smoothing = parameters.smoothing,
                 smoothingBalance = parameters.smoothingBalance,
                 autoScaleWindowSeconds = parameters.autoScaleWindowSeconds,
+                autoScaleOffset = parameters.autoScaleOffset,
                 reverseDirection = parameters.reverseDirection,
                 peakHoldEnabled = parameters.peakHoldEnabled,
                 glyphMode = parameters.glyphMode,
@@ -713,6 +752,7 @@ class MainActivity : ComponentActivity() {
             updated.spectrumAutoScale,
             updated.allBrightnessAutoScale,
             updated.autoScaleWindowSeconds,
+            updated.autoScaleOffset,
             updated.latencyMs,
             updated.turnOffWhenBackDown,
             updated.outputGamma
@@ -783,6 +823,7 @@ class MainActivity : ComponentActivity() {
                 uiState.spectrumAutoScale,
                 uiState.allBrightnessAutoScale,
                 uiState.autoScaleWindowSeconds,
+                uiState.autoScaleOffset,
                 uiState.latencyMs,
                 uiState.turnOffWhenBackDown,
                 uiState.outputGamma
@@ -831,6 +872,7 @@ private fun GlyphVisualizerApp(
     smoothing: Float,
     smoothingBalance: Float,
     autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float,
     latencyMs: Float,
     defaultOutputLatencyMs: Float,
     bluetoothLatencyMs: Float,
@@ -853,6 +895,7 @@ private fun GlyphVisualizerApp(
     allBrightnessAutoScale: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    automaticUpdateCheckEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
@@ -864,10 +907,13 @@ private fun GlyphVisualizerApp(
     onToneFocusChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChangeFinished: () -> Unit,
+    onAutoScaleOffsetChanged: (Float) -> Unit,
+    onAutoScaleOffsetChangeFinished: () -> Unit,
     onLatencyMsChanged: (Float) -> Unit,
     onLatencyMsChangeFinished: () -> Unit,
     onLatencyAutoSwitchChanged: (Boolean) -> Unit,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
+    onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
@@ -887,12 +933,17 @@ private fun GlyphVisualizerApp(
     logMessage: String?,
     onDismissLog: () -> Unit
 ) {
+    val context = LocalContext.current
+    val repositoryUrl = stringResource(R.string.about_support_site_url)
     var screen by remember { mutableStateOf(Screen.MAIN) }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateNotification by remember { mutableStateOf<AppUpdateInfo?>(null) }
         BackHandler(enabled = drawerOpen || screen != Screen.MAIN) {
         when {
             drawerOpen -> drawerOpen = false
+            screen == Screen.UPDATE -> screen = Screen.ABOUT
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
             else -> screen = Screen.MAIN
@@ -923,6 +974,27 @@ private fun GlyphVisualizerApp(
             delay(4000)
             if (!isCapturing) {
                 startPending = false
+            }
+        }
+    }
+    LaunchedEffect(repositoryUrl, automaticUpdateCheckEnabled) {
+        val showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
+        if (automaticUpdateCheckEnabled && shouldCheckForUpdates(context)) {
+            val result = withContext(Dispatchers.IO) {
+                checkGitHubReleaseUpdate(
+                    repositoryUrl = repositoryUrl,
+                    showLatestForTesting = showLatestForTesting
+                )
+            }
+            markUpdateCheckFinished(context)
+            result.onSuccess { updateInfo ->
+                if (
+                    updateInfo != null &&
+                    (showLatestForTesting || !isUpdateNotificationDismissed(context, updateInfo.tagName))
+                ) {
+                    availableUpdate = updateInfo
+                    updateNotification = updateInfo
+                }
             }
         }
     }
@@ -962,6 +1034,7 @@ private fun GlyphVisualizerApp(
                         smoothing = smoothing,
                         smoothingBalance = smoothingBalance,
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
+                        autoScaleOffset = autoScaleOffset,
                         reverseDirection = reverseDirection,
                         meterSegments = meterSegments,
                         activeMode = activeMode,
@@ -993,6 +1066,8 @@ private fun GlyphVisualizerApp(
                         onToneFocusChanged = onToneFocusChanged,
                         onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
                         onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                        onAutoScaleOffsetChanged = onAutoScaleOffsetChanged,
+                        onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
@@ -1037,14 +1112,40 @@ private fun GlyphVisualizerApp(
                         onMediaProjectionEnabledChanged = onMediaProjectionEnabledChanged,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
                         onGlyphMeterPreviewEnabledChanged = onGlyphMeterPreviewEnabledChanged,
+                        automaticUpdateCheckEnabled = automaticUpdateCheckEnabled,
+                        onAutomaticUpdateCheckEnabledChanged = onAutomaticUpdateCheckEnabledChanged,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onNothingStyleEnabledChanged = onNothingStyleEnabledChanged
                     )
                     Screen.ABOUT -> AboutScreen(
                         onBack = { screen = Screen.SETTINGS },
                         onOssLicenses = { screen = Screen.OSS },
+                        onUpdateAvailable = { updateInfo ->
+                            availableUpdate = updateInfo
+                            screen = Screen.UPDATE
+                        },
                         nothingStyleEnabled = nothingStyleEnabled
                     )
+                    Screen.UPDATE -> {
+                        val updateInfo = availableUpdate
+                        if (updateInfo != null) {
+                            UpdateOverviewScreen(
+                                updateInfo = updateInfo,
+                                nothingStyleEnabled = nothingStyleEnabled,
+                                onBack = { screen = Screen.ABOUT }
+                            )
+                        } else {
+                            AboutScreen(
+                                onBack = { screen = Screen.SETTINGS },
+                                onOssLicenses = { screen = Screen.OSS },
+                                onUpdateAvailable = { foundUpdate ->
+                                    availableUpdate = foundUpdate
+                                    screen = Screen.UPDATE
+                                },
+                                nothingStyleEnabled = nothingStyleEnabled
+                            )
+                        }
+                    }
                     Screen.OSS -> OssLicensesScreen(onBack = { screen = Screen.ABOUT })
                 }
             }
@@ -1059,6 +1160,36 @@ private fun GlyphVisualizerApp(
                     drawerOpen = false
                 }
             )
+
+            AnimatedVisibility(
+                visible = updateNotification != null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 72.dp),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                updateNotification?.let { updateInfo ->
+                    UpdateNotificationOverlay(
+                        updateInfo = updateInfo,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onOpen = {
+                            availableUpdate = updateInfo
+                            updateNotification = null
+                            screen = Screen.UPDATE
+                        },
+                        onDismiss = {
+                            updateNotification = null
+                        },
+                        onDismissUntilNextVersion = {
+                            dismissUpdateNotificationUntilNextVersion(context, updateInfo.tagName)
+                            updateNotification = null
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -1081,6 +1212,7 @@ private fun MainScreenContent(
     smoothing: Float,
     smoothingBalance: Float,
     autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float,
     reverseDirection: Boolean,
     meterSegments: Int,
     activeMode: String,
@@ -1112,6 +1244,8 @@ private fun MainScreenContent(
     onToneFocusChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChangeFinished: () -> Unit,
+    onAutoScaleOffsetChanged: (Float) -> Unit,
+    onAutoScaleOffsetChangeFinished: () -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
@@ -1132,14 +1266,15 @@ private fun MainScreenContent(
     val scrollState = rememberScrollState()
     var heroBottomInRoot by remember { mutableStateOf(Float.POSITIVE_INFINITY) }
     var compactMeterDismissed by rememberSaveable { mutableStateOf(false) }
-    val meterModel = remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled) {
+    val meterModel = remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled, reverseDirection) {
         buildUiMeterModel(
             level = level,
             meterSegments = meterSegments,
             glyphMode = glyphMode,
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
-            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            reverseDirection = reverseDirection
         )
     }
     val collapsedMeterVisible = heroBottomInRoot <= 0f
@@ -1225,6 +1360,7 @@ private fun MainScreenContent(
                         smoothing = smoothing,
                         smoothingBalance = smoothingBalance,
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
+                        autoScaleOffset = autoScaleOffset,
                         reverseDirection = reverseDirection,
                         activeMode = activeMode,
                         glyphMode = glyphMode,
@@ -1254,6 +1390,8 @@ private fun MainScreenContent(
                         onToneFocusChanged = onToneFocusChanged,
                         onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
                         onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                        onAutoScaleOffsetChanged = onAutoScaleOffsetChanged,
+                        onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
@@ -2015,17 +2153,42 @@ private fun CompactMeterOverlay(
                         centerPeakX
                     }
                     val betweenCentersPeakX = (leftCenterPeakX + centerPeakX) / 2f
-                    val maxPairDistance = ((segmentCount - meterModel.symmetricSeedCount).coerceAtLeast(0) / 2).coerceAtLeast(1).toFloat()
-                    val peakDistance = animatedPeak.coerceIn(0f, 1f) * maxPairDistance
+                    val maxPairDistance = symmetricPeakDistanceSteps(segmentCount, meterModel.symmetricSeedCount)
+                    val peakHalfWidth = if (meterModel.centerDirectionReversed) widthPerSegment / 2f else 0f
+                    val peakProgress = if (meterModel.centerDirectionReversed) {
+                        1f - animatedPeak.coerceIn(0f, 1f)
+                    } else {
+                        animatedPeak.coerceIn(0f, 1f)
+                    }
+                    val peakDistance = peakProgress * maxPairDistance
                     if (peakDistance <= 0.001f) {
-                        val restingPeakX = if (meterModel.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
-                        drawLine(
-                            color = peakColor,
-                            start = Offset(restingPeakX, 0f),
-                            end = Offset(restingPeakX, size.height),
-                            strokeWidth = 3.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
+                        if (meterModel.centerDirectionReversed) {
+                            val leftRestingPeakX = if (meterModel.symmetricSeedCount == 2) leftCenterPeakX else centerPeakX
+                            val rightRestingPeakX = centerPeakX
+                            drawLine(
+                                color = peakColor,
+                                start = Offset((leftRestingPeakX - peakHalfWidth).coerceIn(0f, size.width), 0f),
+                                end = Offset((leftRestingPeakX - peakHalfWidth).coerceIn(0f, size.width), size.height),
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                            drawLine(
+                                color = peakColor,
+                                start = Offset((rightRestingPeakX + peakHalfWidth).coerceIn(0f, size.width), 0f),
+                                end = Offset((rightRestingPeakX + peakHalfWidth).coerceIn(0f, size.width), size.height),
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        } else {
+                            val restingPeakX = if (meterModel.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
+                            drawLine(
+                                color = peakColor,
+                                start = Offset(restingPeakX, 0f),
+                                end = Offset(restingPeakX, size.height),
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
                     } else {
                         val leftPeakX: Float
                         val rightPeakX: Float
@@ -2047,15 +2210,15 @@ private fun CompactMeterOverlay(
                         }
                         drawLine(
                             color = peakColor,
-                            start = Offset(leftPeakX.coerceAtLeast(widthPerSegment / 2f), 0f),
-                            end = Offset(leftPeakX.coerceAtLeast(widthPerSegment / 2f), size.height),
+                            start = Offset((leftPeakX - peakHalfWidth).coerceIn(0f, size.width), 0f),
+                            end = Offset((leftPeakX - peakHalfWidth).coerceIn(0f, size.width), size.height),
                             strokeWidth = 3.dp.toPx(),
                             cap = StrokeCap.Round
                         )
                         drawLine(
                             color = peakColor,
-                            start = Offset(rightPeakX.coerceAtMost(size.width - (widthPerSegment / 2f)), 0f),
-                            end = Offset(rightPeakX.coerceAtMost(size.width - (widthPerSegment / 2f)), size.height),
+                            start = Offset((rightPeakX + peakHalfWidth).coerceIn(0f, size.width), 0f),
+                            end = Offset((rightPeakX + peakHalfWidth).coerceIn(0f, size.width), size.height),
                             strokeWidth = 3.dp.toPx(),
                             cap = StrokeCap.Round
                         )
@@ -2100,6 +2263,102 @@ private fun CompactMeterOverlay(
 }
 
 @Composable
+private fun UpdateNotificationOverlay(
+    updateInfo: AppUpdateInfo,
+    nothingStyleEnabled: Boolean,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+    onDismissUntilNextVersion: () -> Unit
+) {
+    val density = LocalDensity.current
+    val containerColor = if (nothingStyleEnabled) {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    var dragOffsetPx by remember(updateInfo.tagName) { mutableStateOf(0f) }
+    var dismissing by remember(updateInfo.tagName) { mutableStateOf(false) }
+    val exitDistancePx = with(density) { 96.dp.toPx() }
+    val animatedOffsetPx by animateFloatAsState(
+        targetValue = if (dismissing) -exitDistancePx else dragOffsetPx,
+        animationSpec = tween(durationMillis = 180),
+        label = "update-notification-dismiss",
+        finishedListener = {
+            if (dismissing) {
+                onDismiss()
+            }
+        }
+    )
+    val animatedAlpha = ((exitDistancePx + animatedOffsetPx) / exitDistancePx).coerceIn(0f, 1f)
+
+    androidx.compose.material3.Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                translationY = animatedOffsetPx
+                alpha = animatedAlpha
+            }
+            .pointerInput(updateInfo.tagName) {
+                val dismissThresholdPx = with(density) { 28.dp.toPx() }
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount ->
+                        dragOffsetPx = (dragOffsetPx + dragAmount).coerceAtMost(0f)
+                    },
+                    onDragEnd = {
+                        if (dragOffsetPx < -dismissThresholdPx) {
+                            dismissing = true
+                        } else {
+                            dragOffsetPx = 0f
+                        }
+                    },
+                    onDragCancel = {
+                        dragOffsetPx = 0f
+                    }
+                )
+            },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpen),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.update_notification_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = updateInfo.tagName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            TextButton(onClick = onDismissUntilNextVersion) {
+                Text(stringResource(R.string.update_notification_dont_show))
+            }
+        }
+    }
+}
+
+@Composable
 private fun activeModeLabel(activeMode: String): String {
     return when (activeMode) {
         "VISUALIZER" -> stringResource(R.string.mode_visualizer)
@@ -2115,7 +2374,8 @@ private data class UiMeterModel(
     val segmentLevels: List<Float>,
     val usesGlyphBrightnessPreview: Boolean,
     val usesSymmetricCenterLayout: Boolean = false,
-    val symmetricSeedCount: Int = 1
+    val symmetricSeedCount: Int = 1,
+    val centerDirectionReversed: Boolean = false
 )
 
 private fun buildUiMeterModel(
@@ -2124,7 +2384,8 @@ private fun buildUiMeterModel(
     glyphMode: String,
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
-    glyphMeterPreviewEnabled: Boolean
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean
 ): UiMeterModel {
     if (!glyphMeterPreviewEnabled) {
         val legacySegments = meterSegments.coerceIn(0, 16)
@@ -2159,7 +2420,8 @@ private fun buildUiMeterModel(
             normalizedLevel = normalizedLevel,
             segmentCount = segmentCount,
             seedCount = symmetricSeedCount,
-            usesBrightnessPreview = usesGlyphBrightnessPreview
+            usesBrightnessPreview = usesGlyphBrightnessPreview,
+            centerDirectionReversed = glyphMeterPreviewEnabled && reverseDirection
         )
     }
 
@@ -2192,7 +2454,8 @@ private fun buildSymmetricMeterModel(
     normalizedLevel: Float,
     segmentCount: Int,
     seedCount: Int,
-    usesBrightnessPreview: Boolean
+    usesBrightnessPreview: Boolean,
+    centerDirectionReversed: Boolean = false
 ): UiMeterModel {
     val safeSeedCount = seedCount.coerceIn(1, segmentCount.coerceAtLeast(1))
     val logicalStepCount = (1 + ((segmentCount - safeSeedCount).coerceAtLeast(0) / 2)).coerceAtLeast(1)
@@ -2204,7 +2467,8 @@ private fun buildSymmetricMeterModel(
         seedCount = safeSeedCount,
         fullSteps = fullSteps,
         edgeFraction = edgeFraction,
-        usesBrightnessPreview = usesBrightnessPreview
+        usesBrightnessPreview = usesBrightnessPreview,
+        centerDirectionReversed = centerDirectionReversed
     )
     val activeSegments = if (usesBrightnessPreview) {
         segmentLevels.count { it > 0.001f }
@@ -2220,7 +2484,8 @@ private fun buildSymmetricMeterModel(
         segmentLevels = segmentLevels,
         usesGlyphBrightnessPreview = usesBrightnessPreview,
         usesSymmetricCenterLayout = true,
-        symmetricSeedCount = safeSeedCount
+        symmetricSeedCount = safeSeedCount,
+        centerDirectionReversed = centerDirectionReversed
     )
 }
 
@@ -2229,7 +2494,8 @@ private fun buildSymmetricSegmentLevels(
     seedCount: Int,
     fullSteps: Int,
     edgeFraction: Float,
-    usesBrightnessPreview: Boolean
+    usesBrightnessPreview: Boolean,
+    centerDirectionReversed: Boolean
 ): List<Float> {
     if (segmentCount <= 0) return emptyList()
     if (fullSteps <= 0 && (!usesBrightnessPreview || edgeFraction <= 0.001f)) {
@@ -2237,40 +2503,63 @@ private fun buildSymmetricSegmentLevels(
     }
 
     val levels = MutableList(segmentCount) { 0f }
-    val rightCenter = segmentCount / 2
-    val leftCenter = if (seedCount == 2) (rightCenter - 1).coerceAtLeast(0) else rightCenter
+    val slots = symmetricSegmentSlots(segmentCount, seedCount, centerDirectionReversed)
 
-    val centerIntensity = when {
-        fullSteps > 0 -> 1f
-        usesBrightnessPreview -> edgeFraction
-        else -> 0f
-    }
-    levels[leftCenter] = centerIntensity
-    if (seedCount == 2) {
-        levels[rightCenter] = centerIntensity
+    for (slotIndex in 0 until fullSteps.coerceAtMost(slots.size)) {
+        slots[slotIndex].forEach { segment -> levels[segment] = 1f }
     }
 
-    val litPairCount = (fullSteps - 1).coerceAtLeast(0)
-    for (pairIndex in 1..litPairCount) {
-        val left = leftCenter - pairIndex
-        val right = rightCenter + pairIndex
-        if (left >= 0) levels[left] = 1f
-        if (right < segmentCount) levels[right] = 1f
-    }
-
-    if (usesBrightnessPreview && fullSteps in 1 until logicalStepCountFor(segmentCount, seedCount) && edgeFraction > 0.001f) {
-        val pairIndex = fullSteps
-        val left = leftCenter - pairIndex
-        val right = rightCenter + pairIndex
-        if (left >= 0) levels[left] = edgeFraction
-        if (right < segmentCount) levels[right] = edgeFraction
+    if (usesBrightnessPreview && fullSteps in 0 until slots.size && edgeFraction > 0.001f) {
+        slots[fullSteps].forEach { segment -> levels[segment] = edgeFraction }
     }
     return levels
+}
+
+private fun symmetricSegmentSlots(
+    segmentCount: Int,
+    seedCount: Int,
+    centerDirectionReversed: Boolean
+): List<List<Int>> {
+    if (segmentCount <= 0) return emptyList()
+    val rightCenter = segmentCount / 2
+    val leftCenter = if (seedCount == 2) (rightCenter - 1).coerceAtLeast(0) else rightCenter
+    val slots = buildList {
+        add(
+            if (seedCount == 2) {
+                listOf(leftCenter, rightCenter).distinct()
+            } else {
+                listOf(rightCenter)
+            }
+        )
+        val maxPairDistance = maxOf(leftCenter, segmentCount - 1 - rightCenter)
+        for (pairIndex in 1..maxPairDistance) {
+            val slot = buildList {
+                val left = leftCenter - pairIndex
+                val right = rightCenter + pairIndex
+                if (left >= 0) add(left)
+                if (right < segmentCount) add(right)
+            }
+            if (slot.isNotEmpty()) add(slot)
+        }
+    }
+    return if (centerDirectionReversed) slots.asReversed() else slots
 }
 
 private fun logicalStepCountFor(segmentCount: Int, seedCount: Int): Int {
     val safeSeedCount = seedCount.coerceIn(1, segmentCount.coerceAtLeast(1))
     return (1 + ((segmentCount - safeSeedCount).coerceAtLeast(0) / 2)).coerceAtLeast(1)
+}
+
+private fun symmetricPeakDistanceSteps(segmentCount: Int, seedCount: Int): Float {
+    val safeSeedCount = seedCount.coerceIn(1, segmentCount.coerceAtLeast(1))
+    val pairCount = ((segmentCount - safeSeedCount).coerceAtLeast(0) / 2).coerceAtLeast(1)
+    return if (safeSeedCount == 2) {
+        // Even Center layouts first move from the midpoint between the two center segments
+        // to the center pair itself, so they need one extra visual step to reach the ends.
+        (pairCount + 1).toFloat()
+    } else {
+        pairCount.toFloat()
+    }
 }
 
 @Composable
@@ -2328,7 +2617,13 @@ private fun MeterCanvas(
                             kotlin.math.abs(segment - centerIndex)
                         ).toFloat()
                         val maxDistance = maxOf(leftCenterIndex, segmentCount - 1 - centerIndex).toFloat().coerceAtLeast(1f)
-                        (0.2f + (nearestCenterDistance / maxDistance) * 0.8f).coerceIn(0.2f, 1f)
+                        val outwardRatio = (nearestCenterDistance / maxDistance).coerceIn(0f, 1f)
+                        val mountainRatio = if (meterModel.centerDirectionReversed) {
+                            1f - outwardRatio
+                        } else {
+                            outwardRatio
+                        }
+                        (0.2f + mountainRatio * 0.8f).coerceIn(0.2f, 1f)
                     } else {
                         (segment + 1) / segmentCount.toFloat()
                     }
@@ -2367,10 +2662,33 @@ private fun MeterCanvas(
                         centerPeakX
                     }
                     val betweenCentersPeakX = (leftCenterPeakX + centerPeakX) / 2f
-                    val maxPairDistance = ((segmentCount - meterModel.symmetricSeedCount).coerceAtLeast(0) / 2).coerceAtLeast(1).toFloat()
-                    val peakDistance = animatedPeak.coerceIn(0f, 1f) * maxPairDistance
+                    val maxPairDistance = symmetricPeakDistanceSteps(segmentCount, meterModel.symmetricSeedCount)
+                    val peakHalfWidth = if (meterModel.centerDirectionReversed) segmentWidth / 2f else 0f
+                    val peakProgress = if (meterModel.centerDirectionReversed) {
+                        1f - animatedPeak.coerceIn(0f, 1f)
+                    } else {
+                        animatedPeak.coerceIn(0f, 1f)
+                    }
+                    val peakDistance = peakProgress * maxPairDistance
                     if (peakDistance <= 0.001f) {
-                        if (meterModel.symmetricSeedCount == 2 && meterModel.activeSegments > 0) {
+                        if (meterModel.centerDirectionReversed) {
+                            val leftRestingPeakX = if (meterModel.symmetricSeedCount == 2) leftCenterPeakX else centerPeakX
+                            val rightRestingPeakX = centerPeakX
+                            drawLine(
+                                color = peakColor,
+                                start = Offset((leftRestingPeakX - peakHalfWidth).coerceIn(0f, size.width), 0f),
+                                end = Offset((leftRestingPeakX - peakHalfWidth).coerceIn(0f, size.width), size.height),
+                                strokeWidth = 6.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                            drawLine(
+                                color = peakColor,
+                                start = Offset((rightRestingPeakX + peakHalfWidth).coerceIn(0f, size.width), 0f),
+                                end = Offset((rightRestingPeakX + peakHalfWidth).coerceIn(0f, size.width), size.height),
+                                strokeWidth = 6.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        } else if (meterModel.symmetricSeedCount == 2 && meterModel.activeSegments > 0) {
                             drawLine(
                                 color = peakColor,
                                 start = Offset(betweenCentersPeakX, 0f),
@@ -2407,8 +2725,8 @@ private fun MeterCanvas(
                             leftPeakX = centerPeakX - travelPerSide
                             rightPeakX = centerPeakX + travelPerSide
                         }
-                        val clampedLeftPeakX = leftPeakX.coerceAtLeast(segmentWidth / 2f)
-                        val clampedRightPeakX = rightPeakX.coerceAtMost(size.width - (segmentWidth / 2f))
+                        val clampedLeftPeakX = (leftPeakX - peakHalfWidth).coerceIn(0f, size.width)
+                        val clampedRightPeakX = (rightPeakX + peakHalfWidth).coerceIn(0f, size.width)
                         drawLine(
                             color = peakColor,
                             start = Offset(clampedLeftPeakX, 0f),
@@ -2684,6 +3002,7 @@ private fun ControlCard(
     smoothing: Float,
     smoothingBalance: Float,
     autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float,
     reverseDirection: Boolean,
     activeMode: String,
     glyphMode: String,
@@ -2710,6 +3029,8 @@ private fun ControlCard(
     onToneFocusChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChanged: (Float) -> Unit,
     onAutoScaleWindowSecondsChangeFinished: () -> Unit,
+    onAutoScaleOffsetChanged: (Float) -> Unit,
+    onAutoScaleOffsetChangeFinished: () -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
@@ -3082,7 +3403,18 @@ private fun ControlCard(
                         value = autoScaleWindowSeconds,
                         onValueChange = onAutoScaleWindowSecondsChanged,
                         onValueChangeFinished = onAutoScaleWindowSecondsChangeFinished,
-                        valueRange = 10f..60f,
+                        valueRange = 5f..60f,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+
+                    ParameterSlider(
+                        title = stringResource(R.string.param_auto_scale_offset_title),
+                        valueText = stringResource(R.string.percent_value, (autoScaleOffset * 100).toInt()),
+                        description = stringResource(R.string.param_auto_scale_offset_desc),
+                        value = autoScaleOffset,
+                        onValueChange = onAutoScaleOffsetChanged,
+                        onValueChangeFinished = onAutoScaleOffsetChangeFinished,
+                        valueRange = 0f..0.4f,
                         nothingStyleEnabled = nothingStyleEnabled
                     )
                 }
@@ -3297,12 +3629,13 @@ private fun GlyphVisualizerPreview() {
             smoothing = 0.28f,
             smoothingBalance = 0f,
             autoScaleWindowSeconds = 30f,
+            autoScaleOffset = 0f,
             latencyMs = 0f,
             defaultOutputLatencyMs = 0f,
             bluetoothLatencyMs = 0f,
             latencyAutoSwitchEnabled = true,
             isBluetoothOutputActive = false,
-            reverseDirection = true,
+            reverseDirection = false,
             meterSegments = remember { 11 },
             activeMode = stringResource(R.string.mode_visualizer),
             glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
@@ -3319,6 +3652,7 @@ private fun GlyphVisualizerPreview() {
             allBrightnessAutoScale = false,
             mediaProjectionEnabled = false,
             glyphMeterPreviewEnabled = true,
+            automaticUpdateCheckEnabled = false,
             nothingStyleEnabled = false,
             turnOffWhenBackDown = false,
             onSensitivityChanged = {},
@@ -3330,10 +3664,13 @@ private fun GlyphVisualizerPreview() {
             onToneFocusChanged = {},
             onAutoScaleWindowSecondsChanged = {},
             onAutoScaleWindowSecondsChangeFinished = {},
+            onAutoScaleOffsetChanged = {},
+            onAutoScaleOffsetChangeFinished = {},
             onLatencyMsChanged = {},
             onLatencyMsChangeFinished = {},
             onLatencyAutoSwitchChanged = {},
             onGlyphMeterPreviewEnabledChanged = {},
+            onAutomaticUpdateCheckEnabledChanged = {},
             onBaseIndicatorEnabledChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
