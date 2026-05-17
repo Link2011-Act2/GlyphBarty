@@ -33,9 +33,16 @@ To solve this, I created a "Better" Glyph visualizer that works on unsupported d
 * Nothing Phone (4a)
 * Nothing Phone (4a) Pro
 
-Compatible with almost all Nothing Phones running **Nothing OS 4.0 or higher**.
+### Supported Devices (Conditional)
 
-*Note: Phone (3a) Lite is not supported as the SDK has not been released. Phone (1) is currently unsupported due to API key complexities.*
+* Nothing Phone (1)
+  * The **Glyph Interface debug mode** must be enabled. You can do this by running the ADB command ``` adb shell settings put global nt_glyph_interface_debug_enable 1 ```, or automatically from within the app if you use Shizuku.
+
+<br>
+
+Compatible with almost all Nothing Phone models.
+
+*Note: Phone (3a) Lite is not supported as the SDK has not been released.*
 
 ## How to Use
 
