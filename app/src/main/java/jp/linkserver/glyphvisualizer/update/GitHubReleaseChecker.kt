@@ -56,11 +56,25 @@ fun markUpdateCheckFinished(context: Context) {
 }
 
 fun isShowLatestReleaseForTestingEnabled(context: Context): Boolean {
-    return false
+    if (!isIntDevBuild()) {
+        return false
+    }
+    return context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_SHOW_LATEST_FOR_TESTING, false)
 }
 
 fun setShowLatestReleaseForTestingEnabled(context: Context, enabled: Boolean) {
-    // Intentionally disabled. Keep the API for easy restoration later.
+    if (!isIntDevBuild()) {
+        context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SHOW_LATEST_FOR_TESTING, false)
+            .apply()
+        return
+    }
+    context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(KEY_SHOW_LATEST_FOR_TESTING, enabled)
+        .apply()
 }
 
 fun isUpdateCheckIntervalIgnoredForTesting(context: Context): Boolean {
@@ -82,6 +96,10 @@ fun dismissUpdateNotificationUntilNextVersion(context: Context, tagName: String)
         .edit()
         .putString(KEY_DISMISSED_UPDATE_TAG, tagName)
         .apply()
+}
+
+fun isIntDevBuild(): Boolean {
+    return detectReleaseChannel(BuildConfig.VERSION_NAME).equals("IntDev", ignoreCase = true)
 }
 
 private data class GitHubRepository(val owner: String, val name: String)
@@ -186,7 +204,7 @@ private fun isNewerRelease(remoteTag: String, currentVersion: String): Boolean {
         val currentPart = current.getOrElse(index) { 0 }
         if (remotePart != currentPart) return remotePart > currentPart
     }
-    return false
+    return channelPriority(detectChannel(remoteTag)) > channelPriority(detectChannel(currentVersion))
 }
 
 private fun parseVersionNumbers(value: String): List<Int> {
@@ -213,5 +231,16 @@ private fun detectChannel(value: String): String {
         "beta" in lower -> "Beta"
         "stable" in lower || "release" in lower -> "Release"
         else -> "Unknown"
+    }
+}
+
+fun detectReleaseChannel(value: String): String = detectChannel(value)
+
+private fun channelPriority(channel: String): Int {
+    return when (channel.lowercase(Locale.US)) {
+        "intdev" -> 0
+        "beta" -> 1
+        "release", "stable" -> 2
+        else -> -1
     }
 }

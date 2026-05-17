@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -44,6 +46,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -59,6 +62,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -70,6 +74,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -122,9 +127,13 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -133,8 +142,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
+import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
+import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
@@ -145,16 +157,26 @@ import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
 import jp.linkserver.glyphvisualizer.update.shouldCheckForUpdates
+import rikka.shizuku.Shizuku
 
 private const val RESPONSE_SPEED_NONE_THRESHOLD = 0.54f
+private const val PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE = 1401
 
 private enum class Screen {
+    WELCOME,
     MAIN,
     LATENCY,
     SETTINGS,
     ABOUT,
     UPDATE,
     OSS
+}
+
+private enum class WelcomeStep {
+    INTRO,
+    UI_MODE,
+    FEATURES,
+    UPDATE_CHECK
 }
 
 class MainActivity : ComponentActivity() {
@@ -175,9 +197,29 @@ class MainActivity : ComponentActivity() {
     private val isPhone2aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE2A }
     private val isPhone3aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE3A }
     private val isPhone4aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE4A }
+    private val isPhone1Device by lazy { Phone1GlyphDebugHelper.supports(deviceProfile) }
 
     private var pendingStartMode: CaptureMode? = null
     private var pendingExportContent: String? = null
+    private var pendingPhone1GlyphDebugPermissionRequestFromManual by mutableStateOf(false)
+    private var showPhone1GlyphDebugPermissionDialog by mutableStateOf(false)
+
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode == PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE) {
+                val fromManual = pendingPhone1GlyphDebugPermissionRequestFromManual
+                AppLogger.i(
+                    "Phone1GlyphDebug",
+                    "Permission result received requestCode=$requestCode grantResult=$grantResult fromManual=$fromManual"
+                )
+                pendingPhone1GlyphDebugPermissionRequestFromManual = false
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    enablePhone1GlyphDebug(manual = fromManual)
+                } else if (fromManual) {
+                    showPhone1GlyphDebugPermissionDialog = true
+                }
+            }
+        }
 
     private val audioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -268,6 +310,7 @@ class MainActivity : ComponentActivity() {
             reverseDirection = uiState.reverseDirection,
             peakHoldEnabled = uiState.peakHoldEnabled,
             glyphMode = uiState.glyphMode,
+            fillOtherGlyphLights = uiState.fillOtherGlyphLights,
             binaryMode = uiState.binaryMode,
             baseIndicatorEnabled = uiState.baseIndicatorEnabled,
             levelAutoScale = uiState.levelAutoScale,
@@ -276,6 +319,8 @@ class MainActivity : ComponentActivity() {
             autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
             autoScaleOffset = uiState.autoScaleOffset,
             latencyMs = uiState.latencyMs,
+            mediaPlaybackOnlyEnabled = uiState.mediaPlaybackOnlyEnabled,
+            experimentalVisualizerStabilizationEnabled = uiState.experimentalVisualizerStabilizationEnabled,
             turnOffWhenBackDown = uiState.turnOffWhenBackDown
         )
     }
@@ -283,7 +328,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)
+        val initialSetupPending = !SettingsPreferences.hasCompletedInitialSetup(this)
         val normalizedMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolvedLatencySettings = savedSettings.withResolvedLatency(bluetoothOutputActive)
@@ -307,15 +354,20 @@ class MainActivity : ComponentActivity() {
                 reverseDirection = resolvedLatencySettings.reverseDirection,
                     peakHoldEnabled = resolvedLatencySettings.peakHoldEnabled,
                 glyphMode = normalizedMode,
+                fillOtherGlyphLights = resolvedLatencySettings.fillOtherGlyphLights,
                 binaryMode = resolvedLatencySettings.binaryMode,
                 baseIndicatorEnabled = resolvedLatencySettings.baseIndicatorEnabled,
                 levelAutoScale = resolvedLatencySettings.levelAutoScale,
                     spectrumAutoScale = resolvedLatencySettings.spectrumAutoScale,
                     mediaProjectionEnabled = resolvedLatencySettings.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = resolvedLatencySettings.glyphMeterPreviewEnabled,
-                    automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
-                    nothingStyleEnabled = resolvedLatencySettings.nothingStyleEnabled,
-                    turnOffWhenBackDown = resolvedLatencySettings.turnOffWhenBackDown,
+                automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
+                mediaPlaybackOnlyEnabled = resolvedLatencySettings.mediaPlaybackOnlyEnabled,
+                experimentalVisualizerStabilizationEnabled = resolvedLatencySettings.experimentalVisualizerStabilizationEnabled,
+                showPhone1GlyphDebugControlsEverywhere = resolvedLatencySettings.showPhone1GlyphDebugControlsEverywhere,
+                autoEnablePhone1GlyphDebugOnStart = resolvedLatencySettings.autoEnablePhone1GlyphDebugOnStart,
+                nothingStyleEnabled = resolvedLatencySettings.nothingStyleEnabled,
+                turnOffWhenBackDown = resolvedLatencySettings.turnOffWhenBackDown,
                 allBrightnessAutoScale = resolvedLatencySettings.allBrightnessAutoScale,
             )
         }
@@ -323,6 +375,7 @@ class MainActivity : ComponentActivity() {
             val uiState = CaptureUiStore.state
             GlyphBartyTheme(nothingStyle = uiState.nothingStyleEnabled) {
                 GlyphVisualizerApp(
+                    initialSetupPending = initialSetupPending,
                     statusText = uiState.statusText,
                     isCapturing = uiState.isCapturing,
                     heroTitle = currentDevice.presentation.heroTitle,
@@ -347,12 +400,14 @@ class MainActivity : ComponentActivity() {
                     meterSegments = uiState.meterSegments,
                     activeMode = uiState.activeMode,
                     glyphMode = uiState.glyphMode,
+                    fillOtherGlyphLights = uiState.fillOtherGlyphLights,
                     deviceProfile = deviceProfile,
                     isPhone3Device = isPhone3Device,
                     isPhone4aProDevice = isPhone4aProDevice,
                     isPhone2aDevice = isPhone2aDevice,
                     isPhone3aDevice = isPhone3aDevice,
                     isPhone4aDevice = isPhone4aDevice,
+                    isPhone1Device = isPhone1Device,
                     binaryMode = uiState.binaryMode,
                     baseIndicatorEnabled = uiState.baseIndicatorEnabled,
                     levelAutoScale = uiState.levelAutoScale,
@@ -361,6 +416,10 @@ class MainActivity : ComponentActivity() {
                     mediaProjectionEnabled = uiState.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
                     automaticUpdateCheckEnabled = uiState.automaticUpdateCheckEnabled,
+                    mediaPlaybackOnlyEnabled = uiState.mediaPlaybackOnlyEnabled,
+                    experimentalVisualizerStabilizationEnabled = uiState.experimentalVisualizerStabilizationEnabled,
+                    showPhone1GlyphDebugControlsEverywhere = uiState.showPhone1GlyphDebugControlsEverywhere,
+                    autoEnablePhone1GlyphDebugOnStart = uiState.autoEnablePhone1GlyphDebugOnStart,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
                     turnOffWhenBackDown = uiState.turnOffWhenBackDown,
                     onSensitivityChanged = { newValue ->
@@ -437,6 +496,98 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
+                    onMediaPlaybackOnlyEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(mediaPlaybackOnlyEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                        if (enabled && !MediaSessionPlaybackGate.hasNotificationAccess(this)) {
+                            val opened = openNotificationAccessSettings(this)
+                            if (!opened) {
+                                Toast.makeText(
+                                    this,
+                                    getString(R.string.settings_media_playback_only_open_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    this,
+                                    getString(R.string.settings_media_playback_only_permission_required),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    },
+                    onExperimentalVisualizerStabilizationEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            experimentalVisualizerStabilizationEnabled = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onShowPhone1GlyphDebugControlsEverywhereChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            showPhone1GlyphDebugControlsEverywhere = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onAutoEnablePhone1GlyphDebugOnStartChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            autoEnablePhone1GlyphDebugOnStart = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
                     onBaseIndicatorEnabledChanged = { enabled ->
                         CaptureUiStore.update { it.copy(baseIndicatorEnabled = enabled) }
                         syncCurrentParameters()
@@ -453,158 +604,180 @@ class MainActivity : ComponentActivity() {
                             updated.smoothing,
                             updated.smoothingBalance,
                             updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
                         )
                         SettingsPreferences.save(this, updated)
                     },
-                        onGlyphModeChanged = { newMode ->
-                            CaptureUiStore.update { it.copy(glyphMode = newMode) }
-                            syncCurrentParameters()
-                        },
-                        onBinaryModeChanged = { newValue ->
-                            CaptureUiStore.update { it.copy(binaryMode = newValue) }
-                            val updated = CaptureUiStore.state
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
-                            )
-                            SettingsPreferences.save(this, updated)
-                        },
-                        onLevelAutoScaleChanged = { newValue ->
-                            CaptureUiStore.update { it.copy(levelAutoScale = newValue) }
-                            val updated = CaptureUiStore.state
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
-                            )
-                            SettingsPreferences.save(this, updated)
-                        },
-                        onSpectrumAutoScaleChanged = { newValue ->
-                            CaptureUiStore.update { it.copy(spectrumAutoScale = newValue) }
-                            val updated = CaptureUiStore.state
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
-                            )
-                            SettingsPreferences.save(this, updated)
-                        },
+                    onGlyphModeChanged = { newMode ->
+                        CaptureUiStore.update { it.copy(glyphMode = newMode) }
+                        syncCurrentParameters()
+                    },
+                    onFillOtherGlyphLightsChanged = { enabled ->
+                        CaptureUiStore.update { it.copy(fillOtherGlyphLights = enabled) }
+                        syncCurrentParameters()
+                    },
+                    onBinaryModeChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(binaryMode = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onLevelAutoScaleChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(levelAutoScale = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onSpectrumAutoScaleChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(spectrumAutoScale = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
                     onAllBrightnessAutoScaleChanged = { newValue ->
-                            CaptureUiStore.update { it.copy(allBrightnessAutoScale = newValue) }
-                            val updated = CaptureUiStore.state
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
-                            )
-                            SettingsPreferences.save(this, updated)
-                        },
-                        onTurnOffWhenBackDownChanged = { newValue ->
-                            CaptureUiStore.update { it.copy(turnOffWhenBackDown = newValue) }
-                            val updated = CaptureUiStore.state
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma
-                            )
+                        CaptureUiStore.update { it.copy(allBrightnessAutoScale = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onTurnOffWhenBackDownChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(turnOffWhenBackDown = newValue) }
+                        val updated = CaptureUiStore.state
+                        GlyphVisualizerService.updateSensitivity(
+                            this,
+                            updated.sensitivity,
+                            updated.noiseGate,
+                            updated.dynamics,
+                            updated.toneFocus,
+                            updated.smoothing,
+                            updated.smoothingBalance,
+                            updated.reverseDirection,
+                            updated.peakHoldEnabled,
+                            updated.glyphMode,
+                            updated.fillOtherGlyphLights,
+                            updated.binaryMode,
+                            updated.baseIndicatorEnabled,
+                            updated.levelAutoScale,
+                            updated.spectrumAutoScale,
+                            updated.allBrightnessAutoScale,
+                            updated.autoScaleWindowSeconds,
+                            updated.autoScaleOffset,
+                            updated.latencyMs,
+                            updated.mediaPlaybackOnlyEnabled,
+                            updated.experimentalVisualizerStabilizationEnabled,
+                            updated.turnOffWhenBackDown,
+                            updated.outputGamma
+                        )
                         SettingsPreferences.save(this, updated)
                     },
                     onMediaProjectionEnabledChanged = { newValue ->
@@ -631,12 +804,19 @@ class MainActivity : ComponentActivity() {
                     onStartProjectionClick = {
                         requestModeStart(CaptureMode.MEDIA_PROJECTION)
                     },
+                    onEnablePhone1GlyphDebugClick = {
+                        requestPhone1GlyphDebug(manual = true)
+                    },
                     onStopClick = {
                         GlyphVisualizerService.stop(this)
                     },
                     logMessage = uiState.logMessage,
                     onDismissLog = {
                         CaptureUiStore.update { it.copy(logMessage = null) }
+                    },
+                    showPhone1GlyphDebugPermissionDialog = showPhone1GlyphDebugPermissionDialog,
+                    onDismissPhone1GlyphDebugPermissionDialog = {
+                        showPhone1GlyphDebugPermissionDialog = false
                     }
                 )
             }
@@ -691,6 +871,7 @@ class MainActivity : ComponentActivity() {
             routeAware.reverseDirection,
             routeAware.peakHoldEnabled,
             routeAware.glyphMode,
+            routeAware.fillOtherGlyphLights,
             routeAware.binaryMode,
             routeAware.baseIndicatorEnabled,
             routeAware.levelAutoScale,
@@ -699,6 +880,8 @@ class MainActivity : ComponentActivity() {
             routeAware.autoScaleWindowSeconds,
             routeAware.autoScaleOffset,
             routeAware.latencyMs,
+            routeAware.mediaPlaybackOnlyEnabled,
+            routeAware.experimentalVisualizerStabilizationEnabled,
             routeAware.turnOffWhenBackDown,
             routeAware.outputGamma
         )
@@ -726,11 +909,13 @@ class MainActivity : ComponentActivity() {
                 reverseDirection = parameters.reverseDirection,
                 peakHoldEnabled = parameters.peakHoldEnabled,
                 glyphMode = parameters.glyphMode,
+                fillOtherGlyphLights = parameters.fillOtherGlyphLights,
                 binaryMode = parameters.binaryMode,
                 baseIndicatorEnabled = parameters.baseIndicatorEnabled,
                 levelAutoScale = parameters.levelAutoScale,
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
+                experimentalVisualizerStabilizationEnabled = parameters.experimentalVisualizerStabilizationEnabled,
                 turnOffWhenBackDown = parameters.turnOffWhenBackDown
             )
         }
@@ -746,6 +931,7 @@ class MainActivity : ComponentActivity() {
             updated.reverseDirection,
             updated.peakHoldEnabled,
             updated.glyphMode,
+            updated.fillOtherGlyphLights,
             updated.binaryMode,
             updated.baseIndicatorEnabled,
             updated.levelAutoScale,
@@ -754,6 +940,8 @@ class MainActivity : ComponentActivity() {
             updated.autoScaleWindowSeconds,
             updated.autoScaleOffset,
             updated.latencyMs,
+            updated.mediaPlaybackOnlyEnabled,
+            updated.experimentalVisualizerStabilizationEnabled,
             updated.turnOffWhenBackDown,
             updated.outputGamma
         )
@@ -778,6 +966,7 @@ class MainActivity : ComponentActivity() {
                 checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             } btLikely=${AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)} musicActive=${AudioRouteDiagnostics.isMusicActive(this)}"
         )
+        silentlyEnablePhone1GlyphDebugIfPossible()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             when (mode) {
                 CaptureMode.VISUALIZER -> startVisualizerMode()
@@ -795,7 +984,94 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         parameterSyncHandler.removeCallbacks(delayedParameterSyncRunnable)
+        runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
         super.onDestroy()
+    }
+
+    private fun silentlyEnablePhone1GlyphDebugIfPossible() {
+        if (isPhone1Device && CaptureUiStore.state.autoEnablePhone1GlyphDebugOnStart) {
+            AppLogger.i("Phone1GlyphDebug", "Attempting silent Phone (1) glyph debug enable on mode start")
+            requestPhone1GlyphDebug(manual = false)
+        }
+    }
+
+    private fun requestPhone1GlyphDebug(manual: Boolean) {
+        val debugAllowed = isPhone1Device || CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere
+        AppLogger.i(
+            "Phone1GlyphDebug",
+            "requestPhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed isPhone1Device=$isPhone1Device debugControlsEverywhere=${CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere}"
+        )
+        if (!debugAllowed) {
+            AppLogger.i("Phone1GlyphDebug", "Skipping debug request because debug controls are not allowed")
+            return
+        }
+        val hasPermission = Phone1GlyphDebugHelper.hasPermission(this)
+        val shizukuAvailable = Phone1GlyphDebugHelper.isShizukuAvailable(this)
+        val backendAvailable = Phone1GlyphDebugHelper.isBackendAvailable(this)
+        AppLogger.i(
+            "Phone1GlyphDebug",
+            "Debug request state hasPermission=$hasPermission shizukuAvailable=$shizukuAvailable backendAvailable=$backendAvailable"
+        )
+        when {
+            hasPermission -> enablePhone1GlyphDebug(manual)
+            shizukuAvailable -> {
+                AppLogger.i(
+                    "Phone1GlyphDebug",
+                    if (manual) {
+                        "Manual request will ask Shizuku permission"
+                    } else {
+                        "Automatic request will ask Shizuku permission"
+                    }
+                )
+                pendingPhone1GlyphDebugPermissionRequestFromManual = manual
+                runCatching {
+                    Phone1GlyphDebugHelper.requestPermission(this, PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE)
+                }.onFailure {
+                    AppLogger.w("Phone1GlyphDebug", "Shizuku permission request failed", it)
+                    pendingPhone1GlyphDebugPermissionRequestFromManual = false
+                    if (manual) {
+                        showPhone1GlyphDebugPermissionDialog = true
+                    }
+                }
+            }
+            !backendAvailable -> {
+                AppLogger.i("Phone1GlyphDebug", "No Shizuku/Sui backend available; showing dialog only for manual flow")
+                if (manual) {
+                    showPhone1GlyphDebugPermissionDialog = true
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    private fun enablePhone1GlyphDebug(manual: Boolean) {
+        val debugAllowed = isPhone1Device || CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere
+        AppLogger.i(
+            "Phone1GlyphDebug",
+            "enablePhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed"
+        )
+        if (!debugAllowed) {
+            AppLogger.i("Phone1GlyphDebug", "Skipping enable because debug controls are not allowed")
+            return
+        }
+        val result = Phone1GlyphDebugHelper.enableGlyphDebug(this)
+        if (result.isSuccess) {
+            AppLogger.i("Phone1GlyphDebug", "enablePhone1GlyphDebug completed successfully")
+            Toast.makeText(
+                this,
+                getString(R.string.phone1_glyph_debug_success),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            AppLogger.w(
+                "Phone1GlyphDebug",
+                "enablePhone1GlyphDebug failed",
+                result.exceptionOrNull()
+            )
+        }
+        if (manual && result.isFailure) {
+            showPhone1GlyphDebugPermissionDialog = true
+        }
     }
 
     private fun startVisualizerMode() {
@@ -817,6 +1093,7 @@ class MainActivity : ComponentActivity() {
                 uiState.reverseDirection,
                 uiState.peakHoldEnabled,
                 uiState.glyphMode,
+                uiState.fillOtherGlyphLights,
                 uiState.binaryMode,
                 uiState.baseIndicatorEnabled,
                 uiState.levelAutoScale,
@@ -825,6 +1102,8 @@ class MainActivity : ComponentActivity() {
                 uiState.autoScaleWindowSeconds,
                 uiState.autoScaleOffset,
                 uiState.latencyMs,
+                uiState.mediaPlaybackOnlyEnabled,
+                uiState.experimentalVisualizerStabilizationEnabled,
                 uiState.turnOffWhenBackDown,
                 uiState.outputGamma
             )
@@ -859,6 +1138,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun GlyphVisualizerApp(
     statusText: String,
+    initialSetupPending: Boolean,
     isCapturing: Boolean,
     heroTitle: String,
     level: Float,
@@ -882,12 +1162,14 @@ private fun GlyphVisualizerApp(
     meterSegments: Int,
     activeMode: String,
     glyphMode: String,
+    fillOtherGlyphLights: Boolean,
     deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
+    isPhone1Device: Boolean,
     binaryMode: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
@@ -896,6 +1178,10 @@ private fun GlyphVisualizerApp(
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     automaticUpdateCheckEnabled: Boolean,
+    mediaPlaybackOnlyEnabled: Boolean,
+    experimentalVisualizerStabilizationEnabled: Boolean,
+    showPhone1GlyphDebugControlsEverywhere: Boolean,
+    autoEnablePhone1GlyphDebugOnStart: Boolean,
     nothingStyleEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
@@ -914,9 +1200,14 @@ private fun GlyphVisualizerApp(
     onLatencyAutoSwitchChanged: (Boolean) -> Unit,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
     onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
+    onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
+    onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
+    onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
+    onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
@@ -929,18 +1220,24 @@ private fun GlyphVisualizerApp(
     onImportParametersClick: () -> Unit,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
+    onEnablePhone1GlyphDebugClick: () -> Unit,
     onStopClick: () -> Unit,
     logMessage: String?,
-    onDismissLog: () -> Unit
+    onDismissLog: () -> Unit,
+    showPhone1GlyphDebugPermissionDialog: Boolean,
+    onDismissPhone1GlyphDebugPermissionDialog: () -> Unit
 ) {
     val context = LocalContext.current
     val repositoryUrl = stringResource(R.string.about_support_site_url)
-    var screen by remember { mutableStateOf(Screen.MAIN) }
+    val showPhone1GlyphDebugControls = isPhone1Device || showPhone1GlyphDebugControlsEverywhere
+    var screen by rememberSaveable {
+        mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
+    }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
     var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var updateNotification by remember { mutableStateOf<AppUpdateInfo?>(null) }
-        BackHandler(enabled = drawerOpen || screen != Screen.MAIN) {
+        BackHandler(enabled = drawerOpen || (screen != Screen.MAIN && screen != Screen.WELCOME)) {
         when {
             drawerOpen -> drawerOpen = false
             screen == Screen.UPDATE -> screen = Screen.ABOUT
@@ -998,6 +1295,18 @@ private fun GlyphVisualizerApp(
             }
         }
     }
+    if (showPhone1GlyphDebugPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissPhone1GlyphDebugPermissionDialog,
+            title = { Text(stringResource(R.string.phone1_glyph_debug_dialog_title)) },
+            text = { Text(stringResource(R.string.phone1_glyph_debug_dialog_body)) },
+            confirmButton = {
+                TextButton(onClick = onDismissPhone1GlyphDebugPermissionDialog) {
+                    Text(stringResource(R.string.phone1_glyph_debug_dialog_confirm))
+                }
+            }
+        )
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
@@ -1018,6 +1327,23 @@ private fun GlyphVisualizerApp(
                 label = "screen_transition"
             ) { targetScreen ->
                 when (targetScreen) {
+                    Screen.WELCOME -> WelcomeScreen(
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onNothingStyleEnabledChanged = { enabled ->
+                            val updated = CaptureUiStore.state.copy(nothingStyleEnabled = enabled)
+                            CaptureUiStore.update { updated }
+                            SettingsPreferences.save(context, updated)
+                        },
+                        onComplete = { automaticUpdateCheckEnabled ->
+                            val updated = CaptureUiStore.state.copy(
+                                automaticUpdateCheckEnabled = automaticUpdateCheckEnabled
+                            )
+                            CaptureUiStore.update { updated }
+                            SettingsPreferences.save(context, updated)
+                            SettingsPreferences.markInitialSetupCompleted(context)
+                            screen = Screen.MAIN
+                        }
+                    )
                     Screen.MAIN -> MainScreenContent(
                         containerBrush = containerBrush,
                         statusText = statusText,
@@ -1039,12 +1365,14 @@ private fun GlyphVisualizerApp(
                         meterSegments = meterSegments,
                         activeMode = activeMode,
                         glyphMode = glyphMode,
+                        fillOtherGlyphLights = fillOtherGlyphLights,
                         deviceProfile = deviceProfile,
                         isPhone3Device = isPhone3Device,
                         isPhone4aProDevice = isPhone4aProDevice,
                         isPhone2aDevice = isPhone2aDevice,
                         isPhone3aDevice = isPhone3aDevice,
                         isPhone4aDevice = isPhone4aDevice,
+                        isPhone1Device = showPhone1GlyphDebugControls,
                         binaryMode = binaryMode,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
@@ -1070,6 +1398,7 @@ private fun GlyphVisualizerApp(
                         onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
+                        onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
@@ -1085,6 +1414,7 @@ private fun GlyphVisualizerApp(
                             startPending = true
                             onStartProjectionClick()
                         },
+                        onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
                         onStopClick = onStopClick,
                         logMessage = logMessage,
                         onDismissLog = onDismissLog,
@@ -1114,6 +1444,15 @@ private fun GlyphVisualizerApp(
                         onGlyphMeterPreviewEnabledChanged = onGlyphMeterPreviewEnabledChanged,
                         automaticUpdateCheckEnabled = automaticUpdateCheckEnabled,
                         onAutomaticUpdateCheckEnabledChanged = onAutomaticUpdateCheckEnabledChanged,
+                        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                        onMediaPlaybackOnlyEnabledChanged = onMediaPlaybackOnlyEnabledChanged,
+                        experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                        onExperimentalVisualizerStabilizationEnabledChanged = onExperimentalVisualizerStabilizationEnabledChanged,
+                        showPhone1GlyphDebugControlsEverywhere = showPhone1GlyphDebugControlsEverywhere,
+                        onShowPhone1GlyphDebugControlsEverywhereChanged = onShowPhone1GlyphDebugControlsEverywhereChanged,
+                        showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device || showPhone1GlyphDebugControlsEverywhere,
+                        autoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart,
+                        onAutoEnablePhone1GlyphDebugOnStartChanged = onAutoEnablePhone1GlyphDebugOnStartChanged,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onNothingStyleEnabledChanged = onNothingStyleEnabledChanged
                     )
@@ -1194,6 +1533,256 @@ private fun GlyphVisualizerApp(
     }
 }
 
+@Composable
+private fun WelcomeScreen(
+    nothingStyleEnabled: Boolean,
+    onNothingStyleEnabledChanged: (Boolean) -> Unit,
+    onComplete: (Boolean) -> Unit
+) {
+    var step by rememberSaveable { mutableStateOf(WelcomeStep.INTRO) }
+    val welcomeHeadingFontFamily = FontFamily(Font(R.font.ntype82_regular))
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface
+    ) { padding ->
+        Crossfade(
+            targetState = nothingStyleEnabled,
+            animationSpec = tween(durationMillis = 280),
+            label = "welcome_theme_crossfade"
+        ) { themedNothingStyleEnabled ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSystemInDarkTheme()) Color.Transparent else MaterialTheme.colorScheme.outlineVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Text(
+                            text = when (step) {
+                                WelcomeStep.INTRO -> stringResource(R.string.welcome_intro_title)
+                                WelcomeStep.UI_MODE -> stringResource(R.string.welcome_ui_mode_title)
+                                WelcomeStep.FEATURES -> stringResource(R.string.welcome_features_title)
+                                WelcomeStep.UPDATE_CHECK -> stringResource(R.string.welcome_update_check_title)
+                            },
+                            style = if (themedNothingStyleEnabled) {
+                                MaterialTheme.typography.headlineMedium.copy(fontFamily = welcomeHeadingFontFamily)
+                            } else {
+                                MaterialTheme.typography.headlineMedium
+                            }
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.welcome_step_counter,
+                                step.ordinal + 1,
+                                WelcomeStep.entries.size
+                            ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        AnimatedContent(
+                            targetState = step,
+                            transitionSpec = {
+                                val forward = targetState.ordinal > initialState.ordinal
+                                if (forward) {
+                                    (slideInHorizontally { it / 4 } + fadeIn()) togetherWith
+                                        (slideOutHorizontally { -it / 4 } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { -it / 4 } + fadeIn()) togetherWith
+                                        (slideOutHorizontally { it / 4 } + fadeOut())
+                                }
+                            },
+                            label = "welcome_step_transition"
+                        ) { currentStep ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(18.dp)
+                            ) {
+                                when (currentStep) {
+                                    WelcomeStep.INTRO -> {
+                                        Text(
+                                            text = stringResource(R.string.welcome_intro_body),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Button(
+                                            onClick = { step = WelcomeStep.UI_MODE },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(stringResource(R.string.welcome_next))
+                                        }
+                                    }
+
+                                    WelcomeStep.UI_MODE -> {
+                                        Text(
+                                            text = stringResource(R.string.welcome_ui_mode_desc),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                WelcomeRadioOption(
+                                                    label = stringResource(R.string.settings_ui_mode_nothing),
+                                                    selected = themedNothingStyleEnabled,
+                                                    onClick = { onNothingStyleEnabledChanged(true) }
+                                                )
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                                    color = MaterialTheme.colorScheme.outlineVariant
+                                                )
+                                                WelcomeRadioOption(
+                                                    label = stringResource(R.string.settings_ui_mode_material),
+                                                    selected = !themedNothingStyleEnabled,
+                                                    onClick = { onNothingStyleEnabledChanged(false) }
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { step = WelcomeStep.INTRO },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.welcome_back))
+                                            }
+                                            Button(
+                                                onClick = { step = WelcomeStep.FEATURES },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.welcome_next))
+                                            }
+                                        }
+                                    }
+
+                                    WelcomeStep.FEATURES -> {
+                                        Text(
+                                            text = stringResource(R.string.welcome_features_body),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.welcome_feature_live_meter),
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.welcome_feature_latency),
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.welcome_feature_media_only),
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { step = WelcomeStep.UI_MODE },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.welcome_back))
+                                            }
+                                            Button(
+                                                onClick = { step = WelcomeStep.UPDATE_CHECK },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(stringResource(R.string.welcome_next))
+                                            }
+                                        }
+                                    }
+
+                                    WelcomeStep.UPDATE_CHECK -> {
+                                        Text(
+                                            text = stringResource(R.string.welcome_update_check_desc),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Button(
+                                            onClick = { onComplete(true) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(stringResource(R.string.welcome_update_check_enable))
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onComplete(false) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(stringResource(R.string.welcome_update_check_skip))
+                                        }
+                                        TextButton(
+                                            onClick = { step = WelcomeStep.FEATURES },
+                                            modifier = Modifier.align(Alignment.End)
+                                        ) {
+                                            Text(stringResource(R.string.welcome_back))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeRadioOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreenContent(
@@ -1217,12 +1806,14 @@ private fun MainScreenContent(
     meterSegments: Int,
     activeMode: String,
     glyphMode: String,
+    fillOtherGlyphLights: Boolean,
     deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
+    isPhone1Device: Boolean,
     binaryMode: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
@@ -1248,6 +1839,7 @@ private fun MainScreenContent(
     onAutoScaleOffsetChangeFinished: () -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
@@ -1257,6 +1849,7 @@ private fun MainScreenContent(
     startPending: Boolean,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
+    onEnablePhone1GlyphDebugClick: () -> Unit,
     onStopClick: () -> Unit,
     logMessage: String?,
     onDismissLog: () -> Unit,
@@ -1364,12 +1957,14 @@ private fun MainScreenContent(
                         reverseDirection = reverseDirection,
                         activeMode = activeMode,
                         glyphMode = glyphMode,
+                        fillOtherGlyphLights = fillOtherGlyphLights,
                         deviceProfile = deviceProfile,
                         isPhone3Device = isPhone3Device,
                         isPhone4aProDevice = isPhone4aProDevice,
                         isPhone2aDevice = isPhone2aDevice,
                         isPhone3aDevice = isPhone3aDevice,
                         isPhone4aDevice = isPhone4aDevice,
+                        isPhone1Device = isPhone1Device,
                         binaryMode = binaryMode,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
@@ -1394,16 +1989,18 @@ private fun MainScreenContent(
                         onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
+                        onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
                         onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
-                            startPending = startPending,
-                            onStartVisualizerClick = onStartVisualizerClick,
-                            onStartProjectionClick = onStartProjectionClick,
-                            onStopClick = onStopClick
+                        startPending = startPending,
+                        onStartVisualizerClick = onStartVisualizerClick,
+                        onStartProjectionClick = onStartProjectionClick,
+                        onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
+                        onStopClick = onStopClick
                     )
 
                     InfoStrip()
@@ -3006,12 +3603,14 @@ private fun ControlCard(
     reverseDirection: Boolean,
     activeMode: String,
     glyphMode: String,
+    fillOtherGlyphLights: Boolean,
     deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
     isPhone3aDevice: Boolean,
     isPhone4aDevice: Boolean,
+    isPhone1Device: Boolean,
     binaryMode: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
@@ -3033,6 +3632,7 @@ private fun ControlCard(
     onAutoScaleOffsetChangeFinished: () -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
@@ -3045,13 +3645,29 @@ private fun ControlCard(
     onImportParametersClick: () -> Unit,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
+    onEnablePhone1GlyphDebugClick: () -> Unit,
     onStopClick: () -> Unit
 ) {
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
+    var showPhone1GlyphDebugInfoDialog by rememberSaveable { mutableStateOf(false) }
     val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
     val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val phone1GlyphDebugAdbCommand = stringResource(R.string.phone1_glyph_debug_adb_command)
+    val phone1GlyphDebugAdbCopied = stringResource(R.string.phone1_glyph_debug_adb_copied)
+    val supportsFillOtherGlyphLights = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE1,
+        GlyphDeviceProfile.PHONE2,
+        GlyphDeviceProfile.PHONE2A
+    )
+    val isClassicGlyphMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode ==
+        GlyphPatternRenderMode.CLASSIC
+    val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
+        !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
+        !isClassicGlyphMode
 
     if (showResetDialog) {
         AlertDialog(
@@ -3113,6 +3729,58 @@ private fun ControlCard(
         )
     }
 
+    if (showPhone1GlyphDebugInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhone1GlyphDebugInfoDialog = false },
+            title = { Text(stringResource(R.string.phone1_glyph_debug_info_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.phone1_glyph_debug_info_body),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = stringResource(R.string.phone1_glyph_debug_info_adb_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SelectionContainer {
+                        Text(
+                            text = stringResource(R.string.phone1_glyph_debug_adb_command),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            clipboardManager.setText(
+                                AnnotatedString(phone1GlyphDebugAdbCommand)
+                            )
+                            Toast.makeText(
+                                context,
+                                phone1GlyphDebugAdbCopied,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    ) {
+                        Text(stringResource(R.string.phone1_glyph_debug_copy_command))
+                    }
+                    TextButton(onClick = { showPhone1GlyphDebugInfoDialog = false }) {
+                        Text(stringResource(R.string.phone1_glyph_debug_dialog_confirm))
+                    }
+                }
+            },
+            dismissButton = {}
+        )
+    }
+
     androidx.compose.material3.Card(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
@@ -3169,6 +3837,65 @@ private fun ControlCard(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.button_no_capture))
+                }
+                if (isPhone1Device) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.phone1_glyph_debug_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        FilledTonalButton(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp),
+                            onClick = { showPhone1GlyphDebugInfoDialog = true },
+                            enabled = !startPending,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.phone1_glyph_debug_info_button),
+                                maxLines = 2,
+                                textAlign = TextAlign.Start
+                            )
+                        }
+                        OutlinedButton(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp),
+                            onClick = onEnablePhone1GlyphDebugClick,
+                            enabled = !startPending,
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.phone1_glyph_debug_button),
+                                maxLines = 2,
+                                textAlign = TextAlign.Start
+                            )
+                        }
+                    }
                 }
                 if (mediaProjectionEnabled) {
                     Row(
@@ -3231,6 +3958,50 @@ private fun ControlCard(
                             onClick = { onGlyphModeChanged(key) },
                             label = { Text(label, style = MaterialTheme.typography.labelMedium) },
                             colors = glyphPatternChipColors()
+                        )
+                    }
+                }
+            }
+
+            if (supportsFillOtherGlyphLights) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.fill_other_glyph_lights_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (fillOtherGlyphLightsEnabledForMode) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                disabledContentColor
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.fill_other_glyph_lights_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (fillOtherGlyphLightsEnabledForMode) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                disabledContentColor
+                            }
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.width(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Checkbox(
+                            checked = fillOtherGlyphLights,
+                            onCheckedChange = if (fillOtherGlyphLightsEnabledForMode) {
+                                onFillOtherGlyphLightsChanged
+                            } else {
+                                null
+                            },
+                            enabled = fillOtherGlyphLightsEnabledForMode
                         )
                     }
                 }
@@ -3639,12 +4410,14 @@ private fun GlyphVisualizerPreview() {
             meterSegments = remember { 11 },
             activeMode = stringResource(R.string.mode_visualizer),
             glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
+            fillOtherGlyphLights = false,
             deviceProfile = GlyphDeviceCatalog.currentProfile(),
             isPhone3Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3_MATRIX,
             isPhone4aProDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
             isPhone2aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE2A,
             isPhone3aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3A,
             isPhone4aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A,
+            isPhone1Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE1,
             binaryMode = false,
             baseIndicatorEnabled = false,
             levelAutoScale = false,
@@ -3653,6 +4426,10 @@ private fun GlyphVisualizerPreview() {
             mediaProjectionEnabled = false,
             glyphMeterPreviewEnabled = true,
             automaticUpdateCheckEnabled = false,
+            mediaPlaybackOnlyEnabled = false,
+            experimentalVisualizerStabilizationEnabled = false,
+            showPhone1GlyphDebugControlsEverywhere = false,
+            autoEnablePhone1GlyphDebugOnStart = true,
             nothingStyleEnabled = false,
             turnOffWhenBackDown = false,
             onSensitivityChanged = {},
@@ -3671,9 +4448,14 @@ private fun GlyphVisualizerPreview() {
             onLatencyAutoSwitchChanged = {},
             onGlyphMeterPreviewEnabledChanged = {},
             onAutomaticUpdateCheckEnabledChanged = {},
+            onMediaPlaybackOnlyEnabledChanged = {},
+            onExperimentalVisualizerStabilizationEnabledChanged = {},
+            onShowPhone1GlyphDebugControlsEverywhereChanged = {},
+            onAutoEnablePhone1GlyphDebugOnStartChanged = {},
             onBaseIndicatorEnabledChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
+            onFillOtherGlyphLightsChanged = {},
             onBinaryModeChanged = {},
             onLevelAutoScaleChanged = {},
             onSpectrumAutoScaleChanged = {},
@@ -3686,9 +4468,13 @@ private fun GlyphVisualizerPreview() {
             onImportParametersClick = {},
             onStartVisualizerClick = {},
             onStartProjectionClick = {},
+            onEnablePhone1GlyphDebugClick = {},
             onStopClick = {},
             logMessage = null,
-            onDismissLog = {}
+            initialSetupPending = false,
+            onDismissLog = {},
+            showPhone1GlyphDebugPermissionDialog = false,
+            onDismissPhone1GlyphDebugPermissionDialog = {}
         )
     }
 }

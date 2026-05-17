@@ -18,6 +18,7 @@ data class GlyphLightDeviceSpec(
     val bRange: IntRange? = null,
     val cabRange: IntRange? = null,
     val d1Range: IntRange? = null,
+    val d1CenterChannel: Int? = null,
     val centerSupported: Boolean = false
 )
 
@@ -147,6 +148,24 @@ object GlyphDeviceCatalog {
             )
         ),
         Entry(
+            matches = { runCatching { Common.is20111() }.getOrDefault(false) },
+            definition = GlyphDeviceDefinition(
+                profile = GlyphDeviceProfile.PHONE1,
+                modelCode = "20111",
+                presentation = GlyphDevicePresentation("Phone (1)", "Glyph Lights"),
+                controllerFamily = GlyphControllerFamily.LIGHTS,
+                defaultGlyphMode = GlyphPatternRegistry.P2_D1_LINEAR,
+                lightSpec = GlyphLightDeviceSpec(
+                    sdkDeviceId = Glyph.DEVICE_20111,
+                    channelCount = 15,
+                    cRange = 2..5,
+                    d1Range = 7..14,
+                    d1CenterChannel = 11,
+                    centerSupported = true
+                )
+            )
+        ),
+        Entry(
             matches = { Common.is22111() },
             definition = GlyphDeviceDefinition(
                 profile = GlyphDeviceProfile.PHONE2,
@@ -159,6 +178,7 @@ object GlyphDeviceCatalog {
                     channelCount = 33,
                     cRange = 3..18,
                     d1Range = 25..32,
+                    d1CenterChannel = 29,
                     centerSupported = true
                 )
             )

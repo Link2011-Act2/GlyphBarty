@@ -2,11 +2,13 @@ package jp.linkserver.glyphvisualizer
 
 import android.content.Context
 import org.json.JSONObject
+import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 object SettingsPreferences {
     private const val PREFS_NAME = "glyph_visualizer_settings"
     private const val EXPORT_FORMAT = "glyph_barty_parameters"
     private const val EXPORT_VERSION = 2
+    private const val KEY_INITIAL_SETUP_COMPLETED = "initial_setup_completed"
 
     fun defaultParameters(): CaptureUiState = CaptureUiState()
 
@@ -23,6 +25,7 @@ object SettingsPreferences {
             reverseDirection = state.reverseDirection,
             peakHoldEnabled = state.peakHoldEnabled,
             glyphMode = state.glyphMode,
+            fillOtherGlyphLights = state.fillOtherGlyphLights,
             binaryMode = state.binaryMode,
             baseIndicatorEnabled = state.baseIndicatorEnabled,
             levelAutoScale = state.levelAutoScale,
@@ -37,6 +40,10 @@ object SettingsPreferences {
             mediaProjectionEnabled = state.mediaProjectionEnabled,
             glyphMeterPreviewEnabled = state.glyphMeterPreviewEnabled,
             automaticUpdateCheckEnabled = state.automaticUpdateCheckEnabled,
+            mediaPlaybackOnlyEnabled = state.mediaPlaybackOnlyEnabled,
+            experimentalVisualizerStabilizationEnabled = state.experimentalVisualizerStabilizationEnabled,
+            showPhone1GlyphDebugControlsEverywhere = state.showPhone1GlyphDebugControlsEverywhere,
+            autoEnablePhone1GlyphDebugOnStart = state.autoEnablePhone1GlyphDebugOnStart,
             nothingStyleEnabled = state.nothingStyleEnabled,
             turnOffWhenBackDown = state.turnOffWhenBackDown
         ))
@@ -66,6 +73,7 @@ object SettingsPreferences {
             reverseDirection = prefs.getBoolean("reverse_direction", defaults.reverseDirection),
             peakHoldEnabled = prefs.getBoolean("peak_hold_enabled", defaults.peakHoldEnabled),
             glyphMode = prefs.getString("glyph_mode", defaults.glyphMode) ?: defaults.glyphMode,
+            fillOtherGlyphLights = prefs.getBoolean("fill_other_glyph_lights", defaults.fillOtherGlyphLights),
             binaryMode = prefs.getBoolean("binary_mode", defaults.binaryMode),
             baseIndicatorEnabled = prefs.getBoolean("base_indicator_enabled", defaults.baseIndicatorEnabled),
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
@@ -80,6 +88,10 @@ object SettingsPreferences {
             mediaProjectionEnabled = prefs.getBoolean("media_projection_enabled", defaults.mediaProjectionEnabled),
             glyphMeterPreviewEnabled = prefs.getBoolean("glyph_meter_preview_enabled", defaults.glyphMeterPreviewEnabled),
             automaticUpdateCheckEnabled = prefs.getBoolean("automatic_update_check_enabled", defaults.automaticUpdateCheckEnabled),
+            mediaPlaybackOnlyEnabled = prefs.getBoolean("media_playback_only_enabled", defaults.mediaPlaybackOnlyEnabled),
+            experimentalVisualizerStabilizationEnabled = prefs.getBoolean("experimental_visualizer_stabilization_enabled", defaults.experimentalVisualizerStabilizationEnabled),
+            showPhone1GlyphDebugControlsEverywhere = prefs.getBoolean("show_phone1_glyph_debug_controls_everywhere", defaults.showPhone1GlyphDebugControlsEverywhere),
+            autoEnablePhone1GlyphDebugOnStart = prefs.getBoolean("auto_enable_phone1_glyph_debug_on_start", defaults.autoEnablePhone1GlyphDebugOnStart),
             nothingStyleEnabled = prefs.getBoolean("nothing_style_enabled", defaults.nothingStyleEnabled),
             turnOffWhenBackDown = prefs.getBoolean("turn_off_when_back_down", defaults.turnOffWhenBackDown),
         ))
@@ -99,6 +111,7 @@ object SettingsPreferences {
             .putBoolean("reverse_direction", parameters.reverseDirection)
             .putBoolean("peak_hold_enabled", parameters.peakHoldEnabled)
             .putString("glyph_mode", parameters.glyphMode)
+            .putBoolean("fill_other_glyph_lights", parameters.fillOtherGlyphLights)
             .putBoolean("binary_mode", parameters.binaryMode)
             .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
@@ -113,8 +126,27 @@ object SettingsPreferences {
             .putBoolean("media_projection_enabled", parameters.mediaProjectionEnabled)
             .putBoolean("glyph_meter_preview_enabled", parameters.glyphMeterPreviewEnabled)
             .putBoolean("automatic_update_check_enabled", parameters.automaticUpdateCheckEnabled)
+            .putBoolean("media_playback_only_enabled", parameters.mediaPlaybackOnlyEnabled)
+            .putBoolean("experimental_visualizer_stabilization_enabled", parameters.experimentalVisualizerStabilizationEnabled)
+            .putBoolean("show_phone1_glyph_debug_controls_everywhere", parameters.showPhone1GlyphDebugControlsEverywhere)
+            .putBoolean("auto_enable_phone1_glyph_debug_on_start", parameters.autoEnablePhone1GlyphDebugOnStart)
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
             .putBoolean("turn_off_when_back_down", parameters.turnOffWhenBackDown)
+            .apply()
+    }
+
+    fun hasCompletedInitialSetup(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.contains(KEY_INITIAL_SETUP_COMPLETED)) {
+            return prefs.getBoolean(KEY_INITIAL_SETUP_COMPLETED, false)
+        }
+        return prefs.all.isNotEmpty()
+    }
+
+    fun markInitialSetupCompleted(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_INITIAL_SETUP_COMPLETED, true)
             .apply()
     }
 
@@ -133,13 +165,7 @@ object SettingsPreferences {
                     put("toneFocus", parameters.toneFocus.toDouble())
                     put("smoothing", parameters.smoothing.toDouble())
                     put("smoothingBalance", parameters.smoothingBalance.toDouble())
-                    put("reverseDirection", parameters.reverseDirection)
-                    put("peakHoldEnabled", parameters.peakHoldEnabled)
                     put("glyphMode", parameters.glyphMode)
-                    put("binaryMode", parameters.binaryMode)
-                    put("levelAutoScale", parameters.levelAutoScale)
-                    put("spectrumAutoScale", parameters.spectrumAutoScale)
-                    put("allBrightnessAutoScale", parameters.allBrightnessAutoScale)
                     put("autoScaleWindowSeconds", parameters.autoScaleWindowSeconds.toDouble())
                     put("autoScaleOffset", parameters.autoScaleOffset.toDouble())
                 }
@@ -164,14 +190,7 @@ object SettingsPreferences {
             toneFocus = parameters.optDouble("toneFocus", defaults.toneFocus.toDouble()).toFloat(),
             smoothing = parameters.optDouble("smoothing", defaults.smoothing.toDouble()).toFloat(),
             smoothingBalance = parameters.optDouble("smoothingBalance", defaults.smoothingBalance.toDouble()).toFloat(),
-            reverseDirection = parameters.optBoolean("reverseDirection", defaults.reverseDirection),
-            peakHoldEnabled = parameters.optBoolean("peakHoldEnabled", defaults.peakHoldEnabled),
             glyphMode = parameters.optString("glyphMode", defaults.glyphMode),
-            binaryMode = parameters.optBoolean("binaryMode", defaults.binaryMode),
-            baseIndicatorEnabled = parameters.optBoolean("baseIndicatorEnabled", defaults.baseIndicatorEnabled),
-            levelAutoScale = parameters.optBoolean("levelAutoScale", defaults.levelAutoScale),
-            spectrumAutoScale = parameters.optBoolean("spectrumAutoScale", defaults.spectrumAutoScale),
-            allBrightnessAutoScale = parameters.optBoolean("allBrightnessAutoScale", defaults.allBrightnessAutoScale),
             autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat(),
             autoScaleOffset = parameters.optDouble("autoScaleOffset", defaults.autoScaleOffset.toDouble()).toFloat()
         ))
@@ -179,7 +198,14 @@ object SettingsPreferences {
 
     private fun normalizeDormantFlags(state: CaptureUiState): CaptureUiState {
         // Hidden for now because some devices already enforce a similar OS-level behavior.
-        return state.copy(turnOffWhenBackDown = false)
+        return state.copy(
+            turnOffWhenBackDown = false,
+            showPhone1GlyphDebugControlsEverywhere = if (isIntDevBuild()) {
+                state.showPhone1GlyphDebugControlsEverywhere
+            } else {
+                false
+            }
+        )
     }
 
     private fun loadLegacyLatencyForRoute(

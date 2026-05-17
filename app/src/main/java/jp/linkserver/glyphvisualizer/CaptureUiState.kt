@@ -22,6 +22,7 @@ data class CaptureUiState(
     val spectrumBands: FloatArray = FloatArray(0),
     val activeMode: String = "IDLE",
     val glyphMode: String = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
+    val fillOtherGlyphLights: Boolean = false,
     val binaryMode: Boolean = false,
     val baseIndicatorEnabled: Boolean = false,
     val levelAutoScale: Boolean = false,
@@ -37,6 +38,10 @@ data class CaptureUiState(
     val mediaProjectionEnabled: Boolean = false,
     val glyphMeterPreviewEnabled: Boolean = false,
     val automaticUpdateCheckEnabled: Boolean = false,
+    val mediaPlaybackOnlyEnabled: Boolean = false,
+    val experimentalVisualizerStabilizationEnabled: Boolean = false,
+    val showPhone1GlyphDebugControlsEverywhere: Boolean = false,
+    val autoEnablePhone1GlyphDebugOnStart: Boolean = true,
     val nothingStyleEnabled: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null

@@ -54,6 +54,7 @@ class GlyphTileService : TileService() {
                 reverseDirection = resolved.reverseDirection,
                 peakHoldEnabled = resolved.peakHoldEnabled,
                 glyphMode = resolved.glyphMode,
+                fillOtherGlyphLights = resolved.fillOtherGlyphLights,
                 binaryMode = resolved.binaryMode,
                 baseIndicatorEnabled = resolved.baseIndicatorEnabled,
                 levelAutoScale = resolved.levelAutoScale,
@@ -62,6 +63,8 @@ class GlyphTileService : TileService() {
                 autoScaleWindowSeconds = resolved.autoScaleWindowSeconds,
                 autoScaleOffset = resolved.autoScaleOffset,
                 latencyMs = resolved.latencyMs,
+                mediaPlaybackOnlyEnabled = resolved.mediaPlaybackOnlyEnabled,
+                experimentalVisualizerStabilizationEnabled = resolved.experimentalVisualizerStabilizationEnabled,
                 turnOffWhenBackDown = resolved.turnOffWhenBackDown
             )
         }

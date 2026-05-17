@@ -20,7 +20,7 @@
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d</string>
     <string name="about_updates_title">アップデート情報</string>
-    <string name="about_updates_body">・新バージョンがリリースされた際に通知する機能を追加\n・メーターの向きが初期設定で逆転になっていた問題を修正\n・Center系モードでメーター反転に対応\n・自動スケールオフセットパラメーターを追加 暴れすぎないよう調整することができます</string>
+    <string name="about_updates_body">・Glyph Lights機種向けに、新しいClassicパターンを追加\n・一部機種向けに補助点灯チェックボックスを追加\n・設定のUIを改善\n・初回起動時のようこそ画面を追加\n・Nothing Phone (1)のサポートを追加\n・メディア再生中のみ反応させる機能を追加\n・(実験的)開始の安定化機能を追加\n・バッテリーが多く消費される問題をある程度改善</string>
     <string name="about_update_check_button">アップデートを確認</string>
     <string name="about_update_checking">GitHub Releases を確認しています…</string>
     <string name="about_update_latest">最新バージョンを使用しています。</string>
@@ -44,7 +44,7 @@
     <string name="update_notification_title">アップデートがあります</string>
     <string name="update_notification_dont_show">今後表示しない</string>
     <string name="about_known_issues_title">既知の問題</string>
-    <string name="about_known_issues_body">・Nothing Phone (4a) ProとNothing製イヤホンの組み合わせの場合で、空間オーディオが有効だとメーターが振れない</string>
+    <string name="about_known_issues_body">・Nothing PhoneとNothing製オーディオの一部の組み合わせにおいて、空間オーディオが有効だとVisualizerの開始に失敗する</string>
     <string name="about_support_title">サポート情報</string>
     <string name="about_support_help">不具合報告やフィードバックはこちら</string>
     <string name="about_support_open_site">GitHubを開く</string>
@@ -56,11 +56,13 @@
     <string name="about_debug_title">デバッグログ</string>
     <string name="about_debug_help">問題が発生した際にログを共有して報告できます。</string>
     <string name="about_debug_share">ログを共有</string>
+    <string name="about_debug_share_subject">Glyph Barty app log</string>
+    <string name="about_debug_share_chooser">ログを共有</string>
     <string name="about_debug_empty">ログなし</string>
     <string name="about_debug_clear">ログを消去</string>
 
     <!-- Settings Screen -->
-    <string name="settings_screen_title">設定</string>
+    <string name="settings_screen_title">アプリの設定</string>
     <string name="settings_screen_help">アプリに関する設定や各種導線をまとめています。</string>
     <string name="settings_language_title">アプリの言語</string>
     <string name="settings_language_desc">Android のアプリ別言語設定を開きます。</string>
@@ -82,10 +84,36 @@
     <string name="base_indicator_desc">赤いLEDを低音に応じて点灯させます。現在挙動を調整中です。</string>
     <string name="settings_media_projection_title">MediaProjection を表示</string>
     <string name="settings_media_projection_desc">画面キャプチャで音声を取得するモードを使えるようにします\n通常は不要ですが、不具合が出た場合はこれを使用してみてください</string>
-    <string name="settings_glyph_meter_preview_title">実験的: より忠実なプレビュー</string>
+    <string name="settings_glyph_meter_preview_title">より忠実なプレビュー</string>
     <string name="settings_glyph_meter_preview_desc">画面上のメーターに、実際のセグメント数と明るさ変化を反映します</string>
-    <string name="settings_automatic_update_check_title">実験的: アップデートを自動チェック</string>
+    <string name="settings_media_playback_only_title">メディア再生中のみ反応</string>
+    <string name="settings_media_playback_only_desc">音楽系アプリからの音声のみ反応させます。通知アクセスが必要です</string>
+    <string name="settings_media_playback_only_permission_required">通知アクセスを許可すると、この設定が使えるようになります</string>
+    <string name="settings_media_playback_only_open_failed">通知アクセス設定を開けませんでした</string>
+    <string name="settings_visualizer_stabilization_title">実験的: 開始の安定化</string>
+    <string name="settings_visualizer_stabilization_desc">Bluetoothイヤホンを使用すると開始できない場合、これを試してみてください</string>
+    <string name="settings_automatic_update_check_title">アップデートを自動チェック</string>
     <string name="settings_automatic_update_check_desc">新しいバージョンがGitHubで公開された際に、アプリ内で知らせます</string>
+    <string name="settings_phone1_debug_controls_title">IntDev専用: Phone (1) デバッグボタンを常に表示</string>
+    <string name="settings_phone1_debug_controls_desc">Phone (1) 以外でも、Glyph デバッグ有効化ボタンをメイン画面に表示します</string>
+    <string name="welcome_title">ようこそ</string>
+    <string name="welcome_body">初回起動時の簡単な設定です。</string>
+    <string name="welcome_intro_title">ようこそ</string>
+    <string name="welcome_intro_body">初回起動時のセットアップです。いくつかの項目を選ぶだけで始められます。</string>
+    <string name="welcome_ui_mode_title">UIモードを選択</string>
+    <string name="welcome_ui_mode_desc">見た目は後から設定で変更できます。まずは使いたいスタイルを選んでください。</string>
+    <string name="welcome_features_title">主な機能</string>
+    <string name="welcome_features_body">このアプリでは、再生音に合わせて Glyph を光らせたり、追従のしかたを細かく調整できます。</string>
+    <string name="welcome_feature_live_meter">・メイン画面でリアルタイムメーターを確認できます</string>
+    <string name="welcome_feature_latency">・レイテンシ調整で出力タイミングを合わせられます</string>
+    <string name="welcome_feature_media_only">・必要に応じて、メディア再生中だけ反応させられます</string>
+    <string name="welcome_update_check_title">アップデートの自動チェック</string>
+    <string name="welcome_update_check_desc">新しいバージョンが GitHub で公開されたとき、アプリ内でお知らせできます。後から設定で変更できます。</string>
+    <string name="welcome_update_check_enable">自動チェックを有効にする</string>
+    <string name="welcome_update_check_skip">今はしない</string>
+    <string name="welcome_step_counter">%1$d / %2$d</string>
+    <string name="welcome_next">次へ</string>
+    <string name="welcome_back">戻る</string>
     <string name="settings_open_button">開く</string>
     <string name="settings_reset_button">デフォルトに戻す</string>
     <string name="settings_export_button">エクスポート</string>
@@ -187,6 +215,8 @@
     <string name="capture_control_hint">まずは通常モードを試し、必要な場合だけ MediaProjection を使うのがおすすめです。</string>
     <string name="current_mode">現在のモード: %1$s</string>
     <string name="glyph_pattern">Glyphパターン</string>
+    <string name="fill_other_glyph_lights_title">他のGlyphも点灯させる</string>
+    <string name="fill_other_glyph_lights_desc">一部だけ光るモードのとき、残りのライトも Classic モードのように点灯させます</string>
     <string name="meter_parameters">メーター設定</string>
 
     <string name="mode_matrix_bar">Matrix Bar</string>
@@ -206,6 +236,7 @@
     <string name="mode_d1_center">D1 Center</string>
     <string name="mode_c1_spectrum">C1 Spectrum</string>
     <string name="mode_d1_spectrum">D1 Spectrum</string>
+    <string name="mode_classic">Classic</string>
     <string name="mode_all_brightness">All Brightness</string>
     <string name="mode_p4a_linear">Linear</string>
     <string name="mode_p4a_center">Center</string>
@@ -304,8 +335,23 @@
     <string name="button_media_projection_hint">通常モードで音声が取得できない場合の代替手段</string>
     <string name="button_stop">停止</string>
     <string name="button_language_settings">言語設定</string>
+    <string name="phone1_glyph_debug_button">デバッグモードを\n有効化</string>
+    <string name="phone1_glyph_debug_hint">Glyphを光らせるためにGlyph Interfaceのデバッグモードを有効化する必要があります。\n有効化ボタンを押すと自動的に有効化されます(Shizukuが必要)</string>
+    <string name="phone1_glyph_debug_dialog_title">Shizuku / Sui が必要です</string>
+    <string name="phone1_glyph_debug_dialog_body">この操作にはShizukuが実行中である必要があります。Shizuku または Sui を起動し、このアプリへの権限を許可してからもう一度試してください。</string>
+    <string name="phone1_glyph_debug_dialog_confirm">OK</string>
+    <string name="phone1_glyph_debug_success">デバッグモードを有効化しました</string>
+    <string name="phone1_glyph_debug_info_title">デバッグについて</string>
+    <string name="phone1_glyph_debug_info_body">Phone (1) では、Glyph Lights を使うためにGlyph Interfaceのデバッグモードを有効にする必要があります。\nNothingの仕様で、48時間経つと自動で無効になります。\nShizukuをインストールしてこのアプリから有効にするか、下の ADB コマンドを使って手動で有効化してください。</string>
+    <string name="phone1_glyph_debug_info_adb_label">ADB コマンド</string>
+    <string name="phone1_glyph_debug_info_button">詳細と\nADBコマンド</string>
+    <string name="phone1_glyph_debug_copy_command">コマンドをコピー</string>
+    <string name="phone1_glyph_debug_adb_copied">ADB コマンドをコピーしました</string>
+    <string name="phone1_glyph_debug_adb_command" translatable="false">adb shell settings put global nt_glyph_interface_debug_enable 1</string>
+    <string name="settings_phone1_debug_auto_enable_title">開始時のデバッグ自動有効化</string>
+    <string name="settings_phone1_debug_auto_enable_desc">開始時にGlyph Interfaceのデバッグ有効化コマンドを自動で実行します\n(ShizukuまたはSuiが必要です)</string>
 
-    <string name="info_note_phone">Phone (2)/(3)/(2a)/(3a)/(4a)</string>
+    <string name="info_note_phone">Phone (1)/(2)/(3)/(2a)/(3a)/(4a)</string>
     <string name="info_note_foreground">バックグラウンド動作対応</string>
     <string name="info_note_projection">MediaProjectionは不要</string>
 

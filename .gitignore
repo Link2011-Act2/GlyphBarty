@@ -9,6 +9,7 @@
 
 # Build tools and caches
 /.gradle/
+/.gradle-temp/
 /.kotlin/
 /build/
 /app/build/

@@ -149,6 +149,7 @@ class GlyphLightController(
         val bRange: IntRange? = null,
         val cabRange: IntRange? = null,
         val d1Range: IntRange? = null,
+        val d1CenterChannel: Int? = null,
         val centerSupported: Boolean = false
     )
 
@@ -157,6 +158,7 @@ class GlyphLightController(
     private var isSessionOpen = false
     private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var fillOtherGlyphLightsEnabled = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
@@ -302,6 +304,10 @@ class GlyphLightController(
             resetLevelScaleTracking()
             resetBaseIndicatorTracking()
         }
+    }
+
+    override fun setFillOtherGlyphLightsEnabled(enabled: Boolean) {
+        fillOtherGlyphLightsEnabled = enabled
     }
 
     override fun setBinaryMode(binary: Boolean) {
@@ -519,6 +525,7 @@ class GlyphLightController(
                 }
             }
             GlyphPatternRenderMode.SPECTRUM -> updateSpectrumRanges(level, ranges)
+            GlyphPatternRenderMode.CLASSIC -> updateClassicSpectrum(level, spec)
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> updateAllBrightness(level)
             else -> updateLinearRanges(level, ranges.ifEmpty { listOf(spec.cRange) })
         }
@@ -547,12 +554,32 @@ class GlyphLightController(
             GlyphPatternRenderMode.LINEAR -> ranges.forEach { applyLinearRange(colors, it, level) }
             GlyphPatternRenderMode.CENTER -> ranges.forEach { applyCenterRange(colors, it, level) }
             GlyphPatternRenderMode.SPECTRUM -> ranges.forEach { applySpectrumRange(colors, it, level) }
+            GlyphPatternRenderMode.CLASSIC -> applyClassicSpectrum(colors, deviceSpec ?: return, level)
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
                 val primaryRange = ranges.firstOrNull() ?: return
                 applyAllBrightnessRange(colors, primaryRange, level)
             }
             else -> ranges.forEach { applyLinearRange(colors, it, level) }
         }
+    }
+
+    private fun applyFillOtherGlyphLights(
+        colors: IntArray,
+        spec: DeviceSpec,
+        usedRanges: List<IntRange>,
+        level: Float
+    ) {
+        if (!fillOtherGlyphLightsEnabled) return
+        if (GlyphPatternRegistry.isAllBrightness(glyphMode)) return
+        if (spec.profile !in setOf(GlyphDeviceProfile.PHONE1, GlyphDeviceProfile.PHONE2, GlyphDeviceProfile.PHONE2A)) {
+            return
+        }
+        applyClassicSpectrum(
+            colors = colors,
+            spec = spec,
+            level = level,
+            excludedRanges = usedRanges
+        )
     }
 
     private fun updateLinearRanges(level: Float, ranges: List<IntRange>) {
@@ -569,6 +596,7 @@ class GlyphLightController(
         for (range in ranges) {
             applyLinearRange(colors, range, clamped)
         }
+        applyFillOtherGlyphLights(colors, spec, ranges, clamped)
         glyphManager.setFrameColors(colors)
     }
 
@@ -607,7 +635,92 @@ class GlyphLightController(
         for (range in ranges) {
             applySpectrumRange(colors, range, clamped)
         }
+        applyFillOtherGlyphLights(colors, spec, ranges, clamped)
         glyphManager.setFrameColors(colors)
+    }
+
+    private fun updateClassicSpectrum(level: Float, spec: DeviceSpec) {
+        val clamped = level.coerceIn(0f, 1f)
+        if (clamped <= 0.001f) {
+            turnOff()
+            return
+        }
+
+        val colors = IntArray(spec.channelCount)
+        applyClassicSpectrum(colors, spec, clamped)
+        glyphManager.setFrameColors(colors)
+    }
+
+    private fun applyClassicSpectrum(
+        colors: IntArray,
+        spec: DeviceSpec,
+        level: Float,
+        excludedRanges: List<IntRange> = emptyList()
+    ) {
+        val groups = classicSpectrumGroupsFor(spec)
+            .map { group ->
+                group.filter { channel ->
+                    excludedRanges.none { channel in it }
+                }
+            }
+            .filter { it.isNotEmpty() }
+        if (groups.isEmpty()) return
+
+        val orderedGroups = if (shouldReverseLightOrder()) groups.reversed() else groups
+        val lastIndex = (orderedGroups.size - 1).coerceAtLeast(1)
+        orderedGroups.forEachIndexed { index, channels ->
+            val position = index / lastIndex.toFloat()
+            val bandValue = sampleSpectrumAt(position)
+            val weighted = (bandValue * level).coerceIn(0f, 1f)
+            val shaped = weighted.pow(outputGamma)
+            val brightness = if (binaryMode) {
+                if (shaped >= 0.5f) MAX_LIGHT else 0
+            } else {
+                (shaped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+            }
+            if (brightness <= 0) return@forEachIndexed
+            channels.forEach { channel ->
+                if (channel in colors.indices && brightness > colors[channel]) {
+                    colors[channel] = brightness
+                }
+            }
+        }
+    }
+
+    private fun classicSpectrumGroupsFor(spec: DeviceSpec): List<List<Int>> {
+        return when (spec.profile) {
+            GlyphDeviceProfile.PHONE1 -> listOf(
+                listOf(0),
+                listOf(1),
+                (2..5).toList(),
+                (7..14).toList(),
+                listOf(6)
+            )
+            GlyphDeviceProfile.PHONE2 -> listOf(
+                listOf(0),
+                listOf(1),
+                listOf(2),
+                (3..18).toList(),
+                listOf(19),
+                listOf(20),
+                listOf(21),
+                listOf(22),
+                listOf(23),
+                (25..32).toList(),
+                listOf(24)
+            )
+            GlyphDeviceProfile.PHONE2A -> listOf(
+                listOf(25),
+                listOf(24),
+                (0..23).toList()
+            )
+            GlyphDeviceProfile.PHONE3A -> listOf(
+                (20..30).toList(),
+                (31..35).toList(),
+                (0..19).toList()
+            )
+            else -> emptyList()
+        }
     }
 
     private fun applySpectrumRange(colors: IntArray, range: IntRange, level: Float) {
@@ -734,8 +847,9 @@ class GlyphLightController(
             return
         }
 
-        if (spec.profile == GlyphDeviceProfile.PHONE2 && 29 in channelRange && channelRange.count() == 8) {
-            val centerChannel = 29
+        val d1CenterChannel = spec.d1CenterChannel
+        if (d1CenterChannel != null && channelRange == spec.d1Range && channelRange.count() == 8) {
+            val centerChannel = d1CenterChannel
             val leftChannels = (channelRange.first until centerChannel).toList().asReversed()
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
             val pairCount = min(leftChannels.size, rightChannels.size)
@@ -767,6 +881,7 @@ class GlyphLightController(
                 }
             }
 
+            applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
             glyphManager.setFrameColors(colors)
             return
         }
@@ -790,6 +905,7 @@ class GlyphLightController(
                 }
             }
         }
+        applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
         glyphManager.setFrameColors(colors)
     }
 
@@ -807,6 +923,7 @@ class GlyphLightController(
         for (range in ranges) {
             applyCenterRange(colors, range, clamped)
         }
+        applyFillOtherGlyphLights(colors, spec, ranges, clamped)
         glyphManager.setFrameColors(colors)
     }
 
@@ -1017,6 +1134,7 @@ class GlyphLightController(
             bRange = lightSpec.bRange,
             cabRange = lightSpec.cabRange,
             d1Range = lightSpec.d1Range,
+            d1CenterChannel = lightSpec.d1CenterChannel,
             centerSupported = lightSpec.centerSupported
         )
     }

@@ -40,12 +40,13 @@ enum class SettingsGroupPosition {
 fun SettingsNothingGroup(
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val darkTheme = isSystemInDarkTheme()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        color = if (darkTheme) Color(0xFF1E1E1E) else Color.White,
-        border = BorderStroke(1.dp, if (darkTheme) Color(0xFF262626) else Color(0xFFE5E5E5))
+        color = settingsCardColor(nothingStyle = true),
+        border = settingsCardBorder(),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Column(content = content)
     }
@@ -53,7 +54,6 @@ fun SettingsNothingGroup(
 
 @Composable
 fun SettingsDivider() {
-    val darkTheme = isSystemInDarkTheme()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -62,7 +62,7 @@ fun SettingsDivider() {
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = if (darkTheme) Color(0xFF2A2A2A) else Color(0xFFE8E8E8)
+            color = MaterialTheme.colorScheme.outlineVariant
         ) {}
     }
 }
@@ -75,14 +75,9 @@ fun SettingsEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val darkTheme = isSystemInDarkTheme()
-    val containerColor = if (nothingStyle) {
-        if (darkTheme) Color(0xFF1E1E1E) else Color.White
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
+    val containerColor = settingsCardColor(nothingStyle)
     val chevronTint = if (nothingStyle) {
-        if (darkTheme) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
+        if (isSystemInDarkTheme()) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -92,7 +87,9 @@ fun SettingsEntry(
         modifier = Modifier.fillMaxWidth(),
         shape = itemShape(position, nothingStyle),
         color = containerColor,
-        border = if (nothingStyle) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = settingsCardBorder(),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -110,14 +107,16 @@ fun SettingsEntry(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Normal
                 )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -138,18 +137,15 @@ fun SettingsToggleEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val darkTheme = isSystemInDarkTheme()
-    val containerColor = if (nothingStyle) {
-        if (darkTheme) Color(0xFF1E1E1E) else Color.White
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
+    val containerColor = settingsCardColor(nothingStyle)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = itemShape(position, nothingStyle),
         color = containerColor,
-        border = if (nothingStyle) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = settingsCardBorder(),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -167,14 +163,16 @@ fun SettingsToggleEntry(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Normal
                 )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Switch(
                 checked = checked,
@@ -194,18 +192,15 @@ fun SettingsRadioEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val darkTheme = isSystemInDarkTheme()
-    val containerColor = if (nothingStyle) {
-        if (darkTheme) Color(0xFF1E1E1E) else Color.White
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
+    val containerColor = settingsCardColor(nothingStyle)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = itemShape(position, nothingStyle),
         color = containerColor,
-        border = if (nothingStyle) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = settingsCardBorder(),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -219,14 +214,16 @@ fun SettingsRadioEntry(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Normal
                 )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             options.forEachIndexed { index, (label, selected) ->
                 Row(
@@ -240,7 +237,7 @@ fun SettingsRadioEntry(
                     )
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
@@ -249,13 +246,44 @@ fun SettingsRadioEntry(
 }
 
 private fun itemShape(position: SettingsGroupPosition, nothingStyle: Boolean): RoundedCornerShape {
-    if (!nothingStyle) {
-        return RoundedCornerShape(28.dp)
-    }
+    val cornerRadius = if (nothingStyle) 22.dp else 32.dp
+    val innerRadius = 6.dp
     return when (position) {
-        SettingsGroupPosition.Single -> RoundedCornerShape(22.dp)
-        SettingsGroupPosition.Top -> RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
-        SettingsGroupPosition.Middle -> RoundedCornerShape(0.dp)
-        SettingsGroupPosition.Bottom -> RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp)
+        SettingsGroupPosition.Single -> RoundedCornerShape(cornerRadius)
+        SettingsGroupPosition.Top -> RoundedCornerShape(
+            topStart = cornerRadius,
+            topEnd = cornerRadius,
+            bottomStart = innerRadius,
+            bottomEnd = innerRadius
+        )
+        SettingsGroupPosition.Middle -> RoundedCornerShape(innerRadius)
+        SettingsGroupPosition.Bottom -> RoundedCornerShape(
+            topStart = innerRadius,
+            topEnd = innerRadius,
+            bottomStart = cornerRadius,
+            bottomEnd = cornerRadius
+        )
+    }
+}
+
+@Composable
+private fun settingsCardBorder(): BorderStroke? {
+    return if (isSystemInDarkTheme()) {
+        null
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun settingsCardColor(nothingStyle: Boolean): Color {
+    return if (nothingStyle) {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    } else {
+        if (isSystemInDarkTheme()) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        }
     }
 }

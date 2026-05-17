@@ -25,6 +25,13 @@ internal object AudioRouteDiagnostics {
         return outputSignature(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS))
     }
 
+    fun hasRemoteSubmixOutput(context: Context): Boolean {
+        val audioManager = context.getSystemService(AudioManager::class.java) ?: return false
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.isSink && it.type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX
+        }
+    }
+
     fun describeDevices(devices: Array<AudioDeviceInfo>): String {
         val sinks = devices.filter { it.isSink }
         if (sinks.isEmpty()) {

@@ -29,9 +29,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,8 +52,11 @@ import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
+import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
+import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
+import jp.linkserver.glyphvisualizer.update.setShowLatestReleaseForTestingEnabled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,7 +76,7 @@ fun AboutScreen(
     val versionCode = versionInfo.second
     val channelInfo = remember { splitVersionAndChannel(versionName) }
     val simpleVersion = channelInfo.first
-    val channelName = channelInfo.second
+    val channelName = remember(versionName) { detectReleaseChannel(versionName) }
 
     val channelLabel = when {
         channelName.equals("IntDev", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_intdev)
@@ -92,6 +97,8 @@ fun AboutScreen(
     var showVersionDetailsDialog by remember { mutableStateOf(false) }
     var checkingUpdates by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
+    val isIntDevBuild = remember { isIntDevBuild() }
+    var showLatestForTesting by remember { mutableStateOf(isShowLatestReleaseForTestingEnabled(context)) }
     val repositoryUrl = stringResource(R.string.about_support_site_url)
 
     fun startUpdateCheck(manual: Boolean) {
@@ -126,8 +133,13 @@ fun AboutScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                ),
                 title = { Text(stringResource(R.string.about_screen_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -267,6 +279,45 @@ fun AboutScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (isIntDevBuild) {
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.about_update_test_mode_title),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = stringResource(R.string.about_update_test_mode_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = showLatestForTesting,
+                                onCheckedChange = { enabled ->
+                                    showLatestForTesting = enabled
+                                    setShowLatestReleaseForTestingEnabled(context, enabled)
+                                }
+                            )
+                        }
+                    }
                 }
             }
 

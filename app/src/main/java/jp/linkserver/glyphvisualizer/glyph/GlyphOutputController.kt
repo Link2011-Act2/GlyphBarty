@@ -5,6 +5,7 @@ interface GlyphOutputController {
     fun unbind()
     fun setReverseDirection(reverse: Boolean)
     fun setGlyphMode(mode: String)
+    fun setFillOtherGlyphLightsEnabled(enabled: Boolean) {}
     fun setBinaryMode(binary: Boolean)
     fun setBaseIndicatorEnabled(enabled: Boolean) {}
     fun setLevelAutoScaleEnabled(enabled: Boolean) {}

@@ -20,7 +20,7 @@
     <string name="about_version_details_title">Version details</string>
     <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d</string>
     <string name="about_updates_title">What\'s new</string>
-    <string name="about_updates_body">• Added a feature that notifies you when a new version is released\n• Fixed an issue where the meter direction was reversed by default\n• Added support for reversing the meter in Center modes\n• Added an auto scale offset parameter so you can tame overly aggressive movement</string>
+    <string name="about_updates_body">• Added a new Classic pattern for Glyph Lights devices\n• Added a helper-light checkbox for some devices\n• Improved the settings UI\n• Added a welcome screen for first launch\n• Added support for Nothing Phone (1)\n• Added an option to respond only during media playback\n• Added an experimental startup stabilization feature\n• Reduced battery drain to some extent</string>
     <string name="about_update_check_button">Check for updates</string>
     <string name="about_update_checking">Checking GitHub Releases…</string>
     <string name="about_update_latest">You are using the latest version.</string>
@@ -44,7 +44,7 @@
     <string name="update_notification_title">Update available</string>
     <string name="update_notification_dont_show">Don\'t show again</string>
     <string name="about_known_issues_title">Known issues</string>
-    <string name="about_known_issues_body">- On Nothing Phone (4a) Pro with Nothing earbuds, the meter may not move when spatial audio is enabled.</string>
+    <string name="about_known_issues_body">- On some combinations of Nothing Phone devices and Nothing audio products, the Visualizer may fail to start when spatial audio is enabled.</string>
     <string name="about_support_title">Support</string>
     <string name="about_support_help">Report bugs or send feedback</string>
     <string name="about_support_open_site">Open GitHub</string>
@@ -56,12 +56,19 @@
     <string name="about_debug_title">Debug log</string>
     <string name="about_debug_help">Share logs when reporting problems.</string>
     <string name="about_debug_share">Share log</string>
+    <string name="about_debug_share_subject">Glyph Barty app log</string>
+    <string name="about_debug_share_chooser">Share log</string>
     <string name="about_debug_empty">No log available</string>
     <string name="about_debug_clear">Clear log</string>
 
     <!-- Settings Screen -->
-    <string name="settings_screen_title">Settings</string>
+    <string name="settings_screen_title">App settings</string>
     <string name="settings_screen_help">Open app-specific options and shortcuts.</string>
+    <string name="settings_category_display">Display</string>
+    <string name="settings_category_playback">Playback</string>
+    <string name="settings_category_updates">Updates</string>
+    <string name="settings_category_general">General</string>
+    <string name="settings_category_information">Information</string>
     <string name="settings_language_title">App language</string>
     <string name="settings_language_desc">Open the Android per-app language settings.</string>
     <string name="settings_reset_title">Reset parameters</string>
@@ -82,10 +89,36 @@
     <string name="base_indicator_desc">Drive the red LED from low-frequency energy. This feature is still being tuned.</string>
     <string name="settings_media_projection_title">Show MediaProjection</string>
     <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.\nYou usually do not need this, but if you run into issues, try using it.</string>
-    <string name="settings_glyph_meter_preview_title">Experimental: More faithful preview</string>
+    <string name="settings_glyph_meter_preview_title">More faithful preview</string>
     <string name="settings_glyph_meter_preview_desc">Reflect the actual segment count and brightness changes on the on-screen meter.</string>
-    <string name="settings_automatic_update_check_title">Experimental: Automatically check updates</string>
+    <string name="settings_media_playback_only_title">Respond only during media playback</string>
+    <string name="settings_media_playback_only_desc">Makes the app respond only to audio from music and media apps. Notification access is required.</string>
+    <string name="settings_media_playback_only_permission_required">Grant notification access to use this option.</string>
+    <string name="settings_media_playback_only_open_failed">Unable to open notification access settings</string>
+    <string name="settings_visualizer_stabilization_title">Experimental: Stabilize startup</string>
+    <string name="settings_visualizer_stabilization_desc">If the app cannot start while using Bluetooth earbuds, try enabling this option.</string>
+    <string name="settings_automatic_update_check_title">Automatically check for updates</string>
     <string name="settings_automatic_update_check_desc">Shows an in-app notice when a new version is published on GitHub.</string>
+    <string name="settings_phone1_debug_controls_title">IntDev only: Always show the Phone (1) debug button</string>
+    <string name="settings_phone1_debug_controls_desc">Show the Glyph debug enable button on the main screen even on devices other than Phone (1).</string>
+    <string name="welcome_title">Welcome</string>
+    <string name="welcome_body">A quick setup shown only on first launch.</string>
+    <string name="welcome_intro_title">Welcome</string>
+    <string name="welcome_intro_body">This is the first-launch setup. You can get started by choosing just a few options.</string>
+    <string name="welcome_ui_mode_title">Choose a UI mode</string>
+    <string name="welcome_ui_mode_desc">You can change the look later in Settings. First, pick the style you want to use.</string>
+    <string name="welcome_features_title">Key features</string>
+    <string name="welcome_features_body">This app can light up the Glyph in sync with playback audio and gives you detailed control over how it responds.</string>
+    <string name="welcome_feature_live_meter">• Check the live meter on the main screen</string>
+    <string name="welcome_feature_latency">• Adjust output timing with latency controls</string>
+    <string name="welcome_feature_media_only">• Optionally react only during media playback</string>
+    <string name="welcome_update_check_title">Automatic update checks</string>
+    <string name="welcome_update_check_desc">The app can notify you when a new version is published on GitHub. You can change this later in Settings.</string>
+    <string name="welcome_update_check_enable">Enable automatic checks</string>
+    <string name="welcome_update_check_skip">Not now</string>
+    <string name="welcome_step_counter">%1$d / %2$d</string>
+    <string name="welcome_next">Next</string>
+    <string name="welcome_back">Back</string>
     <string name="settings_open_button">Open</string>
     <string name="settings_reset_button">Reset</string>
     <string name="settings_export_button">Export</string>
@@ -187,6 +220,8 @@
     <string name="capture_control_hint">Try normal mode first, and use MediaProjection only when necessary.</string>
     <string name="current_mode">Current mode: %1$s</string>
     <string name="glyph_pattern">Glyph pattern</string>
+    <string name="fill_other_glyph_lights_title">Light up the other Glyphs too</string>
+    <string name="fill_other_glyph_lights_desc">When using a partial-light mode, the remaining lights will also react to the spectrum like Classic.</string>
     <string name="meter_parameters">Meter parameters</string>
 
     <string name="mode_matrix_bar" translatable="false">Matrix Bar</string>
@@ -206,6 +241,7 @@
     <string name="mode_d1_center" translatable="false">D1 Center</string>
     <string name="mode_c1_spectrum" translatable="false">C1 Spectrum</string>
     <string name="mode_d1_spectrum" translatable="false">D1 Spectrum</string>
+    <string name="mode_classic" translatable="false">Classic</string>
     <string name="mode_all_brightness" translatable="false">All Brightness</string>
     <string name="mode_p4a_linear" translatable="false">Linear</string>
     <string name="mode_p4a_center" translatable="false">Center</string>
@@ -304,8 +340,23 @@
     <string name="button_media_projection_hint">Fallback when audio cannot be captured in normal mode</string>
     <string name="button_stop">Stop</string>
     <string name="button_language_settings">Language settings</string>
+    <string name="phone1_glyph_debug_button">Enable debug mode</string>
+    <string name="phone1_glyph_debug_hint">To light up the Glyph, you need to enable Glyph Interface debug mode.\nPressing the enable button will try to turn it on automatically. Shizuku or Sui is required.</string>
+    <string name="phone1_glyph_debug_dialog_title">Shizuku / Sui is required</string>
+    <string name="phone1_glyph_debug_dialog_body">This action requires Shizuku to be running. Start Shizuku or Sui, grant permission to this app, and then try again.</string>
+    <string name="phone1_glyph_debug_dialog_confirm">OK</string>
+    <string name="phone1_glyph_debug_success">Debug mode enabled</string>
+    <string name="phone1_glyph_debug_info_title">About debug mode</string>
+    <string name="phone1_glyph_debug_info_body">On Phone (1), you need to enable Glyph Interface debug mode to use Glyph Lights.\nBy Nothing\'s design, it automatically turns off again after 48 hours.\nInstall Shizuku and enable it from this app, or use the ADB command below to enable it manually.</string>
+    <string name="phone1_glyph_debug_info_adb_label">ADB command</string>
+    <string name="phone1_glyph_debug_info_button">Details and\nADB command</string>
+    <string name="phone1_glyph_debug_copy_command">Copy command</string>
+    <string name="phone1_glyph_debug_adb_copied">ADB command copied</string>
+    <string name="phone1_glyph_debug_adb_command" translatable="false">adb shell settings put global nt_glyph_interface_debug_enable 1</string>
+    <string name="settings_phone1_debug_auto_enable_title">Auto-enable debug on start</string>
+    <string name="settings_phone1_debug_auto_enable_desc">Automatically runs the Glyph Interface debug enable command on start.\nShizuku or Sui is required.</string>
 
-    <string name="info_note_phone" translatable="false">Phone (2)/(3)/(2a)/(3a)/(4a)</string>
+    <string name="info_note_phone" translatable="false">Phone (1)/(2)/(3)/(2a)/(3a)/(4a)</string>
     <string name="info_note_foreground">Foreground Service enabled</string>
     <string name="info_note_projection">MediaProjection is not required</string>
 

@@ -19,6 +19,13 @@ class OutputMixVisualizer(
         private const val TAG = "OutputMixVisualizer"
         private const val BLUETOOTH_PREPARE_DELAY_MS = 80L
         private const val BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS = 300L
+        private const val EXPERIMENTAL_BLUETOOTH_PREPARE_DELAY_MS = 180L
+        private const val EXPERIMENTAL_BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS = 550L
+        private const val EXPERIMENTAL_REMOTE_SUBMIX_PREPARE_DELAY_MS = 1200L
+        private const val EXPERIMENTAL_STABILITY_POLL_MS = 120L
+        private const val EXPERIMENTAL_BT_STABLE_MS = 450L
+        private const val EXPERIMENTAL_REMOTE_SUBMIX_STABLE_MS = 900L
+        private const val EXPERIMENTAL_ROUTE_STABILITY_TIMEOUT_MS = 2200L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -35,6 +42,7 @@ class OutputMixVisualizer(
         toneFocusProvider: () -> Float,
         smoothingProvider: () -> Float,
         smoothingBalanceProvider: () -> Float,
+        experimentalVisualizerStabilizationEnabled: Boolean,
         onStateChanged: (String) -> Unit,
         onLevelChanged: (
             level: Float,
@@ -58,9 +66,17 @@ class OutputMixVisualizer(
                 var activeStarted = false
                 try {
                     AppLogger.i(TAG, "Starting Visualizer(0) output-mix capture. ${AudioRouteDiagnostics.snapshot(context)}")
-                    val bluetoothLikelyConnected = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(context)
-                    val musicActive = AudioRouteDiagnostics.isMusicActive(context)
+                    var routeProbe = captureRouteProbe()
+                    if (experimentalVisualizerStabilizationEnabled) {
+                        routeProbe = waitForStablePlaybackRoute(routeProbe, startAt)
+                    }
+                    val bluetoothLikelyConnected = routeProbe.bluetoothLikelyConnected
+                    val musicActive = routeProbe.musicActive
+                    val remoteSubmixPresent = routeProbe.remoteSubmixPresent
                     val prepareDelayMs = when {
+                        experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> EXPERIMENTAL_REMOTE_SUBMIX_PREPARE_DELAY_MS
+                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> EXPERIMENTAL_BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
+                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected -> EXPERIMENTAL_BLUETOOTH_PREPARE_DELAY_MS
                         bluetoothLikelyConnected && musicActive -> BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
                         bluetoothLikelyConnected -> BLUETOOTH_PREPARE_DELAY_MS
                         else -> 0L
@@ -68,7 +84,7 @@ class OutputMixVisualizer(
                     if (prepareDelayMs > 0L) {
                         AppLogger.i(
                             TAG,
-                            "Bluetooth-like output detected; waiting ${prepareDelayMs}ms before Visualizer(0) init (musicActive=$musicActive)"
+                            "Bluetooth-like output detected; waiting ${prepareDelayMs}ms before Visualizer(0) init (musicActive=$musicActive remoteSubmix=$remoteSubmixPresent experimental=$experimentalVisualizerStabilizationEnabled)"
                         )
                         Thread.sleep(prepareDelayMs)
                         AppLogger.i(
@@ -80,7 +96,12 @@ class OutputMixVisualizer(
 
                     var instance: Visualizer? = null
                     var lastError: Throwable? = null
-                    val initAttempts = if (bluetoothLikelyConnected && musicActive) 5 else 3
+                    val initAttempts = when {
+                        experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 8
+                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 6
+                        bluetoothLikelyConnected && musicActive -> 5
+                        else -> 3
+                    }
                     repeat(initAttempts) {
                         if (instance != null || !isRunning || Thread.currentThread().isInterrupted) return@repeat
                         try {
@@ -92,10 +113,11 @@ class OutputMixVisualizer(
                         } catch (e: Throwable) {
                             lastError = e
                             AppLogger.w(TAG, "Visualizer(0) init attempt ${it + 1}/$initAttempts failed", e)
-                            val retryDelayMs = if (bluetoothLikelyConnected && musicActive) {
-                                220L * (it + 1)
-                            } else {
-                                120L * (it + 1)
+                            val retryDelayMs = when {
+                                experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 450L * (it + 1)
+                                experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 280L * (it + 1)
+                                bluetoothLikelyConnected && musicActive -> 220L * (it + 1)
+                                else -> 120L * (it + 1)
                             }
                             Thread.sleep(retryDelayMs)
                         }
@@ -302,5 +324,66 @@ class OutputMixVisualizer(
         } catch (_: Throwable) {
         }
         visualizer = null
+    }
+
+    private data class RouteProbe(
+        val signature: String,
+        val bluetoothLikelyConnected: Boolean,
+        val musicActive: Boolean,
+        val remoteSubmixPresent: Boolean
+    )
+
+    private fun captureRouteProbe(): RouteProbe {
+        return RouteProbe(
+            signature = AudioRouteDiagnostics.outputSignature(context),
+            bluetoothLikelyConnected = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(context),
+            musicActive = AudioRouteDiagnostics.isMusicActive(context),
+            remoteSubmixPresent = AudioRouteDiagnostics.hasRemoteSubmixOutput(context)
+        )
+    }
+
+    private fun waitForStablePlaybackRoute(initialProbe: RouteProbe, startAt: Long): RouteProbe {
+        var latest = initialProbe
+        var stableSinceMs = SystemClock.uptimeMillis()
+        val requiredStableMs = when {
+            initialProbe.remoteSubmixPresent -> EXPERIMENTAL_REMOTE_SUBMIX_STABLE_MS
+            initialProbe.bluetoothLikelyConnected && initialProbe.musicActive -> EXPERIMENTAL_BT_STABLE_MS
+            else -> 0L
+        }
+        if (requiredStableMs <= 0L) return initialProbe
+
+        val deadlineMs = SystemClock.uptimeMillis() + EXPERIMENTAL_ROUTE_STABILITY_TIMEOUT_MS
+        AppLogger.i(
+            TAG,
+            "Experimental visualizer stabilization enabled; waiting for route stability (requiredStableMs=$requiredStableMs remoteSubmix=${initialProbe.remoteSubmixPresent})"
+        )
+        while (isRunning && !Thread.currentThread().isInterrupted && SystemClock.uptimeMillis() < deadlineMs) {
+            Thread.sleep(EXPERIMENTAL_STABILITY_POLL_MS)
+            val probe = captureRouteProbe()
+            val stable =
+                probe.signature == latest.signature &&
+                    probe.bluetoothLikelyConnected == latest.bluetoothLikelyConnected &&
+                    probe.musicActive == latest.musicActive &&
+                    probe.remoteSubmixPresent == latest.remoteSubmixPresent
+            latest = probe
+            if (!stable) {
+                stableSinceMs = SystemClock.uptimeMillis()
+                continue
+            }
+            if (latest.bluetoothLikelyConnected && latest.musicActive &&
+                SystemClock.uptimeMillis() - stableSinceMs >= requiredStableMs
+            ) {
+                AppLogger.i(
+                    TAG,
+                    "Experimental route stability wait completed in ${SystemClock.elapsedRealtime() - startAt}ms ${AudioRouteDiagnostics.snapshot(context)}"
+                )
+                return latest
+            }
+        }
+        AppLogger.i(
+            TAG,
+            "Experimental route stability wait timed out after ${SystemClock.elapsedRealtime() - startAt}ms ${AudioRouteDiagnostics.snapshot(context)}"
+        )
+        return captureRouteProbe()
     }
 }

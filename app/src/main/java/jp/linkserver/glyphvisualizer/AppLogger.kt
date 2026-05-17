@@ -77,10 +77,12 @@ object AppLogger {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Glyph Peak Meter Log")
+            putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.about_debug_share_subject))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "ログを共有"))
+        context.startActivity(
+            Intent.createChooser(intent, context.getString(R.string.about_debug_share_chooser))
+        )
     }
 
     fun clear() {

@@ -32,3 +32,22 @@ fun openAppLanguageSettings(context: Context): Boolean {
     }
     return false
 }
+
+fun openNotificationAccessSettings(context: Context): Boolean {
+    val intents = buildList {
+        add(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+    }
+
+    for (intent in intents) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+                return true
+            }
+        } catch (_: Exception) {
+        }
+    }
+    return false
+}

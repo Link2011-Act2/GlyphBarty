@@ -1,0 +1,5 @@
+package jp.linkserver.glyphvisualizer
+
+import android.service.notification.NotificationListenerService
+
+class MediaSessionNotificationListenerService : NotificationListenerService()

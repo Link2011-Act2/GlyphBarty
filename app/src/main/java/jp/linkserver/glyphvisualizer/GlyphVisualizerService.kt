@@ -19,11 +19,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.service.quicksettings.TileService
 import androidx.core.app.NotificationCompat
 import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
+import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
@@ -53,6 +55,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_REVERSE_DIRECTION = "extra_reverse_direction"
         private const val EXTRA_PEAK_HOLD_ENABLED = "extra_peak_hold_enabled"
         private const val EXTRA_GLYPH_MODE = "extra_glyph_mode"
+        private const val EXTRA_FILL_OTHER_GLYPH_LIGHTS = "extra_fill_other_glyph_lights"
         private const val EXTRA_BINARY_MODE = "extra_binary_mode"
         private const val EXTRA_BASE_INDICATOR_ENABLED = "extra_base_indicator_enabled"
         private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
@@ -61,6 +64,9 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_AUTO_SCALE_WINDOW_SECONDS = "extra_auto_scale_window_seconds"
         private const val EXTRA_AUTO_SCALE_OFFSET = "extra_auto_scale_offset"
         private const val EXTRA_LATENCY_MS = "extra_latency_ms"
+        private const val EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED = "extra_media_playback_only_enabled"
+        private const val EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED =
+            "extra_experimental_visualizer_stabilization_enabled"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
@@ -68,6 +74,9 @@ class GlyphVisualizerService : Service() {
         private const val ACTIVE_MODE_MEDIA_PROJECTION = "MEDIA PROJECTION"
         private const val ACTIVE_MODE_IDLE = "IDLE"
         private const val GLYPH_WARMUP_RESYNC_DELAY_MS = 900L
+        private const val BACKGROUND_UI_UPDATE_INTERVAL_MS = 250L
+        private const val SCREEN_OFF_UI_UPDATE_INTERVAL_MS = 1000L
+        private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
 
         fun startVisualizer(
             context: Context,
@@ -80,6 +89,7 @@ class GlyphVisualizerService : Service() {
             reverseDirection: Boolean,
             peakHoldEnabled: Boolean,
             glyphMode: String,
+            fillOtherGlyphLights: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -88,6 +98,8 @@ class GlyphVisualizerService : Service() {
             autoScaleWindowSeconds: Float,
             autoScaleOffset: Float,
             latencyMs: Float,
+            mediaPlaybackOnlyEnabled: Boolean,
+            experimentalVisualizerStabilizationEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
         ) {
@@ -103,6 +115,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
+                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -111,6 +124,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
+                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -140,6 +155,7 @@ class GlyphVisualizerService : Service() {
             reverseDirection: Boolean,
             peakHoldEnabled: Boolean,
             glyphMode: String,
+            fillOtherGlyphLights: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -148,6 +164,8 @@ class GlyphVisualizerService : Service() {
             autoScaleWindowSeconds: Float,
             autoScaleOffset: Float,
             latencyMs: Float,
+            mediaPlaybackOnlyEnabled: Boolean,
+            experimentalVisualizerStabilizationEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f
         ) {
@@ -165,6 +183,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
+                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -173,6 +192,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
+                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -200,6 +221,7 @@ class GlyphVisualizerService : Service() {
             reverseDirection: Boolean,
             peakHoldEnabled: Boolean,
             glyphMode: String,
+            fillOtherGlyphLights: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -208,6 +230,8 @@ class GlyphVisualizerService : Service() {
             autoScaleWindowSeconds: Float,
             autoScaleOffset: Float,
             latencyMs: Float,
+            mediaPlaybackOnlyEnabled: Boolean,
+            experimentalVisualizerStabilizationEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = Float.NaN
         ) {
@@ -223,6 +247,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
+                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -231,6 +256,8 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
+                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -274,6 +301,7 @@ class GlyphVisualizerService : Service() {
     private var reverseDirection = false
     private var peakHoldEnabled = true
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var fillOtherGlyphLights = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
     private var levelAutoScale = false
@@ -282,15 +310,22 @@ class GlyphVisualizerService : Service() {
     private var autoScaleWindowSeconds = 30f
     private var autoScaleOffset = 0f
     private var latencyMs = 0f
+    private var mediaPlaybackOnlyEnabled = false
+    private var experimentalVisualizerStabilizationEnabled = false
     private var turnOffWhenBackDown = false
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private val powerManager by lazy { getSystemService(Context.POWER_SERVICE) as PowerManager }
     private var visualizerStartRequestId = 0
     private var visualizerStartActionAtMs = 0L
     private var audioDeviceCallbackRegistered = false
     private var lastAudioRouteSignature: String? = null
     private var suppressRouteRestartUntilMs = 0L
+    private var lastUiPublishAtMs = 0L
+    private var lastMediaPlaybackCheckAtMs = 0L
+    private var lastMediaPlaybackActive = true
+    private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
         val level: Float,
@@ -355,7 +390,6 @@ class GlyphVisualizerService : Service() {
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
-
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
@@ -395,6 +429,7 @@ class GlyphVisualizerService : Service() {
                     reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                     peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                     glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
+                    fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                     binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                     baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                     levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -403,6 +438,11 @@ class GlyphVisualizerService : Service() {
                     autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                     autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                     latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
+                    mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                    experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
+                        EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
+                        experimentalVisualizerStabilizationEnabled
+                    )
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                     applyGlyphControllerSettings()
                     AppLogger.i(
@@ -453,6 +493,7 @@ class GlyphVisualizerService : Service() {
                 reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
+                fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -461,6 +502,11 @@ class GlyphVisualizerService : Service() {
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
+                mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
+                    experimentalVisualizerStabilizationEnabled
+                )
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -486,6 +532,7 @@ class GlyphVisualizerService : Service() {
                 reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
+                fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
@@ -494,6 +541,11 @@ class GlyphVisualizerService : Service() {
                 autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
                 autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
                 latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
+                mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
+                experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
+                    experimentalVisualizerStabilizationEnabled
+                )
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
                 CaptureUiStore.update {
@@ -508,6 +560,7 @@ class GlyphVisualizerService : Service() {
                         reverseDirection = reverseDirection,
                         peakHoldEnabled = peakHoldEnabled,
                         glyphMode = glyphMode,
+                        fillOtherGlyphLights = fillOtherGlyphLights,
                         binaryMode = binaryMode,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
@@ -515,6 +568,7 @@ class GlyphVisualizerService : Service() {
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
                         autoScaleOffset = autoScaleOffset,
                         allBrightnessAutoScale = allBrightnessAutoScale,
+                        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                         turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -582,6 +636,7 @@ class GlyphVisualizerService : Service() {
             toneFocusProvider = { toneFocus },
             smoothingProvider = { smoothing },
             smoothingBalanceProvider = { smoothingBalance },
+            experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
             onStateChanged = { status ->
                 val now = SystemClock.elapsedRealtime()
                 AppLogger.i(
@@ -604,13 +659,16 @@ class GlyphVisualizerService : Service() {
                         reverseDirection = reverseDirection,
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
+                            fillOtherGlyphLights = fillOtherGlyphLights,
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
                             allBrightnessAutoScale = allBrightnessAutoScale,
                             autoScaleWindowSeconds = autoScaleWindowSeconds,
-                            autoScaleOffset = autoScaleOffset,
-                            turnOffWhenBackDown = turnOffWhenBackDown
+                        autoScaleOffset = autoScaleOffset,
+                        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                        experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                        turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
                 notifyTile()
@@ -730,12 +788,15 @@ class GlyphVisualizerService : Service() {
                         reverseDirection = reverseDirection,
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
+                            fillOtherGlyphLights = fillOtherGlyphLights,
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
                             allBrightnessAutoScale = allBrightnessAutoScale,
                             autoScaleWindowSeconds = autoScaleWindowSeconds,
                             autoScaleOffset = autoScaleOffset,
+                            mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                            experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -831,6 +892,25 @@ class GlyphVisualizerService : Service() {
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
         val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
+        val mediaPlaybackActive = isMediaPlaybackAllowed()
+        if (!mediaPlaybackActive) {
+            if (!mediaPlaybackSuppressed) {
+                mediaPlaybackSuppressed = true
+                try {
+                    glyphController.turnOff()
+                } catch (error: Throwable) {
+                    AppLogger.w(TAG, "glyphController.turnOff failed while media playback was inactive", error)
+                }
+            }
+            publishUiFrame(
+                level = 0f,
+                peak = 0f,
+                spectrumBands = FloatArray(frame.spectrumBands.size),
+                mode = frame.mode
+            )
+            return
+        }
+        mediaPlaybackSuppressed = false
         if (!isBackDownSuppressed) {
             glyphController.updateAnalysis(
                 frame.lowEnergy,
@@ -858,16 +938,12 @@ class GlyphVisualizerService : Service() {
         } else {
             frame.spectrumBands
         }
-        CaptureUiStore.update {
-            it.copy(
-                level = previewLevel,
-                peak = frame.peak,
-                meterSegments = (previewLevel * 16f).toInt().coerceIn(0, 16),
-                spectrumBands = if (previewSpectrumBands.isNotEmpty()) previewSpectrumBands else frame.spectrumBands,
-                isCapturing = true,
-                activeMode = frame.mode
-            )
-        }
+        publishUiFrame(
+            level = previewLevel,
+            peak = frame.peak,
+            spectrumBands = if (previewSpectrumBands.isNotEmpty()) previewSpectrumBands else frame.spectrumBands,
+            mode = frame.mode
+        )
     }
 
     private fun stopRunningCapture(clearStatus: Boolean) {
@@ -908,6 +984,7 @@ class GlyphVisualizerService : Service() {
                 reverseDirection = reverseDirection,
                     peakHoldEnabled = peakHoldEnabled,
                 glyphMode = glyphMode,
+                fillOtherGlyphLights = fillOtherGlyphLights,
                 binaryMode = binaryMode,
                 levelAutoScale = levelAutoScale,
                 spectrumAutoScale = spectrumAutoScale,
@@ -915,15 +992,21 @@ class GlyphVisualizerService : Service() {
                 autoScaleWindowSeconds = autoScaleWindowSeconds,
                 autoScaleOffset = autoScaleOffset,
                 latencyMs = latencyMs,
+                mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                 turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
         isBackDownSuppressed = false
+        lastUiPublishAtMs = 0L
+        lastMediaPlaybackCheckAtMs = 0L
+        lastMediaPlaybackActive = true
+        mediaPlaybackSuppressed = false
     }
 
     private fun applyGlyphControllerSettings() {
         glyphController.setReverseDirection(reverseDirection)
         glyphController.setGlyphMode(glyphMode)
+        glyphController.setFillOtherGlyphLightsEnabled(fillOtherGlyphLights)
         glyphController.setBinaryMode(binaryMode)
         glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
         glyphController.setOutputGamma(outputGamma)
@@ -972,6 +1055,51 @@ class GlyphVisualizerService : Service() {
         try {
             GlyphTileService.refresh(this)
         } catch (_: Exception) {}
+    }
+
+    private fun currentUiUpdateIntervalMs(): Long {
+        val processState = ActivityManager.RunningAppProcessInfo().also(ActivityManager::getMyMemoryState)
+        val appInForeground =
+            processState.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+                processState.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+        return when {
+            appInForeground -> 0L
+            powerManager.isInteractive -> BACKGROUND_UI_UPDATE_INTERVAL_MS
+            else -> SCREEN_OFF_UI_UPDATE_INTERVAL_MS
+        }
+    }
+
+    private fun isMediaPlaybackAllowed(): Boolean {
+        if (!mediaPlaybackOnlyEnabled) return true
+        val now = SystemClock.uptimeMillis()
+        if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
+            lastMediaPlaybackCheckAtMs = now
+            lastMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
+        }
+        return lastMediaPlaybackActive
+    }
+
+    private fun publishUiFrame(
+        level: Float,
+        peak: Float,
+        spectrumBands: FloatArray,
+        mode: String,
+        force: Boolean = false
+    ) {
+        val intervalMs = currentUiUpdateIntervalMs()
+        val now = SystemClock.uptimeMillis()
+        if (!force && intervalMs > 0L && now - lastUiPublishAtMs < intervalMs) return
+        lastUiPublishAtMs = now
+        CaptureUiStore.update {
+            it.copy(
+                level = level,
+                peak = peak,
+                meterSegments = (level * 16f).toInt().coerceIn(0, 16),
+                spectrumBands = spectrumBands,
+                isCapturing = true,
+                activeMode = mode
+            )
+        }
     }
 
     private fun registerAudioDeviceCallback() {
