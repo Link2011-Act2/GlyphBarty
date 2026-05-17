@@ -39,9 +39,14 @@ Nothingのスマホは、Phone (3a)までは公式で音楽に合わせてGlyph�
 * Nothing Phone (4a)
 * Nothing Phone (4a) Pro
 
-ほぼすべてのNothing OS 4.0以上を搭載したNothing Phoneに対応しています
+### 対応機種(条件付き)
+* Nothing Phone (1)
+  * Glyph Interfaceのデバッグモードをオンにする必要があります。adbコマンド ``` adb shell settings put global nt_glyph_interface_debug_enable 1 ``` を実行するか、Shizukuが使える場合はアプリ内から自動でオンにできます。
+<br>
 
-Phone (3a) LiteはSDKが公開されていないため、Phone (1)はAPIキー関連が大変なので非対応です
+ほぼすべてのNothing Phoneに対応しています
+
+Phone (3a) LiteはSDKが公開されていないため非対応です
 
 
 
