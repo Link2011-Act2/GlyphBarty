@@ -1,6 +1,5 @@
 package jp.linkserver.glyphvisualizer.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -268,11 +268,7 @@ private fun itemShape(position: SettingsGroupPosition, nothingStyle: Boolean): R
 
 @Composable
 private fun settingsCardBorder(): BorderStroke? {
-    return if (isSystemInDarkTheme()) {
-        null
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    }
+    return null
 }
 
 @Composable

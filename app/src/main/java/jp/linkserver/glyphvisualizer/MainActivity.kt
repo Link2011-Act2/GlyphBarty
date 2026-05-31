@@ -2093,11 +2093,17 @@ private fun GlyphVisualizerApp(
         }
     }
 
+    val darkTheme = isSystemInDarkTheme()
     val containerBrush = Brush.verticalGradient(
-        if (nothingStyleEnabled && isSystemInDarkTheme()) {
+        if (nothingStyleEnabled && darkTheme) {
             listOf(
                 Color(0xFF000000),
                 Color(0xFF000000)
+            )
+        } else if (!darkTheme) {
+            listOf(
+                MaterialTheme.colorScheme.surface,
+                MaterialTheme.colorScheme.surface
             )
         } else {
             listOf(
