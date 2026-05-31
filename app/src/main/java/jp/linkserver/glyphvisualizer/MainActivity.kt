@@ -1011,11 +1011,17 @@ class MainActivity : ComponentActivity() {
         val normalizedMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolvedLatencySettings = savedSettings.withResolvedLatency(bluetoothOutputActive)
-        CaptureUiStore.update {
-            resolvedLatencySettings.copy(
-                statusText = getString(R.string.status_preparing_glyph_session),
-                glyphMode = normalizedMode
-            )
+        CaptureUiStore.update { current ->
+            if (current.isCapturing) {
+                // A system theme change recreates the Activity while the service keeps running.
+                // Do not replace live capture state with saved idle settings during recreation.
+                current.copy(isBluetoothOutputActive = bluetoothOutputActive)
+            } else {
+                resolvedLatencySettings.copy(
+                    statusText = getString(R.string.status_preparing_glyph_session),
+                    glyphMode = normalizedMode
+                )
+            }
         }
         setContent {
             val uiState = CaptureUiStore.state
