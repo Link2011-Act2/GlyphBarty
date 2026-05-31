@@ -29,10 +29,52 @@
       "body": null
     },
     {
+      "title": "AndroidX Compose Material 3",
+      "coordinate": "androidx.compose.material3:material3",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3",
+      "body": null
+    },
+    {
+      "title": "AndroidX Compose Material Icons Extended",
+      "coordinate": "androidx.compose.material:material-icons-extended",
+      "license": "Apache-2.0",
+      "url": "https://developer.android.com/jetpack/androidx/releases/compose-material",
+      "body": null
+    },
+    {
       "title": "Kotlin Standard Library",
       "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.2.10",
       "license": "Apache-2.0",
       "url": "https://kotlinlang.org/",
+      "body": null
+    },
+    {
+      "title": "Markwon",
+      "coordinate": "io.noties.markwon:core:4.6.2, io.noties.markwon:ext-tables:4.6.2",
+      "license": "Apache-2.0",
+      "url": "https://github.com/noties/Markwon",
+      "body": null
+    },
+    {
+      "title": "CommonMark Java",
+      "coordinate": "com.atlassian.commonmark:commonmark, com.atlassian.commonmark:commonmark-ext-gfm-tables",
+      "license": "BSD-2-Clause",
+      "url": "https://github.com/commonmark/commonmark-java",
+      "body": null
+    },
+    {
+      "title": "Shizuku API",
+      "coordinate": "dev.rikka.shizuku:api:13.1.5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/RikkaApps/Shizuku-API",
+      "body": null
+    },
+    {
+      "title": "Shizuku Provider",
+      "coordinate": "dev.rikka.shizuku:provider:13.1.5",
+      "license": "Apache-2.0",
+      "url": "https://github.com/RikkaApps/Shizuku-API",
       "body": null
     },
     {

@@ -11,6 +11,8 @@ interface GlyphOutputController {
     fun setLevelAutoScaleEnabled(enabled: Boolean) {}
     fun setOutputGamma(gamma: Float) {}
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}
+    fun setExperimentalPerformanceOptimizationsEnabled(enabled: Boolean) {}
+    fun setMatrixSmoothMotionEnabled(enabled: Boolean) {}
     fun setAllBrightnessAutoScaleEnabled(enabled: Boolean) {}
     fun setAutoScaleWindowSeconds(seconds: Float) {}
     fun setAutoScaleOffset(offset: Float) {}
@@ -21,7 +23,8 @@ interface GlyphOutputController {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
-        phone4aBaseBandLevel: Float = 0f
+        phone4aBaseBandLevel: Float = 0f,
+        waveformSamples: FloatArray? = null
     ) {}
     fun previewLevel(): Float = 0f
     fun previewSpectrumBands(): FloatArray = FloatArray(0)

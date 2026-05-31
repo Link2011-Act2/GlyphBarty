@@ -108,7 +108,7 @@ fun SettingsEntry(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Normal
+                    fontWeight = if (nothingStyle) FontWeight.Normal else FontWeight.Bold
                 )
                 if (description.isNotBlank()) {
                     Text(
@@ -164,7 +164,7 @@ fun SettingsToggleEntry(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Normal
+                    fontWeight = if (nothingStyle) FontWeight.Normal else FontWeight.Bold
                 )
                 if (description.isNotBlank()) {
                     Text(
@@ -215,7 +215,7 @@ fun SettingsRadioEntry(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Normal
+                    fontWeight = if (nothingStyle) FontWeight.Normal else FontWeight.Bold
                 )
                 if (description.isNotBlank()) {
                     Text(
@@ -246,8 +246,8 @@ fun SettingsRadioEntry(
 }
 
 private fun itemShape(position: SettingsGroupPosition, nothingStyle: Boolean): RoundedCornerShape {
-    val cornerRadius = if (nothingStyle) 22.dp else 32.dp
-    val innerRadius = 6.dp
+    val cornerRadius = if (nothingStyle) 22.dp else 30.dp
+    val innerRadius = if (nothingStyle) 6.dp else 10.dp
     return when (position) {
         SettingsGroupPosition.Single -> RoundedCornerShape(cornerRadius)
         SettingsGroupPosition.Top -> RoundedCornerShape(

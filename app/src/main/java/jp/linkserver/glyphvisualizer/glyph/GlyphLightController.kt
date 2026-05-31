@@ -29,22 +29,24 @@ class GlyphLightController(
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
+        private const val LINEAR_PEAK_BASE_BRIGHTNESS_RATIO = 0.34f
+        private const val LINEAR_PEAK_FALLOFF_PER_SECOND = 1.25f
+        private const val PULSE_TRAIN_BASE_BRIGHTNESS_RATIO = 0.28f
+        private const val PULSE_TRAIN_TAIL_LENGTH = 0.24f
+        private const val PULSE_TRAIN_MIN_TRIGGER_LEVEL = 0.18f
+        private const val PULSE_TRAIN_TRIGGER_DELTA = 0.08f
+        private const val PULSE_TRAIN_SPEED_PER_SECOND = 1.8f
+        private const val PULSE_TRAIN_BRIGHTNESS_FALLOFF = 0.42f
         private const val PHONE4A_BASE_INDICATOR_EPSILON = 0.000001f
         private const val PHONE4A_BASE_INDICATOR_GAMMA = 2.0f
-        private const val PHONE4A_BASE_INDICATOR_TRACKING_ATTACK = 0.82f
-        private const val PHONE4A_BASE_INDICATOR_TRACKING_RELEASE = 0.28f
-        private const val PHONE4A_BASE_INDICATOR_ONSET_GAIN = 6.2f
-        private const val PHONE4A_BASE_INDICATOR_ONSET_GATE = 0.075f
-        private const val PHONE4A_BASE_INDICATOR_MIN_RISE = 0.018f
-        private const val PHONE4A_BASE_INDICATOR_MIN_INPUT_LEVEL = 0.10f
-        private const val PHONE4A_BASE_INDICATOR_ONSET_PEAK_FALLOFF = 0.86f
-        private const val PHONE4A_BASE_INDICATOR_MIN_PEAK_REFERENCE = 0.30f
-        private const val PHONE4A_BASE_INDICATOR_OUTPUT_OFF_THRESHOLD = 0.018f
-        private const val PHONE4A_BASE_INDICATOR_MIN_ENVELOPE_DECAY = 0.50f
-        private const val PHONE4A_BASE_INDICATOR_MAX_ENVELOPE_DECAY = 0.70f
-        private const val PHONE4A_BASE_INDICATOR_RAW_GATE = 0.055f
-        private const val PHONE4A_BASE_INDICATOR_RAW_GAIN = 2.4f
+        private const val PHONE4A_BASE_INDICATOR_DECAY = 0.90f
+        private const val PHONE4A_BASE_INDICATOR_PEAK_FALLOFF = 0.9995f
     }
+
+    private data class TravelingPulse(
+        var position: Float,
+        var brightness: Float
+    )
 
     private interface BaseIndicatorRenderer {
         fun accepts(profile: GlyphDeviceProfile): Boolean
@@ -56,21 +58,14 @@ class GlyphLightController(
 
     private class Phone4aBaseIndicatorRenderer : BaseIndicatorRenderer {
         private var bandLevel = 0f
-        private var trackedBandLevel = 0f
-        private var previousTrackedBandLevel = 0f
-        private var onsetPeakLevel = PHONE4A_BASE_INDICATOR_EPSILON
-        private var outputEnvelope = 0f
-        private var smoothing = 0.45f
-        private var smoothingBalance = 0f
+        private var decayedBandLevel = 0f
+        private var zonePeak = PHONE4A_BASE_INDICATOR_EPSILON
 
         override fun accepts(profile: GlyphDeviceProfile): Boolean {
             return profile == GlyphDeviceProfile.PHONE4A
         }
 
-        override fun setSmoothing(smoothing: Float, smoothingBalance: Float) {
-            this.smoothing = smoothing.coerceIn(0.05f, 0.6f)
-            this.smoothingBalance = smoothingBalance.coerceIn(-1f, 1f)
-        }
+        override fun setSmoothing(smoothing: Float, smoothingBalance: Float) = Unit
 
         override fun updateAnalysis(level: Float) {
             bandLevel = level.coerceIn(0f, 1f)
@@ -78,58 +73,33 @@ class GlyphLightController(
 
         override fun reset() {
             bandLevel = 0f
-            trackedBandLevel = 0f
-            previousTrackedBandLevel = 0f
-            onsetPeakLevel = PHONE4A_BASE_INDICATOR_EPSILON
-            outputEnvelope = 0f
+            decayedBandLevel = 0f
+            zonePeak = PHONE4A_BASE_INDICATOR_EPSILON
         }
 
         override fun apply(colors: IntArray, binaryMode: Boolean, outputGamma: Float) {
             if (colors.isEmpty()) return
 
             val current = bandLevel.coerceIn(0f, 1f)
-            val trackingAlpha = if (current > trackedBandLevel) {
-                PHONE4A_BASE_INDICATOR_TRACKING_ATTACK
-            } else {
-                PHONE4A_BASE_INDICATOR_TRACKING_RELEASE
+            val risen = max(decayedBandLevel, current)
+            decayedBandLevel =
+                (PHONE4A_BASE_INDICATOR_DECAY * risen) +
+                    ((1f - PHONE4A_BASE_INDICATOR_DECAY) * current)
+            if (decayedBandLevel < PHONE4A_BASE_INDICATOR_EPSILON) {
+                decayedBandLevel = 0f
             }
-            trackedBandLevel += (current - trackedBandLevel) * trackingAlpha
 
-            val rawRise = if (trackedBandLevel >= PHONE4A_BASE_INDICATOR_MIN_INPUT_LEVEL) {
-                (trackedBandLevel - previousTrackedBandLevel).coerceAtLeast(0f)
-            } else {
-                0f
-            }
-            previousTrackedBandLevel = trackedBandLevel
-            val rise = if (rawRise >= PHONE4A_BASE_INDICATOR_MIN_RISE) rawRise else 0f
-
-            val onset = (rise * PHONE4A_BASE_INDICATOR_ONSET_GAIN).coerceIn(0f, 1f)
-            val gatedOnset = if (onset <= PHONE4A_BASE_INDICATOR_ONSET_GATE) {
-                0f
-            } else {
-                (
-                    (onset - PHONE4A_BASE_INDICATOR_ONSET_GATE) /
-                        (1f - PHONE4A_BASE_INDICATOR_ONSET_GATE)
-                    ).coerceIn(0f, 1f)
-            }
-            onsetPeakLevel = max(
-                gatedOnset,
-                onsetPeakLevel * PHONE4A_BASE_INDICATOR_ONSET_PEAK_FALLOFF
+            zonePeak = max(
+                decayedBandLevel,
+                zonePeak * PHONE4A_BASE_INDICATOR_PEAK_FALLOFF
             ).coerceAtLeast(PHONE4A_BASE_INDICATOR_EPSILON)
-            val normalized = (
-                gatedOnset / max(onsetPeakLevel, PHONE4A_BASE_INDICATOR_MIN_PEAK_REFERENCE)
-            ).coerceIn(0f, 1f)
-            val envelopeDecay = (0.46f + (smoothing.coerceIn(0.05f, 0.6f) * 0.50f))
-                .coerceIn(
-                    PHONE4A_BASE_INDICATOR_MIN_ENVELOPE_DECAY,
-                    PHONE4A_BASE_INDICATOR_MAX_ENVELOPE_DECAY
-                )
-            outputEnvelope = max(normalized, outputEnvelope * envelopeDecay)
-            val gammaMapped = outputEnvelope.pow(PHONE4A_BASE_INDICATOR_GAMMA)
+            val normalized = (decayedBandLevel / zonePeak).coerceIn(0f, 1f)
+            val shaped = normalized * normalized
+            val gammaMapped = shaped.pow(PHONE4A_BASE_INDICATOR_GAMMA)
             val brightness = if (binaryMode) {
                 if (gammaMapped >= 0.5f) MAX_LIGHT else 0
             } else {
-                if (gammaMapped <= PHONE4A_BASE_INDICATOR_OUTPUT_OFF_THRESHOLD) {
+                if (gammaMapped <= PHONE4A_BASE_INDICATOR_EPSILON) {
                     0
                 } else {
                     (gammaMapped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
@@ -172,6 +142,11 @@ class GlyphLightController(
     private var levelMin = 0f
     private var levelMax = 1f
     private var lastLevelUpdateMs = 0L
+    private var linearPeakLevel = 0f
+    private var lastLinearPeakUpdateMs = 0L
+    private val pulseTrainPulses = mutableListOf<TravelingPulse>()
+    private var lastPulseTrainUpdateMs = 0L
+    private var lastPulseTrainTriggerLevel = 0f
     private var lastPreviewLevel = 0f
     private var baseIndicatorMin = 0f
     private var baseIndicatorMax = 1f
@@ -302,6 +277,8 @@ class GlyphLightController(
             glyphMode = mode
             resetSpectrumScaleTracking()
             resetLevelScaleTracking()
+            resetLinearPeakTracking()
+            resetPulseTrainTracking()
             resetBaseIndicatorTracking()
         }
     }
@@ -379,7 +356,8 @@ class GlyphLightController(
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
-        phone4aBaseBandLevel: Float
+        phone4aBaseBandLevel: Float,
+        waveformSamples: FloatArray?
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
         updateBaseIndicatorAnalysis(phone4aBaseBandLevel)
@@ -447,7 +425,17 @@ class GlyphLightController(
         val now = SystemClock.elapsedRealtime()
         val clamped = level.coerceIn(0f, 1f)
         val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
-        val activity = max(clamped, maxBand)
+        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
+        val pulseTrainActivity = if (renderMode == GlyphPatternRenderMode.PULSE_TRAIN) {
+            updatePulseTrainState(clamped, maxBand)
+        } else {
+            0f
+        }
+        val activity = when (renderMode) {
+            GlyphPatternRenderMode.LINEAR_PEAK -> max(max(clamped, maxBand), linearPeakLevel)
+            GlyphPatternRenderMode.PULSE_TRAIN -> max(max(clamped, maxBand), pulseTrainActivity)
+            else -> max(clamped, maxBand)
+        }
 
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
             if (silenceStartedAt <= 0L) silenceStartedAt = now
@@ -498,6 +486,62 @@ class GlyphLightController(
         lastLevelUpdateMs = 0L
     }
 
+    private fun updateLinearPeakLevel(level: Float): Float {
+        val now = SystemClock.elapsedRealtime()
+        val elapsedSeconds = if (lastLinearPeakUpdateMs <= 0L) {
+            0f
+        } else {
+            ((now - lastLinearPeakUpdateMs).coerceAtLeast(0L) / 1000f)
+        }
+        lastLinearPeakUpdateMs = now
+        val decayed = (linearPeakLevel - (elapsedSeconds * LINEAR_PEAK_FALLOFF_PER_SECOND)).coerceAtLeast(0f)
+        linearPeakLevel = max(level.coerceIn(0f, 1f), decayed).coerceIn(0f, 1f)
+        return linearPeakLevel
+    }
+
+    private fun resetLinearPeakTracking() {
+        linearPeakLevel = 0f
+        lastLinearPeakUpdateMs = 0L
+    }
+
+    private fun updatePulseTrainState(level: Float, maxBand: Float): Float {
+        val now = SystemClock.elapsedRealtime()
+        val elapsedSeconds = if (lastPulseTrainUpdateMs <= 0L) {
+            0f
+        } else {
+            ((now - lastPulseTrainUpdateMs).coerceAtLeast(0L) / 1000f)
+        }
+        lastPulseTrainUpdateMs = now
+
+        pulseTrainPulses.removeAll { pulse ->
+            pulse.position += elapsedSeconds * PULSE_TRAIN_SPEED_PER_SECOND
+            pulse.brightness = (pulse.brightness - (elapsedSeconds * PULSE_TRAIN_BRIGHTNESS_FALLOFF)).coerceAtLeast(0f)
+            pulse.position > (1f + PULSE_TRAIN_TAIL_LENGTH) || pulse.brightness <= 0.01f
+        }
+
+        val triggerLevel = max(level.coerceIn(0f, 1f), maxBand.coerceIn(0f, 1f))
+        val triggerRise = triggerLevel - lastPulseTrainTriggerLevel
+        if (triggerLevel >= PULSE_TRAIN_MIN_TRIGGER_LEVEL &&
+            (triggerRise >= PULSE_TRAIN_TRIGGER_DELTA || triggerLevel >= 0.72f)
+        ) {
+            pulseTrainPulses += TravelingPulse(
+                position = 0f,
+                brightness = (0.55f + triggerLevel * 0.45f).coerceIn(0f, 1f)
+            )
+            if (pulseTrainPulses.size > 4) {
+                pulseTrainPulses.removeAt(0)
+            }
+        }
+        lastPulseTrainTriggerLevel = triggerLevel
+        return pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
+    }
+
+    private fun resetPulseTrainTracking() {
+        pulseTrainPulses.clear()
+        lastPulseTrainUpdateMs = 0L
+        lastPulseTrainTriggerLevel = 0f
+    }
+
     private fun isLevelAutoScaleMode(): Boolean {
         return GlyphPatternRegistry.isLevelAutoScale(glyphMode)
     }
@@ -506,17 +550,36 @@ class GlyphLightController(
         val recipe = GlyphPatternRegistry.recipeFor(glyphMode)
             ?: GlyphPatternRegistry.recipeFor(GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice())
             ?: return
+        val linearPeakLevelForFrame = if (recipe.renderMode == GlyphPatternRenderMode.LINEAR_PEAK) {
+            updateLinearPeakLevel(level)
+        } else {
+            0f
+        }
+        val pulseTrainBrightnessForFrame = if (recipe.renderMode == GlyphPatternRenderMode.PULSE_TRAIN) {
+            pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
+        } else {
+            0f
+        }
         val ranges = resolveLightRanges(spec, recipe.lightZones)
 
         if (spec.profile == GlyphDeviceProfile.PHONE4A) {
             updatePhone4aFrame(spec, level) { colors ->
-                applyRecipeToColors(colors, ranges, recipe.renderMode, level)
+                applyRecipeToColors(
+                    colors = colors,
+                    ranges = ranges,
+                    renderMode = recipe.renderMode,
+                    level = level,
+                    linearPeakLevel = linearPeakLevelForFrame,
+                    pulseTrainBrightness = pulseTrainBrightnessForFrame
+                )
             }
             return
         }
 
         when (recipe.renderMode) {
             GlyphPatternRenderMode.LINEAR -> updateLinearRanges(level, ranges)
+            GlyphPatternRenderMode.LINEAR_PEAK -> updateLinearPeakRanges(level, linearPeakLevelForFrame, ranges)
+            GlyphPatternRenderMode.PULSE_TRAIN -> updatePulseTrainRanges(level, ranges)
             GlyphPatternRenderMode.CENTER -> {
                 if (ranges.size <= 1) {
                     updateCenterRange(level, ranges.firstOrNull() ?: spec.cRange)
@@ -548,10 +611,14 @@ class GlyphLightController(
         colors: IntArray,
         ranges: List<IntRange>,
         renderMode: GlyphPatternRenderMode,
-        level: Float
+        level: Float,
+        linearPeakLevel: Float = 0f,
+        pulseTrainBrightness: Float = 0f
     ) {
         when (renderMode) {
             GlyphPatternRenderMode.LINEAR -> ranges.forEach { applyLinearRange(colors, it, level) }
+            GlyphPatternRenderMode.LINEAR_PEAK -> ranges.forEach { applyLinearPeakRange(colors, it, level, linearPeakLevel) }
+            GlyphPatternRenderMode.PULSE_TRAIN -> ranges.forEach { applyPulseTrainRange(colors, it, level, pulseTrainBrightness) }
             GlyphPatternRenderMode.CENTER -> ranges.forEach { applyCenterRange(colors, it, level) }
             GlyphPatternRenderMode.SPECTRUM -> ranges.forEach { applySpectrumRange(colors, it, level) }
             GlyphPatternRenderMode.CLASSIC -> applyClassicSpectrum(colors, deviceSpec ?: return, level)
@@ -600,6 +667,44 @@ class GlyphLightController(
         glyphManager.setFrameColors(colors)
     }
 
+    private fun updateLinearPeakRanges(level: Float, peakLevel: Float, ranges: List<IntRange>) {
+        val spec = deviceSpec ?: return
+        if (ranges.isEmpty()) return
+
+        val clamped = level.coerceIn(0f, 1f)
+        val peak = peakLevel.coerceIn(0f, 1f)
+        if (clamped <= 0.001f && peak <= 0.001f) {
+            turnOff()
+            return
+        }
+
+        val colors = IntArray(spec.channelCount)
+        for (range in ranges) {
+            applyLinearPeakRange(colors, range, clamped, peak)
+        }
+        applyFillOtherGlyphLights(colors, spec, ranges, clamped)
+        glyphManager.setFrameColors(colors)
+    }
+
+    private fun updatePulseTrainRanges(level: Float, ranges: List<IntRange>) {
+        val spec = deviceSpec ?: return
+        if (ranges.isEmpty()) return
+
+        val clamped = level.coerceIn(0f, 1f)
+        val pulseBrightness = pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
+        if (clamped <= 0.001f && pulseBrightness <= 0.001f) {
+            turnOff()
+            return
+        }
+
+        val colors = IntArray(spec.channelCount)
+        for (range in ranges) {
+            applyPulseTrainRange(colors, range, clamped, pulseBrightness)
+        }
+        applyFillOtherGlyphLights(colors, spec, ranges, clamped)
+        glyphManager.setFrameColors(colors)
+    }
+
     private fun applyLinearRange(colors: IntArray, range: IntRange, level: Float) {
         val count = range.count()
         if (count <= 0) return
@@ -617,6 +722,62 @@ class GlyphLightController(
             }
             if (brightness > 0 && channel in colors.indices) {
                 colors[channel] = brightness
+            }
+        }
+    }
+
+    private fun applyPulseTrainRange(colors: IntArray, range: IntRange, level: Float, pulseTrainBrightness: Float) {
+        val count = range.count()
+        if (count <= 0) return
+
+        val channels = range.toList()
+        val slots = centerPairSlots(channels, isCenterDirectionReversed())
+        if (slots.isEmpty()) return
+
+        val ambientMax = (MAX_LIGHT * PULSE_TRAIN_BASE_BRIGHTNESS_RATIO).roundToInt()
+            .coerceIn(MIN_LIGHT / 3, MAX_LIGHT)
+        val ambientLevel = (0.08f + level.coerceIn(0f, 1f) * 0.22f).coerceIn(0f, 0.3f)
+        slots.forEachIndexed { index, slotChannels ->
+            val slotRatio = if (slots.size <= 1) 0f else index / (slots.size - 1f)
+            val centerBias = (1f - slotRatio * 0.9f).coerceIn(0f, 1f)
+            val brightness = if (binaryMode) {
+                if (index == 0 && level >= 0.2f) ambientMax else 0
+            } else {
+                (ambientMax * ambientLevel * centerBias).roundToInt().coerceIn(0, ambientMax)
+            }
+            if (brightness > 0) {
+                slotChannels.forEach { channel ->
+                    if (channel in colors.indices) {
+                        colors[channel] = max(colors[channel], brightness)
+                    }
+                }
+            }
+        }
+
+        if (pulseTrainBrightness <= 0.001f) return
+        pulseTrainPulses.forEach { pulse ->
+            val centerIndex = (pulse.position.coerceIn(0f, 1.15f) * slots.size).toInt()
+            val tailRadius = max(1, (slots.size * (PULSE_TRAIN_TAIL_LENGTH * 0.65f)).roundToInt())
+            for (offset in -tailRadius..tailRadius) {
+                val slotIndex = centerIndex + offset
+                val slotChannels = slots.getOrNull(slotIndex) ?: continue
+                val normalizedDistance = kotlin.math.abs(offset) / (tailRadius + 0.001f)
+                val rippleBand = (1f - normalizedDistance).coerceAtLeast(0f).pow(1.6f)
+                val forwardBias = if (offset < 0) 0.72f else 1f
+                val brightnessFloat = (pulse.brightness * rippleBand * forwardBias).coerceIn(0f, 1f)
+                val brightness = if (binaryMode) {
+                    if (brightnessFloat >= 0.35f) MAX_LIGHT else 0
+                } else {
+                    (brightnessFloat.coerceIn(0f, 1f).pow(outputGamma) * MAX_LIGHT).roundToInt()
+                        .coerceIn(0, MAX_LIGHT)
+                }
+                if (brightness > 0) {
+                    slotChannels.forEach { channel ->
+                        if (channel in colors.indices) {
+                            colors[channel] = max(colors[channel], brightness)
+                        }
+                    }
+                }
             }
         }
     }
@@ -684,6 +845,37 @@ class GlyphLightController(
                     colors[channel] = brightness
                 }
             }
+        }
+    }
+
+    private fun applyLinearPeakRange(colors: IntArray, range: IntRange, level: Float, peakLevel: Float) {
+        val count = range.count()
+        if (count <= 0) return
+
+        val baseMax = (MAX_LIGHT * LINEAR_PEAK_BASE_BRIGHTNESS_RATIO).roundToInt()
+            .coerceIn(MIN_LIGHT, MAX_LIGHT)
+        val virtualLit = level.coerceIn(0f, 1f) * count
+        val fullLit = virtualLit.toInt().coerceIn(0, count)
+        val edgeBrightness = if (binaryMode) 0 else {
+            ((virtualLit - fullLit) * baseMax).roundToInt().coerceIn(0, baseMax)
+        }
+        val channels = if (shouldReverseLightOrder()) range.reversed().toList() else range.toList()
+        channels.forEachIndexed { index, channel ->
+            val brightness = when {
+                index < fullLit -> baseMax
+                index == fullLit && fullLit < count -> edgeBrightness
+                else -> 0
+            }
+            if (brightness > 0 && channel in colors.indices) {
+                colors[channel] = max(colors[channel], brightness)
+            }
+        }
+
+        val peakIndex = ((peakLevel.coerceIn(0f, 1f) * count).roundToInt() - 1)
+            .coerceIn(0, count - 1)
+        val peakChannel = channels.getOrNull(peakIndex) ?: return
+        if (peakChannel in colors.indices) {
+            colors[peakChannel] = MAX_LIGHT
         }
     }
 
@@ -984,6 +1176,8 @@ class GlyphLightController(
 
     override fun turnOff() {
         lastPreviewLevel = 0f
+        resetLinearPeakTracking()
+        resetPulseTrainTracking()
         resetBaseIndicators()
         silenceStartedAt = 0L
         sessionReleasedForSilence = false
@@ -1014,15 +1208,9 @@ class GlyphLightController(
     private fun updateBaseIndicatorAnalysis(level: Float) {
         val profile = deviceSpec?.profile ?: return
         val rawLevel = level.coerceIn(0f, 1f)
-        val gatedLevel = if (rawLevel <= PHONE4A_BASE_INDICATOR_RAW_GATE) {
-            0f
-        } else {
-            ((rawLevel - PHONE4A_BASE_INDICATOR_RAW_GATE) * PHONE4A_BASE_INDICATOR_RAW_GAIN)
-                .coerceIn(0f, 1f)
-        }
         baseIndicatorRenderers
             .firstOrNull { it.accepts(profile) }
-            ?.updateAnalysis(normalizeBaseIndicatorLevel(gatedLevel))
+            ?.updateAnalysis(normalizeBaseIndicatorLevel(rawLevel))
     }
 
     private fun applyBaseIndicator(profile: GlyphDeviceProfile, colors: IntArray) {

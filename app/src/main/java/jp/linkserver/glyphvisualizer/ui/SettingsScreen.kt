@@ -43,6 +43,14 @@ import androidx.compose.ui.unit.dp
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
+private enum class MeterStyleMode {
+    HIDDEN,
+    LIGHTWEIGHT,
+    SPECTRUM,
+    CLASSIC,
+    FAITHFUL
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -52,12 +60,23 @@ fun SettingsScreen(
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     glyphMeterPreviewEnabled: Boolean,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
+    meterVisibleEnabled: Boolean,
+    onMeterVisibleEnabledChanged: (Boolean) -> Unit,
+    lightweightMeterEnabled: Boolean,
+    onLightweightMeterEnabledChanged: (Boolean) -> Unit,
+    spectrumMeterEnabled: Boolean,
+    onSpectrumMeterEnabledChanged: (Boolean) -> Unit,
+    onMeterStyleChanged: (visible: Boolean, lightweight: Boolean, spectrum: Boolean, faithful: Boolean) -> Unit,
+    nativeMeterViewEnabled: Boolean,
+    onNativeMeterViewEnabledChanged: (Boolean) -> Unit,
     automaticUpdateCheckEnabled: Boolean,
     onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
     mediaPlaybackOnlyEnabled: Boolean,
     onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     experimentalVisualizerStabilizationEnabled: Boolean,
     onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
+    experimentalVisualizerSignalWatchdogEnabled: Boolean,
+    onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,
     showPhone1GlyphDebugControlsEverywhere: Boolean,
     onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     showAutoEnablePhone1GlyphDebugOnStart: Boolean,
@@ -73,10 +92,17 @@ fun SettingsScreen(
     val materialLabel = stringResource(R.string.settings_ui_mode_material)
     var localMediaProjectionEnabled by rememberSaveable { mutableStateOf(mediaProjectionEnabled) }
     var localGlyphMeterPreviewEnabled by rememberSaveable { mutableStateOf(glyphMeterPreviewEnabled) }
+    var localMeterVisibleEnabled by rememberSaveable { mutableStateOf(meterVisibleEnabled) }
+    var localLightweightMeterEnabled by rememberSaveable { mutableStateOf(lightweightMeterEnabled) }
+    var localSpectrumMeterEnabled by rememberSaveable { mutableStateOf(spectrumMeterEnabled) }
+    var localNativeMeterViewEnabled by rememberSaveable { mutableStateOf(nativeMeterViewEnabled) }
     var localAutomaticUpdateCheckEnabled by rememberSaveable { mutableStateOf(automaticUpdateCheckEnabled) }
     var localMediaPlaybackOnlyEnabled by rememberSaveable { mutableStateOf(mediaPlaybackOnlyEnabled) }
     var localExperimentalVisualizerStabilizationEnabled by rememberSaveable {
         mutableStateOf(experimentalVisualizerStabilizationEnabled)
+    }
+    var localExperimentalVisualizerSignalWatchdogEnabled by rememberSaveable {
+        mutableStateOf(experimentalVisualizerSignalWatchdogEnabled)
     }
     var localShowPhone1GlyphDebugControlsEverywhere by rememberSaveable {
         mutableStateOf(showPhone1GlyphDebugControlsEverywhere)
@@ -86,6 +112,21 @@ fun SettingsScreen(
     }
     var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showMeterStyleDialog by rememberSaveable { mutableStateOf(false) }
+    val meterStyleMode = when {
+        !localMeterVisibleEnabled -> MeterStyleMode.HIDDEN
+        localLightweightMeterEnabled -> MeterStyleMode.LIGHTWEIGHT
+        localSpectrumMeterEnabled -> MeterStyleMode.SPECTRUM
+        localGlyphMeterPreviewEnabled -> MeterStyleMode.FAITHFUL
+        else -> MeterStyleMode.CLASSIC
+    }
+    val meterStyleSummary = when (meterStyleMode) {
+        MeterStyleMode.HIDDEN -> stringResource(R.string.settings_meter_style_hidden_title)
+        MeterStyleMode.LIGHTWEIGHT -> stringResource(R.string.settings_meter_style_lightweight_title)
+        MeterStyleMode.SPECTRUM -> stringResource(R.string.settings_meter_style_spectrum_title)
+        MeterStyleMode.CLASSIC -> stringResource(R.string.settings_meter_style_classic_title)
+        MeterStyleMode.FAITHFUL -> stringResource(R.string.settings_meter_style_faithful_title)
+    }
     val intDevBuild = rememberSaveable { isIntDevBuild() }
 
     LaunchedEffect(mediaProjectionEnabled) {
@@ -93,6 +134,18 @@ fun SettingsScreen(
     }
     LaunchedEffect(glyphMeterPreviewEnabled) {
         localGlyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+    }
+    LaunchedEffect(meterVisibleEnabled) {
+        localMeterVisibleEnabled = meterVisibleEnabled
+    }
+    LaunchedEffect(lightweightMeterEnabled) {
+        localLightweightMeterEnabled = lightweightMeterEnabled
+    }
+    LaunchedEffect(spectrumMeterEnabled) {
+        localSpectrumMeterEnabled = spectrumMeterEnabled
+    }
+    LaunchedEffect(nativeMeterViewEnabled) {
+        localNativeMeterViewEnabled = nativeMeterViewEnabled
     }
     LaunchedEffect(automaticUpdateCheckEnabled) {
         localAutomaticUpdateCheckEnabled = automaticUpdateCheckEnabled
@@ -102,6 +155,9 @@ fun SettingsScreen(
     }
     LaunchedEffect(experimentalVisualizerStabilizationEnabled) {
         localExperimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled
+    }
+    LaunchedEffect(experimentalVisualizerSignalWatchdogEnabled) {
+        localExperimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled
     }
     LaunchedEffect(showPhone1GlyphDebugControlsEverywhere) {
         localShowPhone1GlyphDebugControlsEverywhere = showPhone1GlyphDebugControlsEverywhere
@@ -126,6 +182,24 @@ fun SettingsScreen(
             }
         )
     }
+    if (showMeterStyleDialog) {
+        MeterStyleDialog(
+            selectedMode = meterStyleMode,
+            onDismiss = { showMeterStyleDialog = false },
+            onOptionSelected = { mode ->
+                val visible = mode != MeterStyleMode.HIDDEN
+                val lightweight = mode == MeterStyleMode.LIGHTWEIGHT
+                val spectrum = mode == MeterStyleMode.SPECTRUM
+                val faithful = mode == MeterStyleMode.FAITHFUL || spectrum
+                localMeterVisibleEnabled = visible
+                localLightweightMeterEnabled = lightweight
+                localSpectrumMeterEnabled = spectrum
+                localGlyphMeterPreviewEnabled = faithful
+                onMeterStyleChanged(visible, lightweight, spectrum, faithful)
+                showMeterStyleDialog = false
+            }
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -133,7 +207,8 @@ fun SettingsScreen(
             SettingsHeader(
                 title = stringResource(R.string.settings_screen_title),
                 onBack = onBack,
-                titleFontFamily = settingsTitleFontFamily
+                titleFontFamily = settingsTitleFontFamily,
+                nothingStyleEnabled = localNothingStyleEnabled
             )
         }
     ) { padding ->
@@ -142,8 +217,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
             SettingsCategory(
                 title = stringResource(R.string.settings_category_general)
@@ -196,7 +271,9 @@ fun SettingsScreen(
                     description = stringResource(R.string.settings_media_playback_only_desc),
                     checked = localMediaPlaybackOnlyEnabled,
                     onCheckedChange = { checked ->
-                        localMediaPlaybackOnlyEnabled = checked
+                        if (!checked) {
+                            localMediaPlaybackOnlyEnabled = false
+                        }
                         onMediaPlaybackOnlyEnabledChanged(checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
@@ -210,6 +287,18 @@ fun SettingsScreen(
                     onCheckedChange = { checked ->
                         localExperimentalVisualizerStabilizationEnabled = checked
                         onExperimentalVisualizerStabilizationEnabledChanged(checked)
+                    },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle
+                )
+                SettingsDivider()
+                SettingsToggleEntry(
+                    title = stringResource(R.string.settings_visualizer_signal_watchdog_title),
+                    description = stringResource(R.string.settings_visualizer_signal_watchdog_desc),
+                    checked = localExperimentalVisualizerSignalWatchdogEnabled,
+                    onCheckedChange = { checked ->
+                        localExperimentalVisualizerSignalWatchdogEnabled = checked
+                        onExperimentalVisualizerSignalWatchdogEnabledChanged(checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
@@ -231,16 +320,24 @@ fun SettingsScreen(
             SettingsCategory(
                 title = stringResource(R.string.settings_category_display)
             ) {
+                SettingsEntry(
+                    title = stringResource(R.string.settings_meter_style_title),
+                    description = meterStyleSummary,
+                    onClick = { showMeterStyleDialog = true },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Top
+                )
+                SettingsDivider()
                 SettingsToggleEntry(
-                    title = stringResource(R.string.settings_glyph_meter_preview_title),
-                    description = stringResource(R.string.settings_glyph_meter_preview_desc),
-                    checked = localGlyphMeterPreviewEnabled,
+                    title = stringResource(R.string.settings_native_meter_view_title),
+                    description = stringResource(R.string.settings_native_meter_view_desc),
+                    checked = localNativeMeterViewEnabled,
                     onCheckedChange = { checked ->
-                        localGlyphMeterPreviewEnabled = checked
-                        onGlyphMeterPreviewEnabledChanged(checked)
+                        localNativeMeterViewEnabled = checked
+                        onNativeMeterViewEnabledChanged(checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Single
+                    position = SettingsGroupPosition.Bottom
                 )
             }
 
@@ -296,7 +393,8 @@ fun SettingsScreen(
 private fun SettingsHeader(
     title: String,
     onBack: () -> Unit,
-    titleFontFamily: FontFamily
+    titleFontFamily: FontFamily,
+    nothingStyleEnabled: Boolean
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -310,8 +408,8 @@ private fun SettingsHeader(
                 style = MaterialTheme.typography.titleLarge.copy(
                     platformStyle = PlatformTextStyle(includeFontPadding = false)
                 ),
-                fontWeight = FontWeight.Normal,
-                fontFamily = titleFontFamily
+                fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
+                fontFamily = if (nothingStyleEnabled) titleFontFamily else null
             )
         },
         navigationIcon = {
@@ -381,6 +479,91 @@ private fun UiModeDialog(
             }
         }
     )
+}
+
+@Composable
+private fun MeterStyleDialog(
+    selectedMode: MeterStyleMode,
+    onDismiss: () -> Unit,
+    onOptionSelected: (MeterStyleMode) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResource(R.string.settings_meter_style_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MeterStyleOption(
+                    title = stringResource(R.string.settings_meter_style_hidden_title),
+                    description = stringResource(R.string.settings_meter_style_hidden_desc),
+                    selected = selectedMode == MeterStyleMode.HIDDEN,
+                    onClick = { onOptionSelected(MeterStyleMode.HIDDEN) }
+                )
+                MeterStyleOption(
+                    title = stringResource(R.string.settings_meter_style_spectrum_title),
+                    description = stringResource(R.string.settings_meter_style_spectrum_desc),
+                    selected = selectedMode == MeterStyleMode.SPECTRUM,
+                    onClick = { onOptionSelected(MeterStyleMode.SPECTRUM) }
+                )
+                MeterStyleOption(
+                    title = stringResource(R.string.settings_meter_style_lightweight_title),
+                    description = stringResource(R.string.settings_meter_style_lightweight_desc),
+                    selected = selectedMode == MeterStyleMode.LIGHTWEIGHT,
+                    onClick = { onOptionSelected(MeterStyleMode.LIGHTWEIGHT) }
+                )
+                MeterStyleOption(
+                    title = stringResource(R.string.settings_meter_style_classic_title),
+                    description = stringResource(R.string.settings_meter_style_classic_desc),
+                    selected = selectedMode == MeterStyleMode.CLASSIC,
+                    onClick = { onOptionSelected(MeterStyleMode.CLASSIC) }
+                )
+                MeterStyleOption(
+                    title = stringResource(R.string.settings_meter_style_faithful_title),
+                    description = stringResource(R.string.settings_meter_style_faithful_desc),
+                    selected = selectedMode == MeterStyleMode.FAITHFUL,
+                    onClick = { onOptionSelected(MeterStyleMode.FAITHFUL) }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.dialog_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun MeterStyleOption(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick
+        )
+        Column(
+            modifier = Modifier.padding(top = 10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable

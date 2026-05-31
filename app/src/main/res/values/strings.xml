@@ -20,7 +20,7 @@
     <string name="about_version_details_title">Version details</string>
     <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d</string>
     <string name="about_updates_title">What\'s new</string>
-    <string name="about_updates_body">• Added a new Classic pattern for Glyph Lights devices\n• Added a helper-light checkbox for some devices\n• Improved the settings UI\n• Added a welcome screen for first launch\n• Added support for Nothing Phone (1)\n• Added an option to respond only during media playback\n• Added an experimental startup stabilization feature\n• Reduced battery drain to some extent</string>
+    <string name="about_updates_body">• Improved smoothing behavior\n• Improved the base indicator behavior\n• Added nine new patterns for Matrix devices\n• Added brightness control support for Glyph Matrix devices\n• Added Linear Peak patterns for Lights / Bar devices\n• Added two more UI meter styles\n• Improved excessive heat generation issues</string>
     <string name="about_update_check_button">Check for updates</string>
     <string name="about_update_checking">Checking GitHub Releases…</string>
     <string name="about_update_latest">You are using the latest version.</string>
@@ -91,12 +91,31 @@
     <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.\nYou usually do not need this, but if you run into issues, try using it.</string>
     <string name="settings_glyph_meter_preview_title">More faithful preview</string>
     <string name="settings_glyph_meter_preview_desc">Reflect the actual segment count and brightness changes on the on-screen meter.</string>
+    <string name="settings_meter_visible_title">Show meter</string>
+    <string name="settings_meter_visible_desc">Hide the on-screen meter to compare performance without the preview.</string>
+    <string name="settings_lightweight_meter_title">Lightweight meter</string>
+    <string name="settings_lightweight_meter_desc">Show a simple 16-step level meter updated at a lower rate.</string>
+    <string name="settings_meter_style_title">Meter style</string>
+    <string name="settings_meter_style_hidden_title">Hidden</string>
+    <string name="settings_meter_style_hidden_desc">Do not show the on-screen meter. This is dramatically lighter.</string>
+    <string name="settings_meter_style_lightweight_title">Level: Lightweight</string>
+    <string name="settings_meter_style_lightweight_desc">A simple low-FPS 16-step level meter.</string>
+    <string name="settings_meter_style_spectrum_title">Spectrum</string>
+    <string name="settings_meter_style_spectrum_desc">Shows each band\'s level from the bottom.</string>
+    <string name="settings_meter_style_classic_title">Level: Classic</string>
+    <string name="settings_meter_style_classic_desc">The traditional preview without actual brightness changes or segment counts.</string>
+    <string name="settings_meter_style_faithful_title">Level: Faithful</string>
+    <string name="settings_meter_style_faithful_desc">Reflects the actual segment count and brightness changes in the preview.</string>
+    <string name="settings_native_meter_view_title">Lighter meter rendering</string>
+    <string name="settings_native_meter_view_desc">Draw the meter with an Android View instead of Compose Canvas. This may reduce load.</string>
     <string name="settings_media_playback_only_title">Respond only during media playback</string>
     <string name="settings_media_playback_only_desc">Makes the app respond only to audio from music and media apps. Notification access is required.</string>
     <string name="settings_media_playback_only_permission_required">Grant notification access to use this option.</string>
     <string name="settings_media_playback_only_open_failed">Unable to open notification access settings</string>
     <string name="settings_visualizer_stabilization_title">Experimental: Stabilize startup</string>
     <string name="settings_visualizer_stabilization_desc">If the app cannot start while using Bluetooth earbuds, try enabling this option.</string>
+    <string name="settings_visualizer_signal_watchdog_title">Experimental: Restart stalled normal mode</string>
+    <string name="settings_visualizer_signal_watchdog_desc">If normal mode is active but the meter stops receiving signal, automatically recreate the Visualizer. Disabled by default.</string>
     <string name="settings_automatic_update_check_title">Automatically check for updates</string>
     <string name="settings_automatic_update_check_desc">Shows an in-app notice when a new version is published on GitHub.</string>
     <string name="settings_phone1_debug_controls_title">IntDev only: Always show the Phone (1) debug button</string>
@@ -220,6 +239,26 @@
     <string name="capture_control_hint">Try normal mode first, and use MediaProjection only when necessary.</string>
     <string name="current_mode">Current mode: %1$s</string>
     <string name="glyph_pattern">Glyph pattern</string>
+    <string name="glyph_pattern_desc_linear">A straightforward level meter that grows in one direction with the current level.</string>
+    <string name="glyph_pattern_desc_linear_peak">A darker linear meter with a bright peak point layered on top.</string>
+    <string name="glyph_pattern_desc_center">A level meter that spreads outward from the center.</string>
+    <string name="glyph_pattern_desc_spectrum">Maps the spectrum across the available segments so different frequency bands light different positions.</string>
+    <string name="glyph_pattern_desc_classic">A classic multi-zone spectrum-style pattern inspired by the original app behavior.</string>
+    <string name="glyph_pattern_desc_all_brightness">Drives the whole Glyph area together and changes only the overall brightness.</string>
+    <string name="glyph_pattern_desc_matrix_bar">A narrow vertical level bar placed in the Matrix.</string>
+    <string name="glyph_pattern_desc_matrix_field">Fills the Matrix like a broad level field from one side.</string>
+    <string name="glyph_pattern_desc_matrix_circle">A center-out Matrix level pattern with a circular feel.</string>
+    <string name="glyph_pattern_desc_matrix_ripple">A level-based ripple that expands outward like a wave ring.</string>
+    <string name="glyph_pattern_desc_matrix_spectrum">Shows the spectrum across the Matrix from low to high frequencies.</string>
+    <string name="glyph_pattern_desc_matrix_spectrum_center">A spectrum pattern arranged symmetrically around the Matrix center.</string>
+    <string name="glyph_pattern_desc_matrix_spectrum_bottom">A bottom-anchored spectrum pattern that rises upward by band.</string>
+    <string name="glyph_pattern_desc_matrix_spectrogram">Shows the current spectrum as vertical brightness and scrolls its recent history sideways across the Matrix.</string>
+    <string name="glyph_pattern_desc_matrix_spectrum_analyzer">Draws a spectrum-analyzer style contour line across the Matrix instead of bar columns.</string>
+    <string name="glyph_pattern_desc_matrix_oscilloscope">An oscilloscope-like pattern that displays the current audio waveform\nIt might be fun to play test tones or chiptunes?</string>
+    <string name="glyph_pattern_desc_matrix_rain">Drops bright particles through the Matrix with audio-driven intensity.</string>
+    <string name="glyph_pattern_desc_matrix_wave_field">A flowing Matrix wave whose shape is driven mainly by the spectrum.</string>
+    <string name="glyph_pattern_desc_matrix_skyline">A skyline-like bottom spectrum silhouette with smoothed band motion.</string>
+    <string name="glyph_pattern_desc_matrix_pulse_grid">Assigns spectrum bands across the Matrix grid so each pixel pulses with its mapped frequency range.</string>
     <string name="fill_other_glyph_lights_title">Light up the other Glyphs too</string>
     <string name="fill_other_glyph_lights_desc">When using a partial-light mode, the remaining lights will also react to the spectrum like Classic.</string>
     <string name="meter_parameters">Meter parameters</string>
@@ -229,21 +268,34 @@
     <string name="mode_matrix_circle" translatable="false">Matrix Circle</string>
     <string name="mode_matrix_spectrum" translatable="false">Matrix Spectrum</string>
     <string name="mode_matrix_spectrum_center" translatable="false">Matrix Spectrum Center</string>
+    <string name="mode_matrix_spectrum_bottom" translatable="false">Matrix Spectrum Bottom</string>
+    <string name="mode_matrix_spectrogram" translatable="false">Matrix Spectrogram</string>
+    <string name="mode_matrix_spectrum_analyzer" translatable="false">Matrix Spectrum Analyzer</string>
+    <string name="mode_matrix_oscilloscope" translatable="false">Matrix Oscilloscope</string>
+    <string name="mode_matrix_rain" translatable="false">Matrix Rain</string>
+    <string name="mode_matrix_wave_field" translatable="false">Matrix Wave</string>
+    <string name="mode_matrix_skyline" translatable="false">Matrix Skyline</string>
+    <string name="mode_matrix_pulse_grid" translatable="false">Matrix Mosaic</string>
+    <string name="mode_matrix_ripple" translatable="false">Matrix Ripple</string>
     <string name="mode_p3a_c_linear" translatable="false">C1 Linear</string>
     <string name="mode_p3a_c_center" translatable="false">C1 Center</string>
     <string name="mode_p3a_c_spectrum" translatable="false">C1 Spectrum</string>
     <string name="mode_p3a_cab_linear" translatable="false">All Glyph Linear</string>
+    <string name="mode_p3a_cab_linear_peak" translatable="false">All Glyph Linear Peak</string>
     <string name="mode_p3a_cab_center" translatable="false">All Glyph Center</string>
     <string name="mode_p3a_cab_spectrum" translatable="false">All Glyph Spectrum</string>
     <string name="mode_c1_linear" translatable="false">C1 Linear</string>
+    <string name="mode_c1_linear_peak" translatable="false">C1 Linear Peak</string>
     <string name="mode_c1_center" translatable="false">C1 Center</string>
     <string name="mode_d1" translatable="false">D1 Linear</string>
+    <string name="mode_d1_linear_peak" translatable="false">D1 Linear Peak</string>
     <string name="mode_d1_center" translatable="false">D1 Center</string>
     <string name="mode_c1_spectrum" translatable="false">C1 Spectrum</string>
     <string name="mode_d1_spectrum" translatable="false">D1 Spectrum</string>
     <string name="mode_classic" translatable="false">Classic</string>
     <string name="mode_all_brightness" translatable="false">All Brightness</string>
     <string name="mode_p4a_linear" translatable="false">Linear</string>
+    <string name="mode_p4a_linear_peak" translatable="false">Linear Peak</string>
     <string name="mode_p4a_center" translatable="false">Center</string>
     <string name="mode_p4a_spectrum" translatable="false">Spectrum</string>
     <string name="mode_p4a_all_brightness" translatable="false">All Brightness</string>
@@ -318,6 +370,13 @@
     <string name="binary_mode_title">Binary mode</string>
     <string name="binary_mode_on">Segments fully on/off only</string>
     <string name="binary_mode_off">Smooth brightness</string>
+    <string name="matrix_smooth_motion_title">Smooth motion</string>
+    <string name="matrix_smooth_motion_on">60 FPS</string>
+    <string name="matrix_smooth_motion_off">24 FPS</string>
+    <string name="oscilloscope_auto_time_axis_title">Auto time axis</string>
+    <string name="oscilloscope_auto_time_axis_title_with_value">Auto time axis (%1$+.1f)</string>
+    <string name="oscilloscope_auto_time_axis_on">Automatically adjusts the waveform window so the current shape stays readable.</string>
+    <string name="oscilloscope_auto_time_axis_off">Uses a fixed waveform window.</string>
 
     <string name="level_auto_scale_title">Level auto scale</string>
     <string name="level_auto_scale_on">Adaptive level range (min/max tracking)</string>

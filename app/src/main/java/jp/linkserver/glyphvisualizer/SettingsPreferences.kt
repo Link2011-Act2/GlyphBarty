@@ -39,9 +39,19 @@ object SettingsPreferences {
             latencyAutoSwitchEnabled = state.latencyAutoSwitchEnabled,
             mediaProjectionEnabled = state.mediaProjectionEnabled,
             glyphMeterPreviewEnabled = state.glyphMeterPreviewEnabled,
+            meterVisibleEnabled = state.meterVisibleEnabled,
+            lightweightMeterEnabled = state.lightweightMeterEnabled,
+            spectrumMeterEnabled = state.spectrumMeterEnabled,
+            nativeMeterViewEnabled = state.nativeMeterViewEnabled,
+            mainScreenUiIsolationEnabled = state.mainScreenUiIsolationEnabled,
             automaticUpdateCheckEnabled = state.automaticUpdateCheckEnabled,
             mediaPlaybackOnlyEnabled = state.mediaPlaybackOnlyEnabled,
             experimentalVisualizerStabilizationEnabled = state.experimentalVisualizerStabilizationEnabled,
+            experimentalVisualizerSignalWatchdogEnabled = state.experimentalVisualizerSignalWatchdogEnabled,
+            experimentalSpectrumDecayEnabled = state.experimentalSpectrumDecayEnabled,
+            experimentalPerformanceOptimizationsEnabled = state.experimentalPerformanceOptimizationsEnabled,
+            matrixSmoothMotionEnabled = state.matrixSmoothMotionEnabled,
+            oscilloscopeAutoTimeAxisEnabled = state.oscilloscopeAutoTimeAxisEnabled,
             showPhone1GlyphDebugControlsEverywhere = state.showPhone1GlyphDebugControlsEverywhere,
             autoEnablePhone1GlyphDebugOnStart = state.autoEnablePhone1GlyphDebugOnStart,
             nothingStyleEnabled = state.nothingStyleEnabled,
@@ -87,9 +97,19 @@ object SettingsPreferences {
             latencyAutoSwitchEnabled = prefs.getBoolean("latency_auto_switch_enabled", defaults.latencyAutoSwitchEnabled),
             mediaProjectionEnabled = prefs.getBoolean("media_projection_enabled", defaults.mediaProjectionEnabled),
             glyphMeterPreviewEnabled = prefs.getBoolean("glyph_meter_preview_enabled", defaults.glyphMeterPreviewEnabled),
+            meterVisibleEnabled = prefs.getBoolean("meter_visible_enabled", defaults.meterVisibleEnabled),
+            lightweightMeterEnabled = prefs.getBoolean("lightweight_meter_enabled", defaults.lightweightMeterEnabled),
+            spectrumMeterEnabled = prefs.getBoolean("spectrum_meter_enabled", defaults.spectrumMeterEnabled),
+            nativeMeterViewEnabled = prefs.getBoolean("native_meter_view_enabled", defaults.nativeMeterViewEnabled),
+            mainScreenUiIsolationEnabled = prefs.getBoolean("main_screen_ui_isolation_enabled", defaults.mainScreenUiIsolationEnabled),
             automaticUpdateCheckEnabled = prefs.getBoolean("automatic_update_check_enabled", defaults.automaticUpdateCheckEnabled),
             mediaPlaybackOnlyEnabled = prefs.getBoolean("media_playback_only_enabled", defaults.mediaPlaybackOnlyEnabled),
             experimentalVisualizerStabilizationEnabled = prefs.getBoolean("experimental_visualizer_stabilization_enabled", defaults.experimentalVisualizerStabilizationEnabled),
+            experimentalVisualizerSignalWatchdogEnabled = prefs.getBoolean("experimental_visualizer_signal_watchdog_enabled", defaults.experimentalVisualizerSignalWatchdogEnabled),
+            experimentalSpectrumDecayEnabled = prefs.getBoolean("experimental_spectrum_decay_enabled", defaults.experimentalSpectrumDecayEnabled),
+            experimentalPerformanceOptimizationsEnabled = prefs.getBoolean("experimental_performance_optimizations_enabled", defaults.experimentalPerformanceOptimizationsEnabled),
+            matrixSmoothMotionEnabled = prefs.getBoolean("matrix_smooth_motion_enabled", defaults.matrixSmoothMotionEnabled),
+            oscilloscopeAutoTimeAxisEnabled = prefs.getBoolean("oscilloscope_auto_time_axis_enabled", defaults.oscilloscopeAutoTimeAxisEnabled),
             showPhone1GlyphDebugControlsEverywhere = prefs.getBoolean("show_phone1_glyph_debug_controls_everywhere", defaults.showPhone1GlyphDebugControlsEverywhere),
             autoEnablePhone1GlyphDebugOnStart = prefs.getBoolean("auto_enable_phone1_glyph_debug_on_start", defaults.autoEnablePhone1GlyphDebugOnStart),
             nothingStyleEnabled = prefs.getBoolean("nothing_style_enabled", defaults.nothingStyleEnabled),
@@ -125,9 +145,19 @@ object SettingsPreferences {
             .putBoolean("latency_auto_switch_enabled", parameters.latencyAutoSwitchEnabled)
             .putBoolean("media_projection_enabled", parameters.mediaProjectionEnabled)
             .putBoolean("glyph_meter_preview_enabled", parameters.glyphMeterPreviewEnabled)
+            .putBoolean("meter_visible_enabled", parameters.meterVisibleEnabled)
+            .putBoolean("lightweight_meter_enabled", parameters.lightweightMeterEnabled)
+            .putBoolean("spectrum_meter_enabled", parameters.spectrumMeterEnabled)
+            .putBoolean("native_meter_view_enabled", parameters.nativeMeterViewEnabled)
+            .putBoolean("main_screen_ui_isolation_enabled", parameters.mainScreenUiIsolationEnabled)
             .putBoolean("automatic_update_check_enabled", parameters.automaticUpdateCheckEnabled)
             .putBoolean("media_playback_only_enabled", parameters.mediaPlaybackOnlyEnabled)
             .putBoolean("experimental_visualizer_stabilization_enabled", parameters.experimentalVisualizerStabilizationEnabled)
+            .putBoolean("experimental_visualizer_signal_watchdog_enabled", parameters.experimentalVisualizerSignalWatchdogEnabled)
+            .putBoolean("experimental_spectrum_decay_enabled", parameters.experimentalSpectrumDecayEnabled)
+            .putBoolean("experimental_performance_optimizations_enabled", parameters.experimentalPerformanceOptimizationsEnabled)
+            .putBoolean("matrix_smooth_motion_enabled", parameters.matrixSmoothMotionEnabled)
+            .putBoolean("oscilloscope_auto_time_axis_enabled", parameters.oscilloscopeAutoTimeAxisEnabled)
             .putBoolean("show_phone1_glyph_debug_controls_everywhere", parameters.showPhone1GlyphDebugControlsEverywhere)
             .putBoolean("auto_enable_phone1_glyph_debug_on_start", parameters.autoEnablePhone1GlyphDebugOnStart)
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
@@ -168,6 +198,7 @@ object SettingsPreferences {
                     put("glyphMode", parameters.glyphMode)
                     put("autoScaleWindowSeconds", parameters.autoScaleWindowSeconds.toDouble())
                     put("autoScaleOffset", parameters.autoScaleOffset.toDouble())
+                    put("oscilloscopeAutoTimeAxisEnabled", parameters.oscilloscopeAutoTimeAxisEnabled)
                 }
             )
         }
@@ -192,7 +223,11 @@ object SettingsPreferences {
             smoothingBalance = parameters.optDouble("smoothingBalance", defaults.smoothingBalance.toDouble()).toFloat(),
             glyphMode = parameters.optString("glyphMode", defaults.glyphMode),
             autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat(),
-            autoScaleOffset = parameters.optDouble("autoScaleOffset", defaults.autoScaleOffset.toDouble()).toFloat()
+            autoScaleOffset = parameters.optDouble("autoScaleOffset", defaults.autoScaleOffset.toDouble()).toFloat(),
+            oscilloscopeAutoTimeAxisEnabled = parameters.optBoolean(
+                "oscilloscopeAutoTimeAxisEnabled",
+                defaults.oscilloscopeAutoTimeAxisEnabled
+            )
         ))
     }
 
@@ -200,6 +235,7 @@ object SettingsPreferences {
         // Hidden for now because some devices already enforce a similar OS-level behavior.
         return state.copy(
             turnOffWhenBackDown = false,
+            mainScreenUiIsolationEnabled = true,
             showPhone1GlyphDebugControlsEverywhere = if (isIntDevBuild()) {
                 state.showPhone1GlyphDebugControlsEverywhere
             } else {

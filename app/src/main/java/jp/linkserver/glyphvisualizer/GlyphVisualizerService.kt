@@ -27,15 +27,18 @@ import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
+import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 class GlyphVisualizerService : Service() {
     companion object {
         private const val TAG = "GlyphVisualizerSvc"
+        private const val DEBUG_UI_VISIBILITY_LOGS = false
         private const val CHANNEL_ID = "glyph_visualizer"
         private const val NOTIFICATION_ID = 42
 
@@ -67,6 +70,16 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED = "extra_media_playback_only_enabled"
         private const val EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED =
             "extra_experimental_visualizer_stabilization_enabled"
+        private const val EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED =
+            "extra_experimental_visualizer_signal_watchdog_enabled"
+        private const val EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED =
+            "extra_experimental_spectrum_decay_enabled"
+        private const val EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED =
+            "extra_experimental_performance_optimizations_enabled"
+        private const val EXTRA_MATRIX_SMOOTH_MOTION_ENABLED =
+            "extra_matrix_smooth_motion_enabled"
+        private const val EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
+            "extra_oscilloscope_auto_time_axis_enabled"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
@@ -76,7 +89,14 @@ class GlyphVisualizerService : Service() {
         private const val GLYPH_WARMUP_RESYNC_DELAY_MS = 900L
         private const val BACKGROUND_UI_UPDATE_INTERVAL_MS = 250L
         private const val SCREEN_OFF_UI_UPDATE_INTERVAL_MS = 1000L
+        private const val MATRIX_UI_SMOOTH_UPDATE_INTERVAL_MS = 12L
+        private const val MATRIX_UI_REDUCED_UPDATE_INTERVAL_MS = 33L
+        private const val LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS = 100L
         private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
+        private const val UI_LEVEL_QUANTIZATION_STEPS = 64f
+        private const val UI_PEAK_QUANTIZATION_STEPS = 64f
+        private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
+        private const val MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD = 0.002f
 
         fun startVisualizer(
             context: Context,
@@ -100,8 +120,13 @@ class GlyphVisualizerService : Service() {
             latencyMs: Float,
             mediaPlaybackOnlyEnabled: Boolean,
             experimentalVisualizerStabilizationEnabled: Boolean,
+            experimentalVisualizerSignalWatchdogEnabled: Boolean,
+            experimentalSpectrumDecayEnabled: Boolean,
+            experimentalPerformanceOptimizationsEnabled: Boolean,
+            matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
-            outputGamma: Float = 1.8f
+            outputGamma: Float = 1.8f,
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_VISUALIZER
@@ -126,6 +151,11 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
                 putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
+                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
+                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -166,8 +196,13 @@ class GlyphVisualizerService : Service() {
             latencyMs: Float,
             mediaPlaybackOnlyEnabled: Boolean,
             experimentalVisualizerStabilizationEnabled: Boolean,
+            experimentalVisualizerSignalWatchdogEnabled: Boolean,
+            experimentalSpectrumDecayEnabled: Boolean,
+            experimentalPerformanceOptimizationsEnabled: Boolean,
+            matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
-            outputGamma: Float = 1.8f
+            outputGamma: Float = 1.8f,
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_MEDIA_PROJECTION
@@ -194,6 +229,11 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
                 putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
+                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
+                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -232,8 +272,13 @@ class GlyphVisualizerService : Service() {
             latencyMs: Float,
             mediaPlaybackOnlyEnabled: Boolean,
             experimentalVisualizerStabilizationEnabled: Boolean,
+            experimentalVisualizerSignalWatchdogEnabled: Boolean,
+            experimentalSpectrumDecayEnabled: Boolean,
+            experimentalPerformanceOptimizationsEnabled: Boolean,
+            matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
-            outputGamma: Float = Float.NaN
+            outputGamma: Float = Float.NaN,
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_UPDATE_SENSITIVITY
@@ -258,6 +303,11 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_LATENCY_MS, latencyMs)
                 putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
                 putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
+                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
+                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
+                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
             }
             try {
@@ -304,14 +354,19 @@ class GlyphVisualizerService : Service() {
     private var fillOtherGlyphLights = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
-    private var levelAutoScale = false
-    private var spectrumAutoScale = false
-    private var allBrightnessAutoScale = false
+    private var levelAutoScale = true
+    private var spectrumAutoScale = true
+    private var allBrightnessAutoScale = true
     private var autoScaleWindowSeconds = 30f
     private var autoScaleOffset = 0f
     private var latencyMs = 0f
     private var mediaPlaybackOnlyEnabled = false
     private var experimentalVisualizerStabilizationEnabled = false
+    private var experimentalVisualizerSignalWatchdogEnabled = false
+    private var experimentalSpectrumDecayEnabled = false
+    private var experimentalPerformanceOptimizationsEnabled = true
+    private var matrixSmoothMotionEnabled = false
+    private var oscilloscopeAutoTimeAxisEnabled = false
     private var turnOffWhenBackDown = false
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -323,6 +378,10 @@ class GlyphVisualizerService : Service() {
     private var lastAudioRouteSignature: String? = null
     private var suppressRouteRestartUntilMs = 0L
     private var lastUiPublishAtMs = 0L
+    private var publishUiFrameCallCount = 0
+    private var lastPublishUiFrameCallLogAtMs = 0L
+    private var suppressedUiPublishCount = 0
+    private var lastSuppressedUiPublishLogAtMs = 0L
     private var lastMediaPlaybackCheckAtMs = 0L
     private var lastMediaPlaybackActive = true
     private var mediaPlaybackSuppressed = false
@@ -336,7 +395,8 @@ class GlyphVisualizerService : Service() {
         val leftLevel: Float,
         val rightLevel: Float,
         val spectrumBands: FloatArray,
-        val phone4aBaseBandLevel: Float
+        val phone4aBaseBandLevel: Float,
+        val waveformSamples: FloatArray
     )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
@@ -443,6 +503,27 @@ class GlyphVisualizerService : Service() {
                         EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
                         experimentalVisualizerStabilizationEnabled
                     )
+                    experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
+                        EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
+                        experimentalVisualizerSignalWatchdogEnabled
+                    )
+                    experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
+                        EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
+                        experimentalSpectrumDecayEnabled
+                    )
+                    experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
+                        EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
+                        experimentalPerformanceOptimizationsEnabled
+                    )
+                    matrixSmoothMotionEnabled = intent.getBooleanExtra(
+                        EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
+                        matrixSmoothMotionEnabled
+                    )
+                    oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
+                        EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
+                        oscilloscopeAutoTimeAxisEnabled
+                    )
+                    WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
                     turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                     applyGlyphControllerSettings()
                     AppLogger.i(
@@ -507,6 +588,27 @@ class GlyphVisualizerService : Service() {
                     EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
                     experimentalVisualizerStabilizationEnabled
                 )
+                experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
+                    experimentalVisualizerSignalWatchdogEnabled
+                )
+                experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
+                    experimentalSpectrumDecayEnabled
+                )
+                experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
+                    experimentalPerformanceOptimizationsEnabled
+                )
+                matrixSmoothMotionEnabled = intent.getBooleanExtra(
+                    EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
+                    matrixSmoothMotionEnabled
+                )
+                oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
+                    EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
+                    oscilloscopeAutoTimeAxisEnabled
+                )
+                WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
@@ -546,6 +648,27 @@ class GlyphVisualizerService : Service() {
                     EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
                     experimentalVisualizerStabilizationEnabled
                 )
+                experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
+                    experimentalVisualizerSignalWatchdogEnabled
+                )
+                experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
+                    experimentalSpectrumDecayEnabled
+                )
+                experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
+                    EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
+                    experimentalPerformanceOptimizationsEnabled
+                )
+                matrixSmoothMotionEnabled = intent.getBooleanExtra(
+                    EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
+                    matrixSmoothMotionEnabled
+                )
+                oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
+                    EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
+                    oscilloscopeAutoTimeAxisEnabled
+                )
+                WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
                 turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
                 applyGlyphControllerSettings()
                 CaptureUiStore.update {
@@ -569,6 +692,11 @@ class GlyphVisualizerService : Service() {
                         autoScaleOffset = autoScaleOffset,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                        experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                        experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+                        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                        experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
@@ -637,6 +765,8 @@ class GlyphVisualizerService : Service() {
             smoothingProvider = { smoothing },
             smoothingBalanceProvider = { smoothingBalance },
             experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+            experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+            experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             onStateChanged = { status ->
                 val now = SystemClock.elapsedRealtime()
                 AppLogger.i(
@@ -668,12 +798,17 @@ class GlyphVisualizerService : Service() {
                         autoScaleOffset = autoScaleOffset,
                         mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                         experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                        experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+                        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                        experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+                        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -683,7 +818,8 @@ class GlyphVisualizerService : Service() {
                     leftLevel,
                     rightLevel,
                     spectrumBands,
-                    phone4aBaseBandLevel
+                    phone4aBaseBandLevel,
+                    waveformSamples
                 )
             },
             onStartFailed = {
@@ -712,6 +848,36 @@ class GlyphVisualizerService : Service() {
                     val msg = getString(R.string.status_visualizer_try_media_projection)
                     val logMsg = getString(R.string.status_visualizer_try_media_projection)
                     AppLogger.e(TAG, logMsg)
+                    stopCapture(msg)
+                    safeStopForeground()
+                    stopSelf()
+                }
+            },
+            onSignalStalled = {
+                val maxAttempts = visualizerStartMaxAttempts()
+                if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
+                    val nextAttempt = attempt + 1
+                    val retryMs = visualizerRetryDelayMs(attempt)
+                    AppLogger.w(
+                        TAG,
+                        "Visualizer active-without-signal detected: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
+                    )
+                    CaptureUiStore.update {
+                        it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
+                    }
+                    mainHandler.postDelayed(
+                        { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
+                        retryMs
+                    )
+                } else if (requestId == visualizerStartRequestId) {
+                    AppLogger.e(
+                        TAG,
+                        "Visualizer active-without-signal exhausted retries: requestId=$requestId attempts=$attempt elapsedSinceActionMs=${
+                            if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
+                        }"
+                    )
+                    val msg = getString(R.string.status_visualizer_try_media_projection)
+                    CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
                     stopCapture(msg)
                     safeStopForeground()
                     stopSelf()
@@ -773,6 +939,7 @@ class GlyphVisualizerService : Service() {
             toneFocusProvider = { toneFocus },
             smoothingProvider = { smoothing },
             smoothingBalanceProvider = { smoothingBalance },
+            experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             onStateChanged = { status ->
                 CaptureUiStore.update {
                     it.copy(
@@ -797,12 +964,17 @@ class GlyphVisualizerService : Service() {
                             autoScaleOffset = autoScaleOffset,
                             mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                             experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                            experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+                            experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                            experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+                            matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                            oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                             turnOffWhenBackDown = turnOffWhenBackDown
                     )
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -812,7 +984,8 @@ class GlyphVisualizerService : Service() {
                     leftLevel,
                     rightLevel,
                     spectrumBands,
-                    phone4aBaseBandLevel
+                    phone4aBaseBandLevel,
+                    waveformSamples
                 )
             }
         )
@@ -832,7 +1005,8 @@ class GlyphVisualizerService : Service() {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray,
-        phone4aBaseBandLevel: Float
+        phone4aBaseBandLevel: Float,
+        waveformSamples: FloatArray
     ) {
         enqueueDelayedLevelFrame(
             level = level,
@@ -843,7 +1017,8 @@ class GlyphVisualizerService : Service() {
             leftLevel = leftLevel,
             rightLevel = rightLevel,
             spectrumBands = spectrumBands,
-            phone4aBaseBandLevel = phone4aBaseBandLevel
+            phone4aBaseBandLevel = phone4aBaseBandLevel,
+            waveformSamples = waveformSamples
         )
     }
 
@@ -856,7 +1031,8 @@ class GlyphVisualizerService : Service() {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray,
-        phone4aBaseBandLevel: Float
+        phone4aBaseBandLevel: Float,
+        waveformSamples: FloatArray
     ) {
         val dueAtMs = SystemClock.uptimeMillis() + latencyMs.coerceIn(0f, 500f).roundToLong()
         val frame = DelayedLevelFrame(
@@ -869,7 +1045,8 @@ class GlyphVisualizerService : Service() {
             leftLevel = leftLevel,
             rightLevel = rightLevel,
             spectrumBands = spectrumBands.copyOf(),
-            phone4aBaseBandLevel = phone4aBaseBandLevel
+            phone4aBaseBandLevel = phone4aBaseBandLevel,
+            waveformSamples = waveformSamples.copyOf()
         )
         latestLevelFrame = frame
         pendingLevelFrames.addLast(frame)
@@ -892,22 +1069,28 @@ class GlyphVisualizerService : Service() {
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
         val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
-        val mediaPlaybackActive = isMediaPlaybackAllowed()
+        val mediaPlaybackActive = isMediaPlaybackAllowed(frame)
         if (!mediaPlaybackActive) {
-            if (!mediaPlaybackSuppressed) {
-                mediaPlaybackSuppressed = true
-                try {
-                    glyphController.turnOff()
-                } catch (error: Throwable) {
-                    AppLogger.w(TAG, "glyphController.turnOff failed while media playback was inactive", error)
-                }
-            }
-            publishUiFrame(
-                level = 0f,
-                peak = 0f,
-                spectrumBands = FloatArray(frame.spectrumBands.size),
-                mode = frame.mode
+            mediaPlaybackSuppressed = true
+            val silentBands = FloatArray(frame.spectrumBands.size)
+            glyphController.updateAnalysis(
+                lowEnergy = 0f,
+                highEnergy = 0f,
+                leftLevel = 0f,
+                rightLevel = 0f,
+                spectrumBands = silentBands,
+                phone4aBaseBandLevel = 0f,
+                waveformSamples = FloatArray(frame.waveformSamples.size)
             )
+            glyphController.updateLevel(0f)
+            if (shouldPublishUiFrame(frame.mode)) {
+                publishUiFrame(
+                    level = 0f,
+                    peak = 0f,
+                    spectrumBands = silentBands,
+                    mode = frame.mode
+                )
+            }
             return
         }
         mediaPlaybackSuppressed = false
@@ -918,7 +1101,8 @@ class GlyphVisualizerService : Service() {
                 frame.leftLevel,
                 frame.rightLevel,
                 frame.spectrumBands,
-                frame.phone4aBaseBandLevel
+                frame.phone4aBaseBandLevel,
+                frame.waveformSamples
             )
             glyphController.updateLevel(frame.level)
         } else if (isBackDownSuppressed) {
@@ -938,12 +1122,14 @@ class GlyphVisualizerService : Service() {
         } else {
             frame.spectrumBands
         }
-        publishUiFrame(
-            level = previewLevel,
-            peak = frame.peak,
-            spectrumBands = if (previewSpectrumBands.isNotEmpty()) previewSpectrumBands else frame.spectrumBands,
-            mode = frame.mode
-        )
+        if (shouldPublishUiFrame(frame.mode)) {
+            publishUiFrame(
+                level = previewLevel,
+                peak = frame.peak,
+                spectrumBands = if (previewSpectrumBands.isNotEmpty()) previewSpectrumBands else frame.spectrumBands,
+                mode = frame.mode
+            )
+        }
     }
 
     private fun stopRunningCapture(clearStatus: Boolean) {
@@ -971,6 +1157,7 @@ class GlyphVisualizerService : Service() {
                 level = 0f,
                 peak = 0f,
                 meterSegments = 0,
+                spectrumBands = FloatArray(0),
                 isCapturing = false,
                 activeMode = ACTIVE_MODE_IDLE,
                 statusText = if (clearStatus) getString(R.string.status_capture_stopped_ready) else it.statusText,
@@ -993,11 +1180,22 @@ class GlyphVisualizerService : Service() {
                 autoScaleOffset = autoScaleOffset,
                 latencyMs = latencyMs,
                 mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+                experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+                experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+                matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+                experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
                 turnOffWhenBackDown = turnOffWhenBackDown
             )
         }
+        CaptureUiStore.syncLiveFrameFromState()
         isBackDownSuppressed = false
         lastUiPublishAtMs = 0L
+        publishUiFrameCallCount = 0
+        lastPublishUiFrameCallLogAtMs = 0L
+        suppressedUiPublishCount = 0
+        lastSuppressedUiPublishLogAtMs = 0L
         lastMediaPlaybackCheckAtMs = 0L
         lastMediaPlaybackActive = true
         mediaPlaybackSuppressed = false
@@ -1013,6 +1211,8 @@ class GlyphVisualizerService : Service() {
         glyphController.setSmoothing(smoothing, smoothingBalance)
         glyphController.setLevelAutoScaleEnabled(levelAutoScale)
         glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
+        glyphController.setExperimentalPerformanceOptimizationsEnabled(experimentalPerformanceOptimizationsEnabled)
+        glyphController.setMatrixSmoothMotionEnabled(matrixSmoothMotionEnabled)
         glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
         glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
         glyphController.setAutoScaleOffset(autoScaleOffset)
@@ -1058,25 +1258,47 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun currentUiUpdateIntervalMs(): Long {
-        val processState = ActivityManager.RunningAppProcessInfo().also(ActivityManager::getMyMemoryState)
-        val appInForeground =
-            processState.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
-                processState.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+        val useExperimentalMatrixUiInterval =
+            experimentalPerformanceOptimizationsEnabled && glyphController is GlyphMatrixController
+        val matrixUiIntervalMs = if (matrixSmoothMotionEnabled) {
+            MATRIX_UI_SMOOTH_UPDATE_INTERVAL_MS
+        } else {
+            MATRIX_UI_REDUCED_UPDATE_INTERVAL_MS
+        }
+        val appUiVisible = CaptureUiStore.shouldPublishLiveUiFrames()
         return when {
-            appInForeground -> 0L
+            appUiVisible && useExperimentalMatrixUiInterval -> matrixUiIntervalMs
+            appUiVisible -> 0L
+            powerManager.isInteractive && useExperimentalMatrixUiInterval -> matrixUiIntervalMs
             powerManager.isInteractive -> BACKGROUND_UI_UPDATE_INTERVAL_MS
+            useExperimentalMatrixUiInterval -> matrixUiIntervalMs
             else -> SCREEN_OFF_UI_UPDATE_INTERVAL_MS
         }
     }
 
-    private fun isMediaPlaybackAllowed(): Boolean {
+    private fun isMediaPlaybackAllowed(frame: DelayedLevelFrame): Boolean {
         if (!mediaPlaybackOnlyEnabled) return true
         val now = SystemClock.uptimeMillis()
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
             lastMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
         }
+        if (!lastMediaPlaybackActive && frame.hasAudibleSignal() && AudioRouteDiagnostics.isMusicActive(this)) {
+            lastMediaPlaybackActive = true
+        }
         return lastMediaPlaybackActive
+    }
+
+    private fun DelayedLevelFrame.hasAudibleSignal(): Boolean {
+        return level > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            peak > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            lowEnergy > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            highEnergy > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            leftLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            rightLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            phone4aBaseBandLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
+            spectrumBands.any { it > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD } ||
+            waveformSamples.any { kotlin.math.abs(it) > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD }
     }
 
     private fun publishUiFrame(
@@ -1086,19 +1308,127 @@ class GlyphVisualizerService : Service() {
         mode: String,
         force: Boolean = false
     ) {
-        val intervalMs = currentUiUpdateIntervalMs()
+        val entryNow = SystemClock.uptimeMillis()
+        publishUiFrameCallCount += 1
+        if (
+            DEBUG_UI_VISIBILITY_LOGS &&
+                (
+                    publishUiFrameCallCount == 1 ||
+                        entryNow - lastPublishUiFrameCallLogAtMs >= 5_000L
+                    )
+        ) {
+            lastPublishUiFrameCallLogAtMs = entryNow
+            AppLogger.i(
+                TAG,
+                "publishUiFrame entered: count=$publishUiFrameCallCount mode=$mode force=$force uiVisible=${CaptureUiStore.shouldPublishLiveUiFrames()}"
+            )
+        }
+        if (!force && !shouldPublishUiFrame(mode)) {
+            suppressedUiPublishCount += 1
+            if (
+                DEBUG_UI_VISIBILITY_LOGS &&
+                    (
+                        suppressedUiPublishCount == 1 ||
+                            entryNow - lastSuppressedUiPublishLogAtMs >= 5_000L
+                        )
+            ) {
+                lastSuppressedUiPublishLogAtMs = entryNow
+                AppLogger.i(
+                    TAG,
+                    "UI frame publish suppressed because app UI is not visible: count=$suppressedUiPublishCount mode=$mode"
+                )
+            }
+            return
+        }
+        if (DEBUG_UI_VISIBILITY_LOGS && suppressedUiPublishCount > 0) {
+            AppLogger.i(
+                TAG,
+                "UI frame publish resumed after suppression: count=$suppressedUiPublishCount mode=$mode"
+            )
+            suppressedUiPublishCount = 0
+            lastSuppressedUiPublishLogAtMs = 0L
+        }
+        val uiState = CaptureUiStore.state
+        val lightweightMeter = uiState.lightweightMeterEnabled && uiState.meterVisibleEnabled
+        val intervalMs = if (lightweightMeter) {
+            currentUiUpdateIntervalMs().coerceAtLeast(LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS)
+        } else {
+            currentUiUpdateIntervalMs()
+        }
         val now = SystemClock.uptimeMillis()
         if (!force && intervalMs > 0L && now - lastUiPublishAtMs < intervalMs) return
         lastUiPublishAtMs = now
-        CaptureUiStore.update {
-            it.copy(
-                level = level,
-                peak = peak,
-                meterSegments = (level * 16f).toInt().coerceIn(0, 16),
-                spectrumBands = spectrumBands,
-                isCapturing = true,
-                activeMode = mode
-            )
+        val quantizedLevel = quantizeUiValue(level, UI_LEVEL_QUANTIZATION_STEPS)
+        val quantizedPeak = if (lightweightMeter) 0f else quantizeUiValue(peak, UI_PEAK_QUANTIZATION_STEPS)
+        val quantizedMeterSegments = (quantizedLevel * 16f).roundToInt().coerceIn(0, 16)
+        val quantizedSpectrumBands = if (lightweightMeter) FloatArray(0) else quantizeSpectrumBandsForUi(spectrumBands)
+        if (uiState.mainScreenUiIsolationEnabled) {
+            val currentFrame = CaptureUiStore.liveFrame
+            val sameSpectrum = currentFrame.spectrumBands.contentEquals(quantizedSpectrumBands)
+            val unchanged =
+                currentFrame.level == quantizedLevel &&
+                    currentFrame.peak == quantizedPeak &&
+                    currentFrame.meterSegments == quantizedMeterSegments &&
+                    sameSpectrum
+            if (!unchanged) {
+                CaptureUiStore.publishLiveFrame(
+                    level = quantizedLevel,
+                    peak = quantizedPeak,
+                    meterSegments = quantizedMeterSegments,
+                    spectrumBands = if (sameSpectrum) currentFrame.spectrumBands else quantizedSpectrumBands
+                )
+            }
+        } else {
+            var shouldPublishDirectFrame = false
+            var directSpectrumBands = quantizedSpectrumBands
+            CaptureUiStore.update {
+                val sameSpectrum = it.spectrumBands.contentEquals(quantizedSpectrumBands)
+                val unchanged =
+                    it.level == quantizedLevel &&
+                        it.peak == quantizedPeak &&
+                        it.meterSegments == quantizedMeterSegments &&
+                        it.isCapturing &&
+                        it.activeMode == mode &&
+                        sameSpectrum
+                if (unchanged) {
+                    it
+                } else {
+                    shouldPublishDirectFrame = true
+                    directSpectrumBands = if (sameSpectrum) it.spectrumBands else quantizedSpectrumBands
+                    it.copy(
+                        level = quantizedLevel,
+                        peak = quantizedPeak,
+                        meterSegments = quantizedMeterSegments,
+                        spectrumBands = if (sameSpectrum) it.spectrumBands else quantizedSpectrumBands,
+                        isCapturing = true,
+                        activeMode = mode
+                    )
+                }
+            }
+            if (shouldPublishDirectFrame) {
+                CaptureUiStore.publishDirectLiveFrame(
+                    level = quantizedLevel,
+                    peak = quantizedPeak,
+                    meterSegments = quantizedMeterSegments,
+                    spectrumBands = directSpectrumBands
+                )
+            }
+        }
+    }
+
+    private fun shouldPublishUiFrame(mode: String): Boolean {
+        return CaptureUiStore.shouldPublishLiveUiFrames()
+    }
+
+    private fun quantizeUiValue(value: Float, steps: Float): Float {
+        if (steps <= 0f) return value.coerceIn(0f, 1f)
+        return ((value.coerceIn(0f, 1f) * steps).roundToInt() / steps).coerceIn(0f, 1f)
+    }
+
+    private fun quantizeSpectrumBandsForUi(spectrumBands: FloatArray): FloatArray {
+        if (spectrumBands.isEmpty()) return spectrumBands
+        return FloatArray(spectrumBands.size) { index ->
+            quantizeUiValue(spectrumBands[index], UI_SPECTRUM_QUANTIZATION_STEPS)
         }
     }
 

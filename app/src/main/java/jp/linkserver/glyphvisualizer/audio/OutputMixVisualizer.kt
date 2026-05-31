@@ -26,6 +26,9 @@ class OutputMixVisualizer(
         private const val EXPERIMENTAL_BT_STABLE_MS = 450L
         private const val EXPERIMENTAL_REMOTE_SUBMIX_STABLE_MS = 900L
         private const val EXPERIMENTAL_ROUTE_STABILITY_TIMEOUT_MS = 2200L
+        private const val STARTUP_SIGNAL_GRACE_MS = 1_800L
+        private const val RUNNING_SIGNAL_STALL_MS = 5_000L
+        private const val STARTUP_SIGNAL_MIN_LEVEL = 0.0015f
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -43,6 +46,8 @@ class OutputMixVisualizer(
         smoothingProvider: () -> Float,
         smoothingBalanceProvider: () -> Float,
         experimentalVisualizerStabilizationEnabled: Boolean,
+        experimentalVisualizerSignalWatchdogEnabled: Boolean,
+        experimentalPerformanceOptimizationsEnabled: Boolean,
         onStateChanged: (String) -> Unit,
         onLevelChanged: (
             level: Float,
@@ -52,9 +57,11 @@ class OutputMixVisualizer(
             leftLevel: Float,
             rightLevel: Float,
             spectrumBands: FloatArray,
-            phone4aBaseBandLevel: Float
+            phone4aBaseBandLevel: Float,
+            waveformSamples: FloatArray
         ) -> Unit,
         onStartFailed: () -> Unit = {},
+        onSignalStalled: () -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
         stop()
@@ -151,6 +158,11 @@ class OutputMixVisualizer(
                     )
                     visualizer = vis
                     activeStarted = true
+                    val activeSinceMs = SystemClock.elapsedRealtime()
+                    var lastSignalSeenAtMs = activeSinceMs
+                    var firstSignalSeen = false
+                    var startupStallReported = false
+                    var runningStallReported = false
                     mainHandler.post {
                         if (isRunning) {
                             onStateChanged(context.getString(R.string.status_output_mix_listening))
@@ -160,6 +172,8 @@ class OutputMixVisualizer(
                     val waveform = ByteArray(captureSize)
                     val monoSamples = FloatArray(captureSize)
                     val spectrumSamples = FloatArray(captureSize / spectrumDecimation)
+                    var lastSpectrumAnalysis = SpectrumAnalyzer.AnalysisResult(FloatArray(25), 0f, 0f)
+                    var lastSpectrumAnalysisAtMs = 0L
                     val measurement = Visualizer.MeasurementPeakRms()
                     var smoothedLevel = 0f
                     var displayedLevel = 0f
@@ -214,6 +228,49 @@ class OutputMixVisualizer(
                         val baseLevel =
                             (waveformRms * 0.42f) + (waveformPeak * 0.15f) + (measurementPeak * 0.18f) +
                                 (lowEnergy * 0.15f) + (highEnergy * 0.10f)
+                        val hasSignal =
+                            waveformRms > STARTUP_SIGNAL_MIN_LEVEL ||
+                                waveformPeak > STARTUP_SIGNAL_MIN_LEVEL ||
+                                measurementPeak > STARTUP_SIGNAL_MIN_LEVEL ||
+                                lowEnergy > STARTUP_SIGNAL_MIN_LEVEL ||
+                                highEnergy > STARTUP_SIGNAL_MIN_LEVEL
+                        if (hasSignal) {
+                            firstSignalSeen = true
+                            lastSignalSeenAtMs = SystemClock.elapsedRealtime()
+                            runningStallReported = false
+                        }
+                        if (
+                            !firstSignalSeen &&
+                                experimentalVisualizerSignalWatchdogEnabled &&
+                                !startupStallReported &&
+                                SystemClock.elapsedRealtime() - activeSinceMs >= STARTUP_SIGNAL_GRACE_MS &&
+                                AudioRouteDiagnostics.isMusicActive(context)
+                        ) {
+                            startupStallReported = true
+                            AppLogger.w(
+                                TAG,
+                                "Visualizer reached active state but produced no signal; requesting startup retry. ${AudioRouteDiagnostics.snapshot(context)}"
+                            )
+                            isRunning = false
+                            mainHandler.post { onSignalStalled() }
+                            break
+                        }
+                        if (
+                            firstSignalSeen &&
+                                experimentalVisualizerSignalWatchdogEnabled &&
+                                !runningStallReported &&
+                                SystemClock.elapsedRealtime() - lastSignalSeenAtMs >= RUNNING_SIGNAL_STALL_MS &&
+                                AudioRouteDiagnostics.isMusicActive(context)
+                        ) {
+                            runningStallReported = true
+                            AppLogger.w(
+                                TAG,
+                                "Visualizer signal disappeared while music is active; requesting restart. ${AudioRouteDiagnostics.snapshot(context)}"
+                            )
+                            isRunning = false
+                            mainHandler.post { onSignalStalled() }
+                            break
+                        }
                         val toneFocus = toneFocusProvider().coerceIn(-1f, 1f)
                         val focusedLevel = when {
                             toneFocus < 0f -> {
@@ -233,7 +290,11 @@ class OutputMixVisualizer(
                         val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
                         val noReleaseSmoothing = smoothing >= 0.54f
                         val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                        val release = if (noReleaseSmoothing) 1f else smoothing
+                        val release = if (noReleaseSmoothing) {
+                            1f
+                        } else {
+                            (smoothing * 1.25f).coerceIn(0.0625f, 0.75f)
+                        }
                         if (bounded > smoothedLevel) {
                             smoothedLevel = bounded
                         } else {
@@ -249,12 +310,23 @@ class OutputMixVisualizer(
                         for (i in spectrumSamples.indices) {
                             spectrumSamples[i] = monoSamples[i * spectrumDecimation]
                         }
-                        val spectrumAnalysis = SpectrumAnalyzer.analyzeLogBands(
-                            samples = spectrumSamples,
-                            sampleRateHz = spectrumSampleRate,
-                            bandCount = 25
-                        )
-
+                        val nowMs = SystemClock.elapsedRealtime()
+                        val shouldRefreshSpectrum =
+                            !experimentalPerformanceOptimizationsEnabled ||
+                                lastSpectrumAnalysisAtMs <= 0L ||
+                                (nowMs - lastSpectrumAnalysisAtMs) >= 33L
+                        val spectrumAnalysis = if (shouldRefreshSpectrum) {
+                            SpectrumAnalyzer.analyzeLogBands(
+                                samples = spectrumSamples,
+                                sampleRateHz = spectrumSampleRate,
+                                bandCount = 25
+                            ).also {
+                                lastSpectrumAnalysis = it
+                                lastSpectrumAnalysisAtMs = nowMs
+                            }
+                        } else {
+                            lastSpectrumAnalysis
+                        }
                         mainHandler.post {
                             onLevelChanged(
                                 displayedLevel,
@@ -264,7 +336,8 @@ class OutputMixVisualizer(
                                 displayedLevel,
                                 displayedLevel,
                                 spectrumAnalysis.bands,
-                                spectrumAnalysis.rangePeak
+                                spectrumAnalysis.rangePeak,
+                                WaveformSampler.downsample(monoSamples)
                             )
                         }
 

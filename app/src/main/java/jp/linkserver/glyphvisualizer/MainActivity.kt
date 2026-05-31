@@ -1,19 +1,29 @@
 package jp.linkserver.glyphvisualizer
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Paint
+import android.graphics.RectF
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.AttributeSet
+import android.view.Choreographer
+import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.res.ResourcesCompat
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -102,6 +112,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -122,6 +133,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -129,6 +141,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -143,6 +156,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
+import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
@@ -158,9 +172,663 @@ import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
 import jp.linkserver.glyphvisualizer.update.shouldCheckForUpdates
 import rikka.shizuku.Shizuku
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private const val RESPONSE_SPEED_NONE_THRESHOLD = 0.54f
 private const val PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE = 1401
+
+private class NativeLevelMeterView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : View(context, attrs) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private var normalizedLevel = 0f
+    private var activeColor = android.graphics.Color.BLACK
+    private var inactiveColor = 0x14000000
+
+    fun configureColors(activeColor: Int, inactiveColor: Int) {
+        if (this.activeColor == activeColor && this.inactiveColor == inactiveColor) return
+        this.activeColor = activeColor
+        this.inactiveColor = inactiveColor
+        invalidate()
+    }
+
+    fun setLiveFrame(frame: CaptureLiveFrame) {
+        setMeterState(frame.level, activeColor, inactiveColor)
+    }
+
+    fun setMeterState(level: Float, activeColor: Int, inactiveColor: Int) {
+        val nextLevel = level.coerceIn(0f, 1f)
+        if (
+            normalizedLevel == nextLevel &&
+            this.activeColor == activeColor &&
+            this.inactiveColor == inactiveColor
+        ) {
+            return
+        }
+        normalizedLevel = nextLevel
+        this.activeColor = activeColor
+        this.inactiveColor = inactiveColor
+        invalidate()
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val segmentCount = 16
+        val gap = 4f * resources.displayMetrics.density
+        val totalGap = gap * (segmentCount - 1)
+        val segmentWidth = ((width - totalGap) / segmentCount.toFloat()).coerceAtLeast(1f)
+        val radius = segmentWidth / 2f
+        val activeSegments = (normalizedLevel * segmentCount).toInt().coerceIn(0, segmentCount)
+
+        for (segment in 0 until segmentCount) {
+            val left = segment * (segmentWidth + gap)
+            rect.set(left, 0f, left + segmentWidth, height.toFloat())
+            paint.color = if (segment < activeSegments) activeColor else inactiveColor
+            canvas.drawRoundRect(rect, radius, radius, paint)
+        }
+    }
+}
+
+private class NativeDetailedMeterView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : View(context, attrs) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private var targetLevel = 0f
+    private var targetPeak = 0f
+    private var displayedLevel = 0f
+    private var displayedPeak = 0f
+    private var meterModel: UiMeterModel? = null
+    private var inactiveColor = 0x14000000
+    private var activeColor = android.graphics.Color.BLACK
+    private var peakColor = android.graphics.Color.GRAY
+    private var sweepColor = 0x1A000000
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var deviceProfile = GlyphDeviceCatalog.currentProfile()
+    private var binaryMode = false
+    private var glyphMeterPreviewEnabled = false
+    private var reverseDirection = false
+    private var compactMode = false
+    private var animationScheduled = false
+    private var lastAnimationFrameNanos = 0L
+    private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
+        animationScheduled = false
+        stepAnimation(frameTimeNanos)
+    }
+
+    fun configure(
+        glyphMode: String,
+        deviceProfile: GlyphDeviceProfile,
+        binaryMode: Boolean,
+        glyphMeterPreviewEnabled: Boolean,
+        reverseDirection: Boolean,
+        compactMode: Boolean,
+        inactiveColor: Int,
+        activeColor: Int,
+        peakColor: Int,
+        sweepColor: Int
+    ) {
+        val changed =
+            this.glyphMode != glyphMode ||
+                this.deviceProfile != deviceProfile ||
+                this.binaryMode != binaryMode ||
+                this.glyphMeterPreviewEnabled != glyphMeterPreviewEnabled ||
+                this.reverseDirection != reverseDirection ||
+                this.compactMode != compactMode ||
+                this.inactiveColor != inactiveColor ||
+                this.activeColor != activeColor ||
+                this.peakColor != peakColor ||
+                this.sweepColor != sweepColor
+        this.glyphMode = glyphMode
+        this.deviceProfile = deviceProfile
+        this.binaryMode = binaryMode
+        this.glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+        this.reverseDirection = reverseDirection
+        this.compactMode = compactMode
+        this.inactiveColor = inactiveColor
+        this.activeColor = activeColor
+        this.peakColor = peakColor
+        this.sweepColor = sweepColor
+        if (changed) invalidate()
+    }
+
+    fun setLiveFrame(frame: CaptureLiveFrame) {
+        setMeterState(
+            level = frame.level,
+            peak = frame.peak,
+            meterModel = buildUiMeterModel(
+                level = frame.level,
+                meterSegments = frame.meterSegments,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection
+            ),
+            inactiveColor = inactiveColor,
+            activeColor = activeColor,
+            peakColor = peakColor,
+            sweepColor = sweepColor
+        )
+    }
+
+    fun setMeterState(
+        level: Float,
+        peak: Float,
+        meterModel: UiMeterModel,
+        inactiveColor: Int,
+        activeColor: Int,
+        peakColor: Int,
+        sweepColor: Int
+    ) {
+        val nextLevel = level.coerceIn(0f, 1f)
+        val nextPeak = peak.coerceIn(0f, 1f)
+        if (
+            this.targetLevel == nextLevel &&
+            this.targetPeak == nextPeak &&
+            this.meterModel == meterModel &&
+            this.inactiveColor == inactiveColor &&
+            this.activeColor == activeColor &&
+            this.peakColor == peakColor &&
+            this.sweepColor == sweepColor
+        ) {
+            return
+        }
+        this.targetLevel = nextLevel
+        this.targetPeak = nextPeak
+        this.meterModel = meterModel
+        this.inactiveColor = inactiveColor
+        this.activeColor = activeColor
+        this.peakColor = peakColor
+        this.sweepColor = sweepColor
+        scheduleAnimation()
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val latestModel = meterModel ?: return
+        val model = if (!latestModel.usesGlyphBrightnessPreview && !glyphMeterPreviewEnabled) {
+            buildUiMeterModel(
+                level = displayedLevel,
+                meterSegments = (displayedLevel * 16f).roundToInt().coerceIn(0, 16),
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = false,
+                reverseDirection = reverseDirection
+            )
+        } else {
+            latestModel
+        }
+        val segmentCount = model.segmentCount.coerceAtLeast(1)
+        val centerIndex = segmentCount / 2
+        val density = resources.displayMetrics.density
+        val segmentGap = (if (compactMode) 4f else 10f) * density
+        val totalGap = segmentGap * (segmentCount - 1)
+        val segmentWidth = ((width - totalGap) / segmentCount.toFloat()).coerceAtLeast(1f)
+        val maxHeight = height.toFloat()
+        val radius = segmentWidth / 2f
+
+        for (segment in 0 until segmentCount) {
+            val left = segment * (segmentWidth + segmentGap)
+            val segmentRatio = if (compactMode) {
+                1f
+            } else if (model.usesSymmetricCenterLayout) {
+                val leftCenterIndex = if (model.symmetricSeedCount == 2) {
+                    (centerIndex - 1).coerceAtLeast(0)
+                } else {
+                    centerIndex
+                }
+                val nearestCenterDistance = minOf(
+                    kotlin.math.abs(segment - leftCenterIndex),
+                    kotlin.math.abs(segment - centerIndex)
+                ).toFloat()
+                val maxDistance = maxOf(leftCenterIndex, segmentCount - 1 - centerIndex)
+                    .toFloat()
+                    .coerceAtLeast(1f)
+                val outwardRatio = (nearestCenterDistance / maxDistance).coerceIn(0f, 1f)
+                val mountainRatio = if (model.centerDirectionReversed) 1f - outwardRatio else outwardRatio
+                (0.2f + mountainRatio * 0.8f).coerceIn(0.2f, 1f)
+            } else {
+                (segment + 1) / segmentCount.toFloat()
+            }
+            val barHeight = maxHeight * segmentRatio
+            val top = maxHeight - barHeight
+            val intensity = model.segmentLevels.getOrElse(segment) { 0f }.coerceIn(0f, 1f)
+
+            rect.set(left, top, left + segmentWidth, maxHeight)
+            paint.color = inactiveColor
+            canvas.drawRoundRect(rect, radius, radius, paint)
+
+            if (intensity > 0.001f) {
+                val activeAlpha = if (compactMode) {
+                    0.18f + intensity * 0.82f
+                } else {
+                    0.28f + intensity * 0.72f
+                }
+                paint.color = applyAlpha(activeColor, activeAlpha)
+                canvas.drawRoundRect(rect, radius, radius, paint)
+            }
+        }
+
+        drawPeak(canvas, model, segmentCount, centerIndex, segmentWidth, segmentGap, maxHeight, density)
+
+        if (!compactMode && !model.usesGlyphBrightnessPreview) {
+            val sweepHeight = maxHeight * displayedLevel.coerceIn(0f, 1f)
+            rect.set(0f, maxHeight - sweepHeight, width.toFloat(), maxHeight)
+            paint.color = sweepColor
+            canvas.drawRoundRect(rect, 40f, 40f, paint)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (animationScheduled) {
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+            animationScheduled = false
+        }
+        super.onDetachedFromWindow()
+    }
+
+    private fun scheduleAnimation() {
+        if (!isAttachedToWindow) {
+            displayedLevel = targetLevel
+            displayedPeak = targetPeak
+            invalidate()
+            return
+        }
+        if (!animationScheduled) {
+            animationScheduled = true
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
+    }
+
+    private fun stepAnimation(frameTimeNanos: Long) {
+        val deltaSeconds = if (lastAnimationFrameNanos == 0L) {
+            1f / 60f
+        } else {
+            ((frameTimeNanos - lastAnimationFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+        }
+        lastAnimationFrameNanos = frameTimeNanos
+        displayedLevel = approach(displayedLevel, targetLevel, deltaSeconds, speed = 18f)
+        displayedPeak = approach(displayedPeak, targetPeak, deltaSeconds, speed = 8f)
+        invalidate()
+        if (abs(displayedLevel - targetLevel) > 0.002f || abs(displayedPeak - targetPeak) > 0.002f) {
+            scheduleAnimation()
+        } else {
+            displayedLevel = targetLevel
+            displayedPeak = targetPeak
+            lastAnimationFrameNanos = 0L
+            invalidate()
+        }
+    }
+
+    private fun approach(current: Float, target: Float, deltaSeconds: Float, speed: Float): Float {
+        val factor = (1f - kotlin.math.exp(-speed * deltaSeconds)).coerceIn(0f, 1f)
+        return current + (target - current) * factor
+    }
+
+    private fun drawPeak(
+        canvas: android.graphics.Canvas,
+        model: UiMeterModel,
+        segmentCount: Int,
+        centerIndex: Int,
+        segmentWidth: Float,
+        segmentGap: Float,
+        maxHeight: Float,
+        density: Float
+    ) {
+        paint.color = peakColor
+        paint.strokeWidth = (if (compactMode) 3f else 6f) * density
+        paint.strokeCap = Paint.Cap.ROUND
+
+        if (model.usesSymmetricCenterLayout) {
+            val centerPeakX = centerIndex * (segmentWidth + segmentGap) + segmentWidth / 2f
+            val leftCenterPeakX = if (model.symmetricSeedCount == 2) {
+                (centerIndex - 1).coerceAtLeast(0) * (segmentWidth + segmentGap) + segmentWidth / 2f
+            } else {
+                centerPeakX
+            }
+            val betweenCentersPeakX = (leftCenterPeakX + centerPeakX) / 2f
+            val maxPairDistance = symmetricPeakDistanceSteps(segmentCount, model.symmetricSeedCount)
+            val peakHalfWidth = if (model.centerDirectionReversed) segmentWidth / 2f else 0f
+            val peakProgress = if (model.centerDirectionReversed) 1f - displayedPeak else displayedPeak
+            val peakDistance = peakProgress.coerceIn(0f, 1f) * maxPairDistance
+            val leftPeakX: Float
+            val rightPeakX: Float
+
+            if (peakDistance <= 0.001f) {
+                leftPeakX = if (model.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
+                rightPeakX = leftPeakX
+            } else if (model.symmetricSeedCount == 2) {
+                val unitSpan = segmentWidth + segmentGap
+                if (peakDistance <= 1f) {
+                    val halfGap = (centerPeakX - leftCenterPeakX) / 2f
+                    leftPeakX = betweenCentersPeakX - halfGap * peakDistance
+                    rightPeakX = betweenCentersPeakX + halfGap * peakDistance
+                } else {
+                    val extraTravel = unitSpan * (peakDistance - 1f)
+                    leftPeakX = leftCenterPeakX - extraTravel
+                    rightPeakX = centerPeakX + extraTravel
+                }
+            } else {
+                val travelPerSide = (segmentWidth + segmentGap) * peakDistance
+                leftPeakX = centerPeakX - travelPerSide
+                rightPeakX = centerPeakX + travelPerSide
+            }
+
+            canvas.drawLine(
+                (leftPeakX - peakHalfWidth).coerceIn(0f, width.toFloat()),
+                0f,
+                (leftPeakX - peakHalfWidth).coerceIn(0f, width.toFloat()),
+                maxHeight,
+                paint
+            )
+            canvas.drawLine(
+                (rightPeakX + peakHalfWidth).coerceIn(0f, width.toFloat()),
+                0f,
+                (rightPeakX + peakHalfWidth).coerceIn(0f, width.toFloat()),
+                maxHeight,
+                paint
+            )
+        } else {
+            val peakX = displayedPeak.coerceIn(0f, 1f) * (segmentCount - 1).coerceAtLeast(0) * (segmentWidth + segmentGap) +
+                segmentWidth / 2f
+            canvas.drawLine(peakX, 0f, peakX, maxHeight, paint)
+        }
+        paint.strokeCap = Paint.Cap.BUTT
+    }
+
+    private fun applyAlpha(color: Int, alpha: Float): Int {
+        val safeAlpha = (alpha.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
+        return (color and 0x00FFFFFF) or (safeAlpha shl 24)
+    }
+}
+
+private class NativeSpectrumMeterView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : View(context, attrs) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var deviceProfile = GlyphDeviceCatalog.currentProfile()
+    private var inactiveColor = 0x14000000
+    private var activeColor = android.graphics.Color.BLACK
+    private var targetLevel = 0f
+    private var displayedLevel = 0f
+    private var targetBands = FloatArray(DEFAULT_SPECTRUM_METER_BANDS)
+    private var displayedBands = FloatArray(DEFAULT_SPECTRUM_METER_BANDS)
+    private var animationScheduled = false
+    private var lastAnimationFrameNanos = 0L
+    private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
+        animationScheduled = false
+        stepAnimation(frameTimeNanos)
+    }
+
+    fun configure(
+        glyphMode: String,
+        deviceProfile: GlyphDeviceProfile,
+        inactiveColor: Int,
+        activeColor: Int
+    ) {
+        val changed =
+            this.glyphMode != glyphMode ||
+                this.deviceProfile != deviceProfile ||
+                this.inactiveColor != inactiveColor ||
+                this.activeColor != activeColor
+        this.glyphMode = glyphMode
+        this.deviceProfile = deviceProfile
+        this.inactiveColor = inactiveColor
+        this.activeColor = activeColor
+        if (changed) {
+            targetBands = normalizedSpectrumMeterBands(targetBands, glyphMode, deviceProfile)
+            displayedBands = normalizedSpectrumMeterBands(displayedBands, glyphMode, deviceProfile)
+            invalidate()
+        }
+    }
+
+    fun setLiveFrame(frame: CaptureLiveFrame) {
+        val nextBands = normalizedSpectrumMeterBands(frame.spectrumBands, glyphMode, deviceProfile)
+        targetLevel = frame.level.coerceIn(0f, 1f)
+        if (!targetBands.contentEquals(nextBands)) {
+            targetBands = nextBands
+        }
+        if (displayedBands.size != targetBands.size) {
+            displayedBands = targetBands.copyOf()
+        }
+        scheduleAnimation()
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val bandCount = displayedBands.size.coerceAtLeast(1)
+        val density = resources.displayMetrics.density
+        val gap = 3f * density
+        val totalGap = gap * (bandCount - 1)
+        val barWidth = ((width - totalGap) / bandCount.toFloat()).coerceAtLeast(1f)
+        val maxHeight = height.toFloat()
+        val radius = barWidth / 2f
+        for (i in 0 until bandCount) {
+            val left = i * (barWidth + gap)
+            rect.set(left, 0f, left + barWidth, maxHeight)
+            paint.color = inactiveColor
+            canvas.drawRoundRect(rect, radius, radius, paint)
+
+            val value = (displayedBands[i].coerceIn(0f, 1f) * displayedLevel.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+            if (value <= 0.001f) continue
+            val barHeight = maxHeight * value
+            rect.set(left, maxHeight - barHeight, left + barWidth, maxHeight)
+            paint.color = activeColor
+            canvas.drawRoundRect(rect, radius, radius, paint)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (animationScheduled) {
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+            animationScheduled = false
+        }
+        super.onDetachedFromWindow()
+    }
+
+    private fun scheduleAnimation() {
+        if (!isAttachedToWindow) {
+            displayedLevel = targetLevel
+            displayedBands = targetBands.copyOf()
+            invalidate()
+            return
+        }
+        if (!animationScheduled) {
+            animationScheduled = true
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        }
+    }
+
+    private fun stepAnimation(frameTimeNanos: Long) {
+        val deltaSeconds = if (lastAnimationFrameNanos == 0L) {
+            1f / 60f
+        } else {
+            ((frameTimeNanos - lastAnimationFrameNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+        }
+        lastAnimationFrameNanos = frameTimeNanos
+        val factor = (1f - kotlin.math.exp(-18f * deltaSeconds)).coerceIn(0f, 1f)
+        displayedLevel += (targetLevel - displayedLevel) * factor
+        if (displayedBands.size != targetBands.size) {
+            displayedBands = targetBands.copyOf()
+        } else {
+            for (i in displayedBands.indices) {
+                displayedBands[i] += (targetBands[i] - displayedBands[i]) * factor
+            }
+        }
+        invalidate()
+        val levelSettled = abs(displayedLevel - targetLevel) <= 0.002f
+        val bandsSettled = displayedBands.indices.all { abs(displayedBands[it] - targetBands[it]) <= 0.002f }
+        if (levelSettled && bandsSettled) {
+            displayedLevel = targetLevel
+            displayedBands = targetBands.copyOf()
+            lastAnimationFrameNanos = 0L
+            invalidate()
+        } else {
+            scheduleAnimation()
+        }
+    }
+}
+
+private class NativeMeterStatsView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : LinearLayout(context, attrs) {
+    private val levelColumn = LinearLayout(context)
+    private val segmentsColumn = LinearLayout(context)
+    private val levelLabelView = TextView(context)
+    private val levelValueView = TextView(context)
+    private val segmentsLabelView = TextView(context)
+    private val segmentsValueView = TextView(context)
+    private val spacerView = View(context)
+    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var deviceProfile = GlyphDeviceCatalog.currentProfile()
+    private var binaryMode = false
+    private var glyphMeterPreviewEnabled = false
+    private var reverseDirection = false
+    private var lightweightMode = false
+    private var spectrumMode = false
+    private var compact = false
+    private var valueColor = android.graphics.Color.BLACK
+    private var labelColor = android.graphics.Color.DKGRAY
+    private var useNothingFont = false
+    private var lastFrame = CaptureLiveFrame()
+
+    init {
+        gravity = Gravity.CENTER
+        setupStatColumn(levelColumn, levelLabelView, levelValueView)
+        setupStatColumn(segmentsColumn, segmentsLabelView, segmentsValueView)
+    }
+
+    fun configure(
+        levelLabel: String,
+        segmentsLabel: String,
+        glyphMode: String,
+        deviceProfile: GlyphDeviceProfile,
+        binaryMode: Boolean,
+        glyphMeterPreviewEnabled: Boolean,
+        reverseDirection: Boolean,
+        lightweightMode: Boolean,
+        spectrumMode: Boolean = false,
+        valueColor: Int,
+        labelColor: Int,
+        useNothingFont: Boolean,
+        compact: Boolean
+    ) {
+        levelLabelView.text = levelLabel
+        segmentsLabelView.text = segmentsLabel
+        this.glyphMode = glyphMode
+        this.deviceProfile = deviceProfile
+        this.binaryMode = binaryMode
+        this.glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+        this.reverseDirection = reverseDirection
+        this.lightweightMode = lightweightMode
+        this.spectrumMode = spectrumMode
+        this.valueColor = valueColor
+        this.labelColor = labelColor
+        this.useNothingFont = useNothingFont
+        if (this.compact != compact || childCount == 0) {
+            this.compact = compact
+            rebuildLayout()
+        } else {
+            this.compact = compact
+        }
+        setTextAppearance()
+        setLiveFrame(lastFrame)
+    }
+
+    fun setLiveFrame(frame: CaptureLiveFrame) {
+        lastFrame = frame
+        val activeSegments: Int
+        val segmentCount: Int
+        if (spectrumMode) {
+            val bands = normalizedSpectrumMeterBands(frame.spectrumBands, glyphMode, deviceProfile)
+            segmentCount = bands.size
+            activeSegments = bands.count { it * frame.level.coerceIn(0f, 1f) > 0.001f }
+        } else if (lightweightMode) {
+            segmentCount = 16
+            activeSegments = (frame.level.coerceIn(0f, 1f) * segmentCount).toInt().coerceIn(0, segmentCount)
+        } else {
+            val model = buildUiMeterModel(
+                level = frame.level,
+                meterSegments = frame.meterSegments,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection
+            )
+            activeSegments = model.activeSegments
+            segmentCount = model.segmentCount
+        }
+        levelValueView.text = "${(frame.level.coerceIn(0f, 1f) * 100f).toInt()}%"
+        segmentsValueView.text = "$activeSegments / $segmentCount"
+    }
+
+    private fun setupStatColumn(column: LinearLayout, labelView: TextView, valueView: TextView) {
+        column.orientation = VERTICAL
+        column.gravity = Gravity.CENTER
+        labelView.includeFontPadding = false
+        valueView.includeFontPadding = false
+        column.addView(labelView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+        column.addView(valueView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+    }
+
+    private fun rebuildLayout() {
+        removeAllViews()
+        orientation = if (compact) VERTICAL else HORIZONTAL
+        gravity = if (compact) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.CENTER_VERTICAL
+        levelColumn.gravity = if (compact) Gravity.END else Gravity.START
+        segmentsColumn.gravity = if (compact) Gravity.END else Gravity.CENTER
+        val firstParams = if (compact) {
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        } else {
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        }
+        val secondParams = if (compact) {
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (2f * resources.displayMetrics.density).toInt()
+            }
+        } else {
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        }
+        addView(levelColumn, firstParams)
+        if (!compact) {
+            addView(spacerView, LayoutParams(0, 1, 1f))
+        }
+        addView(segmentsColumn, secondParams)
+    }
+
+    private fun setTextAppearance() {
+        val labelSize = if (compact) 9f else 11f
+        val valueSize = if (compact) 16f else 20f
+        val valueTypeface = if (useNothingFont) {
+            ResourcesCompat.getFont(context, R.font.ndot_55) ?: android.graphics.Typeface.DEFAULT
+        } else {
+            android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        listOf(levelLabelView, segmentsLabelView).forEach {
+            it.setTextColor(labelColor)
+            it.textSize = labelSize
+            it.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL)
+            it.gravity = if (compact) Gravity.END else if (it === levelLabelView) Gravity.START else Gravity.END
+        }
+        listOf(levelValueView, segmentsValueView).forEach {
+            it.setTextColor(valueColor)
+            it.textSize = valueSize
+            it.typeface = valueTypeface
+            it.gravity = if (compact) Gravity.END else if (it === levelValueView) Gravity.START else Gravity.END
+        }
+    }
+}
 
 private enum class Screen {
     WELCOME,
@@ -184,6 +852,7 @@ class MainActivity : ComponentActivity() {
     private val delayedParameterSyncRunnable = Runnable {
         syncCurrentParameters()
     }
+    private var delayedMatrixSmoothMotionApplyRunnable: Runnable? = null
 
     private enum class CaptureMode {
         VISUALIZER,
@@ -201,6 +870,7 @@ class MainActivity : ComponentActivity() {
 
     private var pendingStartMode: CaptureMode? = null
     private var pendingExportContent: String? = null
+    private var pendingMediaPlaybackOnlyPermissionRequest = false
     private var pendingPhone1GlyphDebugPermissionRequestFromManual by mutableStateOf(false)
     private var showPhone1GlyphDebugPermissionDialog by mutableStateOf(false)
 
@@ -321,12 +991,19 @@ class MainActivity : ComponentActivity() {
             latencyMs = uiState.latencyMs,
             mediaPlaybackOnlyEnabled = uiState.mediaPlaybackOnlyEnabled,
             experimentalVisualizerStabilizationEnabled = uiState.experimentalVisualizerStabilizationEnabled,
+            experimentalVisualizerSignalWatchdogEnabled = uiState.experimentalVisualizerSignalWatchdogEnabled,
+            experimentalSpectrumDecayEnabled = uiState.experimentalSpectrumDecayEnabled,
+            experimentalPerformanceOptimizationsEnabled = uiState.experimentalPerformanceOptimizationsEnabled,
+            matrixSmoothMotionEnabled = uiState.matrixSmoothMotionEnabled,
+            oscilloscopeAutoTimeAxisEnabled = uiState.oscilloscopeAutoTimeAxisEnabled,
             turnOffWhenBackDown = uiState.turnOffWhenBackDown
         )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.init(this)
+        CaptureUiStore.setUiVisible(true)
         enableEdgeToEdge()
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)
@@ -335,40 +1012,9 @@ class MainActivity : ComponentActivity() {
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolvedLatencySettings = savedSettings.withResolvedLatency(bluetoothOutputActive)
         CaptureUiStore.update {
-            it.copy(
+            resolvedLatencySettings.copy(
                 statusText = getString(R.string.status_preparing_glyph_session),
-                sensitivity = resolvedLatencySettings.sensitivity,
-                noiseGate = resolvedLatencySettings.noiseGate,
-                dynamics = resolvedLatencySettings.dynamics,
-                outputGamma = resolvedLatencySettings.outputGamma,
-                toneFocus = resolvedLatencySettings.toneFocus,
-                smoothing = resolvedLatencySettings.smoothing,
-                smoothingBalance = resolvedLatencySettings.smoothingBalance,
-                autoScaleWindowSeconds = resolvedLatencySettings.autoScaleWindowSeconds,
-                autoScaleOffset = resolvedLatencySettings.autoScaleOffset,
-                latencyMs = resolvedLatencySettings.latencyMs,
-                defaultOutputLatencyMs = resolvedLatencySettings.defaultOutputLatencyMs,
-                bluetoothLatencyMs = resolvedLatencySettings.bluetoothLatencyMs,
-                latencyAutoSwitchEnabled = resolvedLatencySettings.latencyAutoSwitchEnabled,
-                isBluetoothOutputActive = resolvedLatencySettings.isBluetoothOutputActive,
-                reverseDirection = resolvedLatencySettings.reverseDirection,
-                    peakHoldEnabled = resolvedLatencySettings.peakHoldEnabled,
-                glyphMode = normalizedMode,
-                fillOtherGlyphLights = resolvedLatencySettings.fillOtherGlyphLights,
-                binaryMode = resolvedLatencySettings.binaryMode,
-                baseIndicatorEnabled = resolvedLatencySettings.baseIndicatorEnabled,
-                levelAutoScale = resolvedLatencySettings.levelAutoScale,
-                    spectrumAutoScale = resolvedLatencySettings.spectrumAutoScale,
-                    mediaProjectionEnabled = resolvedLatencySettings.mediaProjectionEnabled,
-                    glyphMeterPreviewEnabled = resolvedLatencySettings.glyphMeterPreviewEnabled,
-                automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
-                mediaPlaybackOnlyEnabled = resolvedLatencySettings.mediaPlaybackOnlyEnabled,
-                experimentalVisualizerStabilizationEnabled = resolvedLatencySettings.experimentalVisualizerStabilizationEnabled,
-                showPhone1GlyphDebugControlsEverywhere = resolvedLatencySettings.showPhone1GlyphDebugControlsEverywhere,
-                autoEnablePhone1GlyphDebugOnStart = resolvedLatencySettings.autoEnablePhone1GlyphDebugOnStart,
-                nothingStyleEnabled = resolvedLatencySettings.nothingStyleEnabled,
-                turnOffWhenBackDown = resolvedLatencySettings.turnOffWhenBackDown,
-                allBrightnessAutoScale = resolvedLatencySettings.allBrightnessAutoScale,
+                glyphMode = normalizedMode
             )
         }
         setContent {
@@ -415,9 +1061,18 @@ class MainActivity : ComponentActivity() {
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
                     mediaProjectionEnabled = uiState.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
+                    meterVisibleEnabled = uiState.meterVisibleEnabled,
+                    lightweightMeterEnabled = uiState.lightweightMeterEnabled,
+                    spectrumMeterEnabled = uiState.spectrumMeterEnabled,
+                    nativeMeterViewEnabled = uiState.nativeMeterViewEnabled,
+                    mainScreenUiIsolationEnabled = uiState.mainScreenUiIsolationEnabled,
                     automaticUpdateCheckEnabled = uiState.automaticUpdateCheckEnabled,
                     mediaPlaybackOnlyEnabled = uiState.mediaPlaybackOnlyEnabled,
                     experimentalVisualizerStabilizationEnabled = uiState.experimentalVisualizerStabilizationEnabled,
+                    experimentalVisualizerSignalWatchdogEnabled = uiState.experimentalVisualizerSignalWatchdogEnabled,
+                    experimentalPerformanceOptimizationsEnabled = uiState.experimentalPerformanceOptimizationsEnabled,
+                    matrixSmoothMotionEnabled = uiState.matrixSmoothMotionEnabled,
+                    oscilloscopeAutoTimeAxisEnabled = uiState.oscilloscopeAutoTimeAxisEnabled,
                     showPhone1GlyphDebugControlsEverywhere = uiState.showPhone1GlyphDebugControlsEverywhere,
                     autoEnablePhone1GlyphDebugOnStart = uiState.autoEnablePhone1GlyphDebugOnStart,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
@@ -491,55 +1146,52 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
+                    onMeterVisibleEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(meterVisibleEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onLightweightMeterEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(lightweightMeterEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onSpectrumMeterEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(spectrumMeterEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
+                    onNativeMeterViewEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(nativeMeterViewEnabled = enabled)
+                        CaptureUiStore.update { updated }
+                        SettingsPreferences.save(this, updated)
+                    },
                     onAutomaticUpdateCheckEnabledChanged = { enabled ->
                         val updated = CaptureUiStore.state.copy(automaticUpdateCheckEnabled = enabled)
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
                     onMediaPlaybackOnlyEnabledChanged = { enabled ->
-                        val updated = CaptureUiStore.state.copy(mediaPlaybackOnlyEnabled = enabled)
-                        CaptureUiStore.update { updated }
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma
-                        )
-                        SettingsPreferences.save(this, updated)
                         if (enabled && !MediaSessionPlaybackGate.hasNotificationAccess(this)) {
                             val opened = openNotificationAccessSettings(this)
                             if (!opened) {
+                                pendingMediaPlaybackOnlyPermissionRequest = false
                                 Toast.makeText(
                                     this,
                                     getString(R.string.settings_media_playback_only_open_failed),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             } else {
+                                pendingMediaPlaybackOnlyPermissionRequest = true
                                 Toast.makeText(
                                     this,
                                     getString(R.string.settings_media_playback_only_permission_required),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
+                        } else {
+                            pendingMediaPlaybackOnlyPermissionRequest = false
+                            applyMediaPlaybackOnlyEnabled(enabled)
                         }
                     },
                     onExperimentalVisualizerStabilizationEnabledChanged = { enabled ->
@@ -569,10 +1221,74 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
+                    },
+                    onExperimentalVisualizerSignalWatchdogEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            experimentalVisualizerSignalWatchdogEnabled = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        syncCurrentParameters(updated)
+                    },
+                    onMatrixSmoothMotionEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            matrixSmoothMotionEnabled = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        delayedMatrixSmoothMotionApplyRunnable?.let(parameterSyncHandler::removeCallbacks)
+                        delayedMatrixSmoothMotionApplyRunnable = Runnable {
+                            GlyphVisualizerService.updateSensitivity(
+                                this,
+                                updated.sensitivity,
+                                updated.noiseGate,
+                                updated.dynamics,
+                                updated.toneFocus,
+                                updated.smoothing,
+                                updated.smoothingBalance,
+                                updated.reverseDirection,
+                                updated.peakHoldEnabled,
+                                updated.glyphMode,
+                                updated.fillOtherGlyphLights,
+                                updated.binaryMode,
+                                updated.baseIndicatorEnabled,
+                                updated.levelAutoScale,
+                                updated.spectrumAutoScale,
+                                updated.allBrightnessAutoScale,
+                                updated.autoScaleWindowSeconds,
+                                updated.autoScaleOffset,
+                                updated.latencyMs,
+                                updated.mediaPlaybackOnlyEnabled,
+                                updated.experimentalVisualizerStabilizationEnabled,
+                                updated.experimentalVisualizerSignalWatchdogEnabled,
+                                updated.experimentalSpectrumDecayEnabled,
+                                updated.experimentalPerformanceOptimizationsEnabled,
+                                updated.matrixSmoothMotionEnabled,
+                                updated.turnOffWhenBackDown,
+                                updated.outputGamma,
+                                updated.oscilloscopeAutoTimeAxisEnabled
+                            )
+                            SettingsPreferences.save(this, updated)
+                            delayedMatrixSmoothMotionApplyRunnable = null
+                        }
+                        parameterSyncHandler.postDelayed(
+                            delayedMatrixSmoothMotionApplyRunnable!!,
+                            140L
+                        )
+                    },
+                    onOscilloscopeAutoTimeAxisEnabledChanged = { enabled ->
+                        val updated = CaptureUiStore.state.copy(
+                            oscilloscopeAutoTimeAxisEnabled = enabled
+                        )
+                        CaptureUiStore.update { updated }
+                        syncCurrentParameters(updated)
                     },
                     onShowPhone1GlyphDebugControlsEverywhereChanged = { enabled ->
                         val updated = CaptureUiStore.state.copy(
@@ -617,8 +1333,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -655,8 +1376,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -685,8 +1411,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -715,8 +1446,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -745,8 +1481,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -775,8 +1516,13 @@ class MainActivity : ComponentActivity() {
                             updated.latencyMs,
                             updated.mediaPlaybackOnlyEnabled,
                             updated.experimentalVisualizerStabilizationEnabled,
+                            updated.experimentalVisualizerSignalWatchdogEnabled,
+                            updated.experimentalSpectrumDecayEnabled,
+                            updated.experimentalPerformanceOptimizationsEnabled,
+                            updated.matrixSmoothMotionEnabled,
                             updated.turnOffWhenBackDown,
-                            updated.outputGamma
+                            updated.outputGamma,
+                            updated.oscilloscopeAutoTimeAxisEnabled
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -882,8 +1628,13 @@ class MainActivity : ComponentActivity() {
             routeAware.latencyMs,
             routeAware.mediaPlaybackOnlyEnabled,
             routeAware.experimentalVisualizerStabilizationEnabled,
+            routeAware.experimentalVisualizerSignalWatchdogEnabled,
+            routeAware.experimentalSpectrumDecayEnabled,
+            routeAware.experimentalPerformanceOptimizationsEnabled,
+            routeAware.matrixSmoothMotionEnabled,
             routeAware.turnOffWhenBackDown,
-            routeAware.outputGamma
+            routeAware.outputGamma,
+            routeAware.oscilloscopeAutoTimeAxisEnabled
         )
         SettingsPreferences.save(this, routeAware)
     }
@@ -916,6 +1667,11 @@ class MainActivity : ComponentActivity() {
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
                 experimentalVisualizerStabilizationEnabled = parameters.experimentalVisualizerStabilizationEnabled,
+                experimentalVisualizerSignalWatchdogEnabled = parameters.experimentalVisualizerSignalWatchdogEnabled,
+                experimentalSpectrumDecayEnabled = parameters.experimentalSpectrumDecayEnabled,
+                experimentalPerformanceOptimizationsEnabled = parameters.experimentalPerformanceOptimizationsEnabled,
+                matrixSmoothMotionEnabled = parameters.matrixSmoothMotionEnabled,
+                oscilloscopeAutoTimeAxisEnabled = parameters.oscilloscopeAutoTimeAxisEnabled,
                 turnOffWhenBackDown = parameters.turnOffWhenBackDown
             )
         }
@@ -942,8 +1698,13 @@ class MainActivity : ComponentActivity() {
             updated.latencyMs,
             updated.mediaPlaybackOnlyEnabled,
             updated.experimentalVisualizerStabilizationEnabled,
+            updated.experimentalVisualizerSignalWatchdogEnabled,
+            updated.experimentalSpectrumDecayEnabled,
+            updated.experimentalPerformanceOptimizationsEnabled,
+            updated.matrixSmoothMotionEnabled,
             updated.turnOffWhenBackDown,
-            updated.outputGamma
+            updated.outputGamma,
+            updated.oscilloscopeAutoTimeAxisEnabled
         )
         SettingsPreferences.save(this, updated)
     }
@@ -982,10 +1743,74 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        CaptureUiStore.setUiVisible(true)
+        if (!CaptureUiStore.state.isCapturing) {
+            CaptureUiStore.syncLiveFrameFromState()
+        }
+        if (pendingMediaPlaybackOnlyPermissionRequest) {
+            pendingMediaPlaybackOnlyPermissionRequest = false
+            if (MediaSessionPlaybackGate.hasNotificationAccess(this)) {
+                applyMediaPlaybackOnlyEnabled(true)
+            } else if (CaptureUiStore.state.mediaPlaybackOnlyEnabled) {
+                applyMediaPlaybackOnlyEnabled(false)
+            }
+        } else if (
+            CaptureUiStore.state.mediaPlaybackOnlyEnabled &&
+            !MediaSessionPlaybackGate.hasNotificationAccess(this)
+        ) {
+            applyMediaPlaybackOnlyEnabled(false)
+        }
+    }
+
+    override fun onStop() {
+        CaptureUiStore.setUiVisible(false)
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        CaptureUiStore.setUiVisible(false)
         parameterSyncHandler.removeCallbacks(delayedParameterSyncRunnable)
         runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
         super.onDestroy()
+    }
+
+    private fun applyMediaPlaybackOnlyEnabled(enabled: Boolean) {
+        val safeEnabled = enabled && MediaSessionPlaybackGate.hasNotificationAccess(this)
+        val updated = CaptureUiStore.state.copy(mediaPlaybackOnlyEnabled = safeEnabled)
+        CaptureUiStore.update { updated }
+        GlyphVisualizerService.updateSensitivity(
+            this,
+            updated.sensitivity,
+            updated.noiseGate,
+            updated.dynamics,
+            updated.toneFocus,
+            updated.smoothing,
+            updated.smoothingBalance,
+            updated.reverseDirection,
+            updated.peakHoldEnabled,
+            updated.glyphMode,
+            updated.fillOtherGlyphLights,
+            updated.binaryMode,
+            updated.baseIndicatorEnabled,
+            updated.levelAutoScale,
+            updated.spectrumAutoScale,
+            updated.allBrightnessAutoScale,
+            updated.autoScaleWindowSeconds,
+            updated.autoScaleOffset,
+            updated.latencyMs,
+            updated.mediaPlaybackOnlyEnabled,
+            updated.experimentalVisualizerStabilizationEnabled,
+            updated.experimentalVisualizerSignalWatchdogEnabled,
+            updated.experimentalSpectrumDecayEnabled,
+            updated.experimentalPerformanceOptimizationsEnabled,
+            updated.matrixSmoothMotionEnabled,
+            updated.turnOffWhenBackDown,
+            updated.outputGamma,
+            updated.oscilloscopeAutoTimeAxisEnabled
+        )
+        SettingsPreferences.save(this, updated)
     }
 
     private fun silentlyEnablePhone1GlyphDebugIfPossible() {
@@ -1104,8 +1929,13 @@ class MainActivity : ComponentActivity() {
                 uiState.latencyMs,
                 uiState.mediaPlaybackOnlyEnabled,
                 uiState.experimentalVisualizerStabilizationEnabled,
+                uiState.experimentalVisualizerSignalWatchdogEnabled,
+                uiState.experimentalSpectrumDecayEnabled,
+                uiState.experimentalPerformanceOptimizationsEnabled,
+                uiState.matrixSmoothMotionEnabled,
                 uiState.turnOffWhenBackDown,
-                uiState.outputGamma
+                uiState.outputGamma,
+                uiState.oscilloscopeAutoTimeAxisEnabled
             )
             AppLogger.i(
                 "MainActivity",
@@ -1171,15 +2001,24 @@ private fun GlyphVisualizerApp(
     isPhone4aDevice: Boolean,
     isPhone1Device: Boolean,
     binaryMode: Boolean,
+    matrixSmoothMotionEnabled: Boolean,
+    oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    mainScreenUiIsolationEnabled: Boolean,
     automaticUpdateCheckEnabled: Boolean,
     mediaPlaybackOnlyEnabled: Boolean,
     experimentalVisualizerStabilizationEnabled: Boolean,
+    experimentalVisualizerSignalWatchdogEnabled: Boolean,
+    experimentalPerformanceOptimizationsEnabled: Boolean,
     showPhone1GlyphDebugControlsEverywhere: Boolean,
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     nothingStyleEnabled: Boolean,
@@ -1199,9 +2038,16 @@ private fun GlyphVisualizerApp(
     onLatencyMsChangeFinished: () -> Unit,
     onLatencyAutoSwitchChanged: (Boolean) -> Unit,
     onGlyphMeterPreviewEnabledChanged: (Boolean) -> Unit,
+    onMeterVisibleEnabledChanged: (Boolean) -> Unit,
+    onLightweightMeterEnabledChanged: (Boolean) -> Unit,
+    onSpectrumMeterEnabledChanged: (Boolean) -> Unit,
+    onNativeMeterViewEnabledChanged: (Boolean) -> Unit,
     onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
     onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
+    onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,
+    onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
+    onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
@@ -1374,12 +2220,19 @@ private fun GlyphVisualizerApp(
                         isPhone4aDevice = isPhone4aDevice,
                         isPhone1Device = showPhone1GlyphDebugControls,
                         binaryMode = binaryMode,
+                        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         mediaProjectionEnabled = mediaProjectionEnabled,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                        meterVisibleEnabled = meterVisibleEnabled,
+                        lightweightMeterEnabled = lightweightMeterEnabled,
+                        spectrumMeterEnabled = spectrumMeterEnabled,
+                        nativeMeterViewEnabled = nativeMeterViewEnabled,
+                        mainScreenUiIsolationEnabled = mainScreenUiIsolationEnabled,
                         nothingStyleEnabled = nothingStyleEnabled,
                         turnOffWhenBackDown = turnOffWhenBackDown,
                         onResetParametersClick = onResetParametersClick,
@@ -1400,6 +2253,8 @@ private fun GlyphVisualizerApp(
                         onGlyphModeChanged = onGlyphModeChanged,
                         onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
+                        onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
+                        onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
@@ -1442,12 +2297,32 @@ private fun GlyphVisualizerApp(
                         onMediaProjectionEnabledChanged = onMediaProjectionEnabledChanged,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
                         onGlyphMeterPreviewEnabledChanged = onGlyphMeterPreviewEnabledChanged,
+                        meterVisibleEnabled = meterVisibleEnabled,
+                        onMeterVisibleEnabledChanged = onMeterVisibleEnabledChanged,
+                        lightweightMeterEnabled = lightweightMeterEnabled,
+                        onLightweightMeterEnabledChanged = onLightweightMeterEnabledChanged,
+                        spectrumMeterEnabled = spectrumMeterEnabled,
+                        onSpectrumMeterEnabledChanged = onSpectrumMeterEnabledChanged,
+                        onMeterStyleChanged = { visible, lightweight, spectrum, faithful ->
+                            val updated = CaptureUiStore.state.copy(
+                                meterVisibleEnabled = visible,
+                                lightweightMeterEnabled = lightweight,
+                                spectrumMeterEnabled = spectrum,
+                                glyphMeterPreviewEnabled = faithful
+                            )
+                            CaptureUiStore.update { updated }
+                            SettingsPreferences.save(context, updated)
+                        },
+                        nativeMeterViewEnabled = nativeMeterViewEnabled,
+                        onNativeMeterViewEnabledChanged = onNativeMeterViewEnabledChanged,
                         automaticUpdateCheckEnabled = automaticUpdateCheckEnabled,
                         onAutomaticUpdateCheckEnabledChanged = onAutomaticUpdateCheckEnabledChanged,
                         mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                         onMediaPlaybackOnlyEnabledChanged = onMediaPlaybackOnlyEnabledChanged,
                         experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
                         onExperimentalVisualizerStabilizationEnabledChanged = onExperimentalVisualizerStabilizationEnabledChanged,
+                        experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+                        onExperimentalVisualizerSignalWatchdogEnabledChanged = onExperimentalVisualizerSignalWatchdogEnabledChanged,
                         showPhone1GlyphDebugControlsEverywhere = showPhone1GlyphDebugControlsEverywhere,
                         onShowPhone1GlyphDebugControlsEverywhereChanged = onShowPhone1GlyphDebugControlsEverywhereChanged,
                         showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device || showPhone1GlyphDebugControlsEverywhere,
@@ -1815,12 +2690,19 @@ private fun MainScreenContent(
     isPhone4aDevice: Boolean,
     isPhone1Device: Boolean,
     binaryMode: Boolean,
+    matrixSmoothMotionEnabled: Boolean,
+    oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    mainScreenUiIsolationEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
     onResetParametersClick: () -> Unit,
@@ -1841,6 +2723,8 @@ private fun MainScreenContent(
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
+    onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
+    onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
@@ -1859,16 +2743,20 @@ private fun MainScreenContent(
     val scrollState = rememberScrollState()
     var heroBottomInRoot by remember { mutableStateOf(Float.POSITIVE_INFINITY) }
     var compactMeterDismissed by rememberSaveable { mutableStateOf(false) }
-    val meterModel = remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled, reverseDirection) {
-        buildUiMeterModel(
-            level = level,
-            meterSegments = meterSegments,
-            glyphMode = glyphMode,
-            deviceProfile = deviceProfile,
-            binaryMode = binaryMode,
-            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
-            reverseDirection = reverseDirection
-        )
+    val meterModel = if (!meterVisibleEnabled || lightweightMeterEnabled || spectrumMeterEnabled || nativeMeterViewEnabled) {
+        null
+    } else {
+        remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled, reverseDirection) {
+            buildUiMeterModel(
+                level = level,
+                meterSegments = meterSegments,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection
+            )
+        }
     }
     val collapsedMeterVisible = heroBottomInRoot <= 0f
     LaunchedEffect(collapsedMeterVisible) {
@@ -1922,26 +2810,61 @@ private fun MainScreenContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
-                    HeroCard(
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            heroBottomInRoot = coordinates.boundsInRoot().bottom
-                        },
-                        isCapturing = isCapturing,
-                        statusText = statusText,
-                        heroTitle = heroTitle,
-                        level = level,
-                        peak = peak,
-                        spectrumBands = spectrumBands,
-                        sensitivity = sensitivity,
-                        toneFocus = toneFocus,
-                        smoothing = smoothing,
-                        meterModel = meterModel,
-                        activeMode = activeMode,
-                        nothingStyleEnabled = nothingStyleEnabled
-                    )
+                    if (mainScreenUiIsolationEnabled && meterVisibleEnabled) {
+                        IsolatedHeroCard(
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                heroBottomInRoot = coordinates.boundsInRoot().bottom
+                            },
+                            isCapturing = isCapturing,
+                            statusText = statusText,
+                            heroTitle = heroTitle,
+                            sensitivity = sensitivity,
+                            toneFocus = toneFocus,
+                            smoothing = smoothing,
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            reverseDirection = reverseDirection,
+                            meterVisibleEnabled = meterVisibleEnabled,
+                            lightweightMeterEnabled = lightweightMeterEnabled,
+                            spectrumMeterEnabled = spectrumMeterEnabled,
+                            nativeMeterViewEnabled = nativeMeterViewEnabled,
+                            activeMode = activeMode,
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
+                    } else {
+                        HeroCard(
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                heroBottomInRoot = coordinates.boundsInRoot().bottom
+                            },
+                            isCapturing = isCapturing,
+                            statusText = statusText,
+                            heroTitle = heroTitle,
+                            level = level,
+                            peak = peak,
+                            spectrumBands = spectrumBands,
+                            sensitivity = sensitivity,
+                            toneFocus = toneFocus,
+                            smoothing = smoothing,
+                            meterModel = meterModel,
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            reverseDirection = reverseDirection,
+                            meterVisibleEnabled = meterVisibleEnabled,
+                            lightweightMeterEnabled = lightweightMeterEnabled,
+                            spectrumMeterEnabled = spectrumMeterEnabled,
+                            nativeMeterViewEnabled = nativeMeterViewEnabled,
+                            activeMode = activeMode,
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
+                    }
 
                     ControlCard(
                         isCapturing = isCapturing,
@@ -1966,6 +2889,8 @@ private fun MainScreenContent(
                         isPhone4aDevice = isPhone4aDevice,
                         isPhone1Device = isPhone1Device,
                         binaryMode = binaryMode,
+                        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
@@ -1991,6 +2916,8 @@ private fun MainScreenContent(
                         onGlyphModeChanged = onGlyphModeChanged,
                         onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
+                        onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
+                        onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
@@ -2015,20 +2942,44 @@ private fun MainScreenContent(
                 }
 
                 AnimatedVisibility(
-                    visible = collapsedMeterVisible && !compactMeterDismissed,
+                    visible = meterVisibleEnabled && collapsedMeterVisible && !compactMeterDismissed,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(horizontal = 20.dp),
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
-                    CompactMeterOverlay(
-                        level = level,
-                        peak = peak,
-                        meterModel = meterModel,
-                        nothingStyleEnabled = nothingStyleEnabled,
-                        onDismissUpward = { compactMeterDismissed = true }
-                    )
+                    if (mainScreenUiIsolationEnabled) {
+                        IsolatedCompactMeterOverlay(
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            reverseDirection = reverseDirection,
+                            lightweightMeterEnabled = lightweightMeterEnabled,
+                            spectrumMeterEnabled = spectrumMeterEnabled,
+                            nativeMeterViewEnabled = nativeMeterViewEnabled,
+                            nothingStyleEnabled = nothingStyleEnabled,
+                            onDismissUpward = { compactMeterDismissed = true }
+                        )
+                    } else {
+                        CompactMeterOverlay(
+                            level = level,
+                            peak = peak,
+                            spectrumBands = spectrumBands,
+                            meterModel = meterModel,
+                            lightweightMeterEnabled = lightweightMeterEnabled,
+                            spectrumMeterEnabled = spectrumMeterEnabled,
+                            nativeMeterViewEnabled = nativeMeterViewEnabled,
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            reverseDirection = reverseDirection,
+                            nothingStyleEnabled = nothingStyleEnabled,
+                            onDismissUpward = { compactMeterDismissed = true }
+                        )
+                    }
                 }
             }
         }
@@ -2102,15 +3053,16 @@ private fun LatencyScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 androidx.compose.material3.Card(
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
                     ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    border = materialCardBorder(nothingStyleEnabled),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
@@ -2534,17 +3486,26 @@ private fun HeroCard(
     sensitivity: Float,
     toneFocus: Float,
     smoothing: Float,
-    meterModel: UiMeterModel,
+    meterModel: UiMeterModel?,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
     activeMode: String,
     nothingStyleEnabled: Boolean
 ) {
     androidx.compose.material3.Card(
         modifier = modifier,
-        shape = RoundedCornerShape(32.dp),
+        shape = RoundedCornerShape(if (nothingStyleEnabled) 32.dp else 34.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+            containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = materialCardBorder(nothingStyleEnabled),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -2602,7 +3563,7 @@ private fun HeroCard(
 
                 Column(horizontalAlignment = Alignment.End) {
                     val statusChipBackground = if (isCapturing) {
-                        NothingRed
+                        if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
                     } else if (nothingStyleEnabled) {
                         if (isSystemInDarkTheme()) Color(0xFF2A2A2A) else Color(0xFFF2F2F2)
                     } else {
@@ -2642,12 +3603,52 @@ private fun HeroCard(
             }
 
             // Spectrum表示は現在無効 (コードは保持)
-            MeterCanvas(
-                level = level,
-                peak = peak,
-                meterModel = meterModel,
-                nothingStyleEnabled = nothingStyleEnabled
-            )
+            if (meterVisibleEnabled) {
+                if (spectrumMeterEnabled && nativeMeterViewEnabled) {
+                    DirectNativeSpectrumMeterCanvas(
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                } else if (spectrumMeterEnabled) {
+                    SpectrumMeterCanvas(
+                        level = level,
+                        spectrumBands = spectrumBands,
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                } else if (nativeMeterViewEnabled && lightweightMeterEnabled) {
+                    DirectNativeMeterCanvas(
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                } else if (lightweightMeterEnabled) {
+                    LightweightMeterCanvas(
+                        level = level,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                } else {
+                    if (nativeMeterViewEnabled) {
+                        DirectNativeDetailedMeterCanvas(
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            reverseDirection = reverseDirection,
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
+                    } else {
+                        meterModel?.let {
+                            MeterCanvas(
+                                level = level,
+                                peak = peak,
+                                meterModel = it,
+                                nothingStyleEnabled = nothingStyleEnabled
+                            )
+                        }
+                    }
+                }
+            }
 
             Text(
                 text = statusText,
@@ -2659,10 +3660,117 @@ private fun HeroCard(
 }
 
 @Composable
+private fun IsolatedHeroCard(
+    modifier: Modifier = Modifier,
+    isCapturing: Boolean,
+    statusText: String,
+    heroTitle: String,
+    sensitivity: Float,
+    toneFocus: Float,
+    smoothing: Float,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    activeMode: String,
+    nothingStyleEnabled: Boolean
+) {
+    if (nativeMeterViewEnabled) {
+        HeroCard(
+            modifier = modifier,
+            isCapturing = isCapturing,
+            statusText = statusText,
+            heroTitle = heroTitle,
+            level = 0f,
+            peak = 0f,
+            spectrumBands = FloatArray(0),
+            sensitivity = sensitivity,
+            toneFocus = toneFocus,
+            smoothing = smoothing,
+            meterModel = null,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            reverseDirection = reverseDirection,
+            meterVisibleEnabled = meterVisibleEnabled,
+            lightweightMeterEnabled = lightweightMeterEnabled,
+            spectrumMeterEnabled = spectrumMeterEnabled,
+            nativeMeterViewEnabled = nativeMeterViewEnabled,
+            activeMode = activeMode,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+    } else {
+        val liveFrame = CaptureUiStore.liveFrame
+        val meterModel = if (lightweightMeterEnabled || spectrumMeterEnabled) {
+            null
+        } else {
+            remember(
+                liveFrame.level,
+                liveFrame.meterSegments,
+                glyphMode,
+                deviceProfile,
+                binaryMode,
+                glyphMeterPreviewEnabled,
+                reverseDirection
+            ) {
+                buildUiMeterModel(
+                    level = liveFrame.level,
+                    meterSegments = liveFrame.meterSegments,
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    binaryMode = binaryMode,
+                    glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    reverseDirection = reverseDirection
+                )
+            }
+        }
+        HeroCard(
+            modifier = modifier,
+            isCapturing = isCapturing,
+            statusText = statusText,
+            heroTitle = heroTitle,
+            level = liveFrame.level,
+            peak = liveFrame.peak,
+            spectrumBands = liveFrame.spectrumBands,
+            sensitivity = sensitivity,
+            toneFocus = toneFocus,
+            smoothing = smoothing,
+            meterModel = meterModel,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            reverseDirection = reverseDirection,
+            meterVisibleEnabled = meterVisibleEnabled,
+            lightweightMeterEnabled = lightweightMeterEnabled,
+            spectrumMeterEnabled = spectrumMeterEnabled,
+            nativeMeterViewEnabled = nativeMeterViewEnabled,
+            activeMode = activeMode,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+    }
+}
+
+@Composable
 private fun CompactMeterOverlay(
     level: Float,
     peak: Float,
-    meterModel: UiMeterModel,
+    spectrumBands: FloatArray,
+    meterModel: UiMeterModel?,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
     nothingStyleEnabled: Boolean,
     onDismissUpward: () -> Unit
 ) {
@@ -2713,12 +3821,58 @@ private fun CompactMeterOverlay(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Canvas(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(28.dp)
-            ) {
-                val segmentCount = meterModel.segmentCount.coerceAtLeast(1)
+            if (spectrumMeterEnabled && nativeMeterViewEnabled) {
+                DirectNativeSpectrumMeterBar(
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                )
+            } else if (spectrumMeterEnabled) {
+                SpectrumMeterBar(
+                    level = level,
+                    spectrumBands = spectrumBands,
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                )
+            } else if (nativeMeterViewEnabled && lightweightMeterEnabled) {
+                DirectNativeMeterBar(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                )
+            } else if (lightweightMeterEnabled) {
+                LightweightMeterBar(
+                    level = level,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                )
+            } else if (nativeMeterViewEnabled) {
+                DirectNativeDetailedMeterBar(
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    binaryMode = binaryMode,
+                    glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    reverseDirection = reverseDirection,
+                    compact = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                )
+            } else {
+                Canvas(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                ) {
+                val safeMeterModel = meterModel ?: return@Canvas
+                val segmentCount = safeMeterModel.segmentCount.coerceAtLeast(1)
                 val centerIndex = segmentCount / 2
                 val gap = 4.dp.toPx()
                 val totalGap = gap * (segmentCount - 1)
@@ -2728,7 +3882,7 @@ private fun CompactMeterOverlay(
 
                 for (segment in 0 until segmentCount) {
                     val left = segment * (widthPerSegment + gap)
-                    val intensity = meterModel.segmentLevels.getOrElse(segment) { 0f }.coerceIn(0f, 1f)
+                    val intensity = safeMeterModel.segmentLevels.getOrElse(segment) { 0f }.coerceIn(0f, 1f)
                     val color = if (intensity > 0.001f) {
                         activeColor.copy(alpha = 0.18f + intensity * 0.82f)
                     } else {
@@ -2742,25 +3896,25 @@ private fun CompactMeterOverlay(
                     )
                 }
 
-                if (meterModel.usesSymmetricCenterLayout) {
+                if (safeMeterModel.usesSymmetricCenterLayout) {
                     val centerPeakX = centerIndex * (widthPerSegment + gap) + (widthPerSegment / 2f)
-                    val leftCenterPeakX = if (meterModel.symmetricSeedCount == 2) {
+                    val leftCenterPeakX = if (safeMeterModel.symmetricSeedCount == 2) {
                         (centerIndex - 1).coerceAtLeast(0) * (widthPerSegment + gap) + (widthPerSegment / 2f)
                     } else {
                         centerPeakX
                     }
                     val betweenCentersPeakX = (leftCenterPeakX + centerPeakX) / 2f
-                    val maxPairDistance = symmetricPeakDistanceSteps(segmentCount, meterModel.symmetricSeedCount)
-                    val peakHalfWidth = if (meterModel.centerDirectionReversed) widthPerSegment / 2f else 0f
-                    val peakProgress = if (meterModel.centerDirectionReversed) {
+                    val maxPairDistance = symmetricPeakDistanceSteps(segmentCount, safeMeterModel.symmetricSeedCount)
+                    val peakHalfWidth = if (safeMeterModel.centerDirectionReversed) widthPerSegment / 2f else 0f
+                    val peakProgress = if (safeMeterModel.centerDirectionReversed) {
                         1f - animatedPeak.coerceIn(0f, 1f)
                     } else {
                         animatedPeak.coerceIn(0f, 1f)
                     }
                     val peakDistance = peakProgress * maxPairDistance
                     if (peakDistance <= 0.001f) {
-                        if (meterModel.centerDirectionReversed) {
-                            val leftRestingPeakX = if (meterModel.symmetricSeedCount == 2) leftCenterPeakX else centerPeakX
+                        if (safeMeterModel.centerDirectionReversed) {
+                            val leftRestingPeakX = if (safeMeterModel.symmetricSeedCount == 2) leftCenterPeakX else centerPeakX
                             val rightRestingPeakX = centerPeakX
                             drawLine(
                                 color = peakColor,
@@ -2777,7 +3931,7 @@ private fun CompactMeterOverlay(
                                 cap = StrokeCap.Round
                             )
                         } else {
-                            val restingPeakX = if (meterModel.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
+                            val restingPeakX = if (safeMeterModel.symmetricSeedCount == 2) betweenCentersPeakX else centerPeakX
                             drawLine(
                                 color = peakColor,
                                 start = Offset(restingPeakX, 0f),
@@ -2789,7 +3943,7 @@ private fun CompactMeterOverlay(
                     } else {
                         val leftPeakX: Float
                         val rightPeakX: Float
-                        if (meterModel.symmetricSeedCount == 2) {
+                        if (safeMeterModel.symmetricSeedCount == 2) {
                             val unitSpan = widthPerSegment + gap
                             if (peakDistance <= 1f) {
                                 val halfGap = (centerPeakX - leftCenterPeakX) / 2f
@@ -2832,30 +3986,129 @@ private fun CompactMeterOverlay(
                     )
                 }
             }
+            }
 
             Column(
                 modifier = Modifier.width(88.dp),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                MeterStat(
-                    label = stringResource(R.string.meter_label_level),
-                    value = stringResource(R.string.percent_value, (level * 100).toInt()),
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    compact = true
-                )
-                MeterStat(
-                    label = stringResource(R.string.meter_label_segments),
-                    value = stringResource(
-                        R.string.meter_segments_value,
-                        meterModel.activeSegments,
-                        meterModel.segmentCount
-                    ),
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    compact = true
+                if (nativeMeterViewEnabled) {
+                    DirectNativeMeterStats(
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        binaryMode = binaryMode,
+                        glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                        reverseDirection = reverseDirection,
+                        lightweightMode = lightweightMeterEnabled,
+                        spectrumMode = spectrumMeterEnabled,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        compact = true,
+                        modifier = Modifier.width(88.dp)
+                    )
+                } else {
+                    val spectrumBandsForStats = if (spectrumMeterEnabled) {
+                        normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+                    } else {
+                        FloatArray(0)
+                    }
+                    MeterStat(
+                        label = stringResource(R.string.meter_label_level),
+                        value = stringResource(R.string.percent_value, (level * 100).toInt()),
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        compact = true
+                    )
+                    MeterStat(
+                        label = stringResource(R.string.meter_label_segments),
+                        value = stringResource(
+                            R.string.meter_segments_value,
+                            if (spectrumMeterEnabled) {
+                                spectrumBandsForStats.count { it * level.coerceIn(0f, 1f) > 0.001f }
+                            } else {
+                                meterModel?.activeSegments ?: (level.coerceIn(0f, 1f) * 16f).toInt().coerceIn(0, 16)
+                            },
+                            if (spectrumMeterEnabled) spectrumBandsForStats.size else meterModel?.segmentCount ?: 16
+                        ),
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        compact = true
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IsolatedCompactMeterOverlay(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    nothingStyleEnabled: Boolean,
+    onDismissUpward: () -> Unit
+) {
+    if (nativeMeterViewEnabled) {
+        CompactMeterOverlay(
+            level = 0f,
+            peak = 0f,
+            spectrumBands = FloatArray(0),
+            meterModel = null,
+            lightweightMeterEnabled = lightweightMeterEnabled,
+            spectrumMeterEnabled = spectrumMeterEnabled,
+            nativeMeterViewEnabled = nativeMeterViewEnabled,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            reverseDirection = reverseDirection,
+            nothingStyleEnabled = nothingStyleEnabled,
+            onDismissUpward = onDismissUpward
+        )
+    } else {
+        val liveFrame = CaptureUiStore.liveFrame
+        val meterModel = if (lightweightMeterEnabled || spectrumMeterEnabled) {
+            null
+        } else {
+            remember(
+                liveFrame.level,
+                liveFrame.meterSegments,
+                glyphMode,
+                deviceProfile,
+                binaryMode,
+                glyphMeterPreviewEnabled,
+                reverseDirection
+            ) {
+                buildUiMeterModel(
+                    level = liveFrame.level,
+                    meterSegments = liveFrame.meterSegments,
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    binaryMode = binaryMode,
+                    glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    reverseDirection = reverseDirection
                 )
             }
         }
+        CompactMeterOverlay(
+            level = liveFrame.level,
+            peak = liveFrame.peak,
+            spectrumBands = liveFrame.spectrumBands,
+            meterModel = meterModel,
+            lightweightMeterEnabled = lightweightMeterEnabled,
+            spectrumMeterEnabled = spectrumMeterEnabled,
+            nativeMeterViewEnabled = nativeMeterViewEnabled,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            reverseDirection = reverseDirection,
+            nothingStyleEnabled = nothingStyleEnabled,
+            onDismissUpward = onDismissUpward
+        )
     }
 }
 
@@ -2965,6 +4218,30 @@ private fun activeModeLabel(activeMode: String): String {
     }
 }
 
+@Composable
+private fun materialCardBorder(nothingStyleEnabled: Boolean): BorderStroke? {
+    return if (nothingStyleEnabled) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    } else {
+        null
+    }
+}
+
+@Composable
+private fun materialCardColor(nothingStyleEnabled: Boolean, prominent: Boolean = false): Color {
+    return if (nothingStyleEnabled) {
+        if (prominent) {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+    } else if (prominent) {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+}
+
 private data class UiMeterModel(
     val segmentCount: Int,
     val activeSegments: Int,
@@ -2974,6 +4251,46 @@ private data class UiMeterModel(
     val symmetricSeedCount: Int = 1,
     val centerDirectionReversed: Boolean = false
 )
+
+private const val DEFAULT_SPECTRUM_METER_BANDS = 25
+
+private fun spectrumMeterBandCount(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile
+): Int {
+    return if (GlyphPatternRegistry.isSpectrum(glyphMode)) {
+        GlyphPatternRegistry.uiMeterSegmentCount(deviceProfile, glyphMode).coerceAtLeast(1)
+    } else {
+        DEFAULT_SPECTRUM_METER_BANDS
+    }
+}
+
+private fun normalizedSpectrumMeterBands(
+    source: FloatArray,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile
+): FloatArray {
+    val targetCount = spectrumMeterBandCount(glyphMode, deviceProfile)
+    if (source.isEmpty()) return FloatArray(targetCount)
+    if (source.size == targetCount) {
+        return FloatArray(targetCount) { index -> source[index].coerceIn(0f, 1f) }
+    }
+    if (targetCount == 1) return floatArrayOf(source[0].coerceIn(0f, 1f))
+    return FloatArray(targetCount) { index ->
+        val position = index / (targetCount - 1f)
+        sampleSpectrumBand(source, position)
+    }
+}
+
+private fun sampleSpectrumBand(source: FloatArray, position: Float): Float {
+    if (source.isEmpty()) return 0f
+    if (source.size == 1) return source[0].coerceIn(0f, 1f)
+    val scaled = position.coerceIn(0f, 1f) * (source.size - 1)
+    val lo = scaled.toInt().coerceIn(0, source.lastIndex)
+    val hi = (lo + 1).coerceIn(0, source.lastIndex)
+    val fraction = scaled - lo
+    return ((source[lo] * (1f - fraction)) + (source[hi] * fraction)).coerceIn(0f, 1f)
+}
 
 private fun buildUiMeterModel(
     level: Float,
@@ -2997,27 +4314,24 @@ private fun buildUiMeterModel(
     val segmentCount = GlyphPatternRegistry.uiMeterSegmentCount(deviceProfile, glyphMode).coerceAtLeast(1)
     val patternKind = GlyphPatternRegistry.kindOf(glyphMode)
     val normalizedLevel = level.coerceIn(0f, 1f)
-    val matrixOnOffOnly = when (deviceProfile) {
-        GlyphDeviceProfile.PHONE3_MATRIX,
-        GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> true
-        else -> false
-    }
-    val usesGlyphBrightnessPreview = glyphMeterPreviewEnabled && !binaryMode && !matrixOnOffOnly
+    val matrixOnOffOnly = false
+    val usesGlyphBrightnessPreview = glyphMeterPreviewEnabled && !matrixOnOffOnly
+    val usesPartialBrightnessPreview = usesGlyphBrightnessPreview && !binaryMode
     val symmetricSeedCount = if (segmentCount % 2 == 0) 2 else 1
-    if (patternKind == jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind.MATRIX_CIRCLE && matrixOnOffOnly) {
+    if (
+        patternKind == jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind.CENTER ||
+            patternKind == jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind.MATRIX_CIRCLE
+    ) {
         return buildSymmetricMeterModel(
             normalizedLevel = normalizedLevel,
             segmentCount = segmentCount,
-            seedCount = symmetricSeedCount,
-            usesBrightnessPreview = false
-        )
-    }
-    if (patternKind == jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind.CENTER) {
-        return buildSymmetricMeterModel(
-            normalizedLevel = normalizedLevel,
-            segmentCount = segmentCount,
-            seedCount = symmetricSeedCount,
+            seedCount = if (patternKind == jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind.MATRIX_CIRCLE) {
+                1
+            } else {
+                symmetricSeedCount
+            },
             usesBrightnessPreview = usesGlyphBrightnessPreview,
+            usesPartialBrightnessPreview = usesPartialBrightnessPreview,
             centerDirectionReversed = glyphMeterPreviewEnabled && reverseDirection
         )
     }
@@ -3029,7 +4343,7 @@ private fun buildUiMeterModel(
         when {
             index < fullLit -> 1f
             index == fullLit && fullLit < segmentCount -> {
-                if (usesGlyphBrightnessPreview) edgeFraction else 0f
+                if (usesPartialBrightnessPreview) edgeFraction else 0f
             }
             else -> 0f
         }
@@ -3052,6 +4366,7 @@ private fun buildSymmetricMeterModel(
     segmentCount: Int,
     seedCount: Int,
     usesBrightnessPreview: Boolean,
+    usesPartialBrightnessPreview: Boolean,
     centerDirectionReversed: Boolean = false
 ): UiMeterModel {
     val safeSeedCount = seedCount.coerceIn(1, segmentCount.coerceAtLeast(1))
@@ -3064,7 +4379,7 @@ private fun buildSymmetricMeterModel(
         seedCount = safeSeedCount,
         fullSteps = fullSteps,
         edgeFraction = edgeFraction,
-        usesBrightnessPreview = usesBrightnessPreview,
+        usesPartialBrightnessPreview = usesPartialBrightnessPreview,
         centerDirectionReversed = centerDirectionReversed
     )
     val activeSegments = if (usesBrightnessPreview) {
@@ -3091,11 +4406,11 @@ private fun buildSymmetricSegmentLevels(
     seedCount: Int,
     fullSteps: Int,
     edgeFraction: Float,
-    usesBrightnessPreview: Boolean,
+    usesPartialBrightnessPreview: Boolean,
     centerDirectionReversed: Boolean
 ): List<Float> {
     if (segmentCount <= 0) return emptyList()
-    if (fullSteps <= 0 && (!usesBrightnessPreview || edgeFraction <= 0.001f)) {
+    if (fullSteps <= 0 && (!usesPartialBrightnessPreview || edgeFraction <= 0.001f)) {
         return List(segmentCount) { 0f }
     }
 
@@ -3106,7 +4421,7 @@ private fun buildSymmetricSegmentLevels(
         slots[slotIndex].forEach { segment -> levels[segment] = 1f }
     }
 
-    if (usesBrightnessPreview && fullSteps in 0 until slots.size && edgeFraction > 0.001f) {
+    if (usesPartialBrightnessPreview && fullSteps in 0 until slots.size && edgeFraction > 0.001f) {
         slots[fullSteps].forEach { segment -> levels[segment] = edgeFraction }
     }
     return levels
@@ -3387,6 +4702,611 @@ private fun MeterCanvas(
 }
 
 @Composable
+private fun DirectNativeDetailedMeterCanvas(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(18.dp)
+        ) {
+            DirectNativeDetailedMeterBar(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DirectNativeMeterStats(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection,
+                lightweightMode = false,
+                spectrumMode = false,
+                nothingStyleEnabled = nothingStyleEnabled,
+                compact = false,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpectrumMeterCanvas(
+    level: Float,
+    spectrumBands: FloatArray,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(18.dp)
+        ) {
+            SpectrumMeterBar(
+                level = level,
+                spectrumBands = spectrumBands,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val bands = normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+            val activeBands = bands.count { it * level.coerceIn(0f, 1f) > 0.001f }
+            MeterStat(
+                label = stringResource(R.string.meter_label_level),
+                value = stringResource(R.string.percent_value, (level.coerceIn(0f, 1f) * 100).toInt()),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+            MeterStat(
+                label = stringResource(R.string.meter_label_segments),
+                value = stringResource(R.string.meter_segments_value, activeBands, bands.size),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpectrumMeterBar(
+    level: Float,
+    spectrumBands: FloatArray,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val activeColor = if (darkTheme) Color.White else Color.Black
+    val animatedLevel by animateFloatAsState(
+        targetValue = level.coerceIn(0f, 1f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "spectrum-meter-level"
+    )
+    val bands = normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+    Canvas(modifier = modifier) {
+        val bandCount = bands.size.coerceAtLeast(1)
+        val gap = 3.dp.toPx()
+        val totalGap = gap * (bandCount - 1)
+        val barWidth = ((size.width - totalGap) / bandCount.toFloat()).coerceAtLeast(1f)
+        val maxHeight = size.height
+        for (i in 0 until bandCount) {
+            val left = i * (barWidth + gap)
+            drawRoundRect(
+                color = inactiveColor,
+                topLeft = Offset(left, 0f),
+                size = Size(barWidth, maxHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            )
+            val value = (bands[i].coerceIn(0f, 1f) * animatedLevel).coerceIn(0f, 1f)
+            if (value <= 0.001f) continue
+            val barHeight = maxHeight * value
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(left, maxHeight - barHeight),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DirectNativeSpectrumMeterCanvas(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(18.dp)
+        ) {
+            DirectNativeSpectrumMeterBar(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DirectNativeMeterStats(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = false,
+                glyphMeterPreviewEnabled = true,
+                reverseDirection = false,
+                lightweightMode = false,
+                nothingStyleEnabled = nothingStyleEnabled,
+                compact = false,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun DirectNativeSpectrumMeterBar(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
+    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val context = LocalContext.current
+    val meterView = remember { NativeSpectrumMeterView(context) }
+    val listener = remember(meterView) {
+        { frame: CaptureLiveFrame -> meterView.setLiveFrame(frame) }
+    }
+
+    DisposableEffect(meterView) {
+        CaptureUiStore.registerDirectMeterFrameListener(listener)
+        onDispose {
+            CaptureUiStore.unregisterDirectMeterFrameListener(listener)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { meterView },
+        update = {
+            it.configure(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                inactiveColor = inactiveColor,
+                activeColor = activeColor
+            )
+        }
+    )
+}
+
+@Composable
+private fun DirectNativeDetailedMeterBar(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
+    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val peakColor = MaterialTheme.colorScheme.tertiary.toArgb()
+    val sweepColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f).toArgb()
+    val context = LocalContext.current
+    val meterView = remember { NativeDetailedMeterView(context) }
+    val listener = remember(meterView) {
+        { frame: CaptureLiveFrame -> meterView.setLiveFrame(frame) }
+    }
+
+    DisposableEffect(meterView) {
+        CaptureUiStore.registerDirectMeterFrameListener(listener)
+        onDispose {
+            CaptureUiStore.unregisterDirectMeterFrameListener(listener)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { meterView },
+        update = {
+            it.configure(
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection,
+                compactMode = compact,
+                inactiveColor = inactiveColor,
+                activeColor = activeColor,
+                peakColor = peakColor,
+                sweepColor = sweepColor
+            )
+        }
+    )
+}
+
+@Composable
+private fun DirectNativeMeterStats(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    reverseDirection: Boolean,
+    lightweightMode: Boolean,
+    spectrumMode: Boolean = false,
+    nothingStyleEnabled: Boolean,
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val valueColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val levelLabel = stringResource(R.string.meter_label_level)
+    val segmentsLabel = stringResource(R.string.meter_label_segments)
+    val statsView = remember { NativeMeterStatsView(context) }
+    val listener = remember(statsView) {
+        { frame: CaptureLiveFrame -> statsView.setLiveFrame(frame) }
+    }
+
+    DisposableEffect(statsView) {
+        CaptureUiStore.registerDirectMeterFrameListener(listener)
+        onDispose {
+            CaptureUiStore.unregisterDirectMeterFrameListener(listener)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { statsView },
+        update = {
+            it.configure(
+                levelLabel = levelLabel,
+                segmentsLabel = segmentsLabel,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                reverseDirection = reverseDirection,
+                lightweightMode = lightweightMode,
+                spectrumMode = spectrumMode,
+                valueColor = valueColor,
+                labelColor = labelColor,
+                useNothingFont = nothingStyleEnabled,
+                compact = compact
+            )
+        }
+    )
+}
+
+@Composable
+private fun NativeDetailedMeterCanvas(
+    level: Float,
+    peak: Float,
+    meterModel: UiMeterModel,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(18.dp)
+        ) {
+            NativeDetailedMeterBar(
+                level = level,
+                peak = peak,
+                meterModel = meterModel,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MeterStat(
+                label = stringResource(R.string.meter_label_level),
+                value = stringResource(R.string.percent_value, (level * 100).toInt()),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+            MeterStat(
+                label = stringResource(R.string.meter_label_segments),
+                value = stringResource(
+                    R.string.meter_segments_value,
+                    meterModel.activeSegments,
+                    meterModel.segmentCount
+                ),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun NativeDetailedMeterBar(
+    level: Float,
+    peak: Float,
+    meterModel: UiMeterModel,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
+    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val peakColor = MaterialTheme.colorScheme.tertiary.toArgb()
+    val sweepColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f).toArgb()
+
+    AndroidView(
+        modifier = modifier,
+        factory = { NativeDetailedMeterView(it) },
+        update = { meterView ->
+            meterView.setMeterState(
+                level = level,
+                peak = peak,
+                meterModel = meterModel,
+                inactiveColor = inactiveColor,
+                activeColor = activeColor,
+                peakColor = peakColor,
+                sweepColor = sweepColor
+            )
+        }
+    )
+}
+
+@Composable
+private fun DirectNativeMeterCanvas(
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            DirectNativeMeterBar(
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DirectNativeMeterStats(
+                glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
+                deviceProfile = GlyphDeviceCatalog.currentProfile(),
+                binaryMode = false,
+                glyphMeterPreviewEnabled = false,
+                reverseDirection = false,
+                lightweightMode = true,
+                nothingStyleEnabled = nothingStyleEnabled,
+                compact = false,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun DirectNativeMeterBar(
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
+    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val context = LocalContext.current
+    val meterView = remember { NativeLevelMeterView(context) }
+    val listener = remember(meterView) {
+        { frame: CaptureLiveFrame -> meterView.setLiveFrame(frame) }
+    }
+
+    DisposableEffect(meterView) {
+        CaptureUiStore.registerDirectMeterFrameListener(listener)
+        onDispose {
+            CaptureUiStore.unregisterDirectMeterFrameListener(listener)
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { meterView },
+        update = {
+            it.configureColors(
+                activeColor = activeColor,
+                inactiveColor = inactiveColor
+            )
+        }
+    )
+}
+
+@Composable
+private fun NativeMeterCanvas(
+    level: Float,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            NativeMeterBar(
+                level = level,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MeterStat(
+                label = stringResource(R.string.meter_label_level),
+                value = stringResource(R.string.percent_value, (level * 100).toInt()),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+            MeterStat(
+                label = stringResource(R.string.meter_label_segments),
+                value = stringResource(
+                    R.string.meter_segments_value,
+                    (level.coerceIn(0f, 1f) * 16f).toInt().coerceIn(0, 16),
+                    16
+                ),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun NativeMeterBar(
+    level: Float,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
+    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+
+    AndroidView(
+        modifier = modifier,
+        factory = { NativeLevelMeterView(it) },
+        update = { meterView ->
+            meterView.setMeterState(
+                level = level,
+                activeColor = activeColor,
+                inactiveColor = inactiveColor
+            )
+        }
+    )
+}
+
+@Composable
+private fun LightweightMeterCanvas(
+    level: Float,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(meterBackgroundBrush(nothingStyleEnabled))
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            LightweightMeterBar(
+                level = level,
+                nothingStyleEnabled = nothingStyleEnabled,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MeterStat(
+                label = stringResource(R.string.meter_label_level),
+                value = stringResource(R.string.percent_value, (level * 100).toInt()),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+            MeterStat(
+                label = stringResource(R.string.meter_label_segments),
+                value = stringResource(
+                    R.string.meter_segments_value,
+                    (level.coerceIn(0f, 1f) * 16f).toInt().coerceIn(0, 16),
+                    16
+                ),
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun LightweightMeterBar(
+    level: Float,
+    nothingStyleEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val darkTheme = isSystemInDarkTheme()
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val activeColor = if (darkTheme) Color.White else Color.Black
+    val activeSegments = (level.coerceIn(0f, 1f) * 16f).toInt().coerceIn(0, 16)
+
+    Canvas(modifier = modifier) {
+        val segmentCount = 16
+        val gap = 4.dp.toPx()
+        val totalGap = gap * (segmentCount - 1)
+        val widthPerSegment = ((size.width - totalGap) / segmentCount.toFloat()).coerceAtLeast(1f)
+        val radius = CornerRadius(widthPerSegment / 2f, widthPerSegment / 2f)
+
+        for (segment in 0 until segmentCount) {
+            val left = segment * (widthPerSegment + gap)
+            drawRoundRect(
+                color = if (segment < activeSegments) activeColor else inactiveColor,
+                topLeft = Offset(left, 0f),
+                size = Size(widthPerSegment, size.height),
+                cornerRadius = radius
+            )
+        }
+    }
+}
+
+@Composable
 private fun meterBackgroundBrush(nothingStyleEnabled: Boolean): Brush {
     return if (nothingStyleEnabled) {
         val nothingMeterSurface = if (isSystemInDarkTheme()) {
@@ -3403,8 +5323,8 @@ private fun meterBackgroundBrush(nothingStyleEnabled: Boolean): Brush {
     } else {
         Brush.linearGradient(
             listOf(
-                MaterialTheme.colorScheme.surfaceDim,
-                MaterialTheme.colorScheme.surfaceDim
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                MaterialTheme.colorScheme.surfaceContainerHigh
             )
         )
     }
@@ -3589,6 +5509,35 @@ private fun ParameterSlider(
 }
 
 @Composable
+private fun glyphPatternDescriptionText(glyphMode: String): String? {
+    val renderMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode ?: return null
+    val resId = when (renderMode) {
+        GlyphPatternRenderMode.LINEAR -> R.string.glyph_pattern_desc_linear
+        GlyphPatternRenderMode.LINEAR_PEAK -> R.string.glyph_pattern_desc_linear_peak
+        GlyphPatternRenderMode.CENTER -> R.string.glyph_pattern_desc_center
+        GlyphPatternRenderMode.SPECTRUM -> R.string.glyph_pattern_desc_spectrum
+        GlyphPatternRenderMode.CLASSIC -> R.string.glyph_pattern_desc_classic
+        GlyphPatternRenderMode.ALL_BRIGHTNESS -> R.string.glyph_pattern_desc_all_brightness
+        GlyphPatternRenderMode.MATRIX_BAR -> R.string.glyph_pattern_desc_matrix_bar
+        GlyphPatternRenderMode.MATRIX_FIELD -> R.string.glyph_pattern_desc_matrix_field
+        GlyphPatternRenderMode.MATRIX_CIRCLE -> R.string.glyph_pattern_desc_matrix_circle
+        GlyphPatternRenderMode.MATRIX_RIPPLE -> R.string.glyph_pattern_desc_matrix_ripple
+        GlyphPatternRenderMode.MATRIX_SPECTRUM -> R.string.glyph_pattern_desc_matrix_spectrum
+        GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER -> R.string.glyph_pattern_desc_matrix_spectrum_center
+        GlyphPatternRenderMode.MATRIX_SPECTRUM_BOTTOM -> R.string.glyph_pattern_desc_matrix_spectrum_bottom
+        GlyphPatternRenderMode.MATRIX_SPECTROGRAM -> R.string.glyph_pattern_desc_matrix_spectrogram
+        GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER -> R.string.glyph_pattern_desc_matrix_spectrum_analyzer
+        GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE -> R.string.glyph_pattern_desc_matrix_oscilloscope
+        GlyphPatternRenderMode.MATRIX_RAIN -> R.string.glyph_pattern_desc_matrix_rain
+        GlyphPatternRenderMode.MATRIX_WAVE_FIELD -> R.string.glyph_pattern_desc_matrix_wave_field
+        GlyphPatternRenderMode.MATRIX_SKYLINE -> R.string.glyph_pattern_desc_matrix_skyline
+        GlyphPatternRenderMode.MATRIX_PULSE_GRID -> R.string.glyph_pattern_desc_matrix_pulse_grid
+        GlyphPatternRenderMode.PULSE_TRAIN -> R.string.glyph_pattern_desc_linear_peak
+    }
+    return stringResource(resId)
+}
+
+@Composable
 private fun ControlCard(
     isCapturing: Boolean,
     sensitivity: Float,
@@ -3612,6 +5561,8 @@ private fun ControlCard(
     isPhone4aDevice: Boolean,
     isPhone1Device: Boolean,
     binaryMode: Boolean,
+    matrixSmoothMotionEnabled: Boolean,
+    oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
@@ -3634,6 +5585,8 @@ private fun ControlCard(
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
+    onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
+    onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
@@ -3663,11 +5616,28 @@ private fun ControlCard(
         GlyphDeviceProfile.PHONE2,
         GlyphDeviceProfile.PHONE2A
     )
+    val isMatrixDevice = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE3_MATRIX,
+        GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+    )
     val isClassicGlyphMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode ==
         GlyphPatternRenderMode.CLASSIC
+    val glyphRenderMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode
+    var oscilloscopeTimeAxisMultiplier by remember { mutableStateOf(1f) }
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
         !isClassicGlyphMode
+    val glyphPatternDescription = glyphPatternDescriptionText(glyphMode)
+    LaunchedEffect(glyphRenderMode, oscilloscopeAutoTimeAxisEnabled) {
+        if (glyphRenderMode != GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE || !oscilloscopeAutoTimeAxisEnabled) {
+            oscilloscopeTimeAxisMultiplier = 1f
+            return@LaunchedEffect
+        }
+        while (true) {
+            oscilloscopeTimeAxisMultiplier = WaveformSampler.currentAutoTimeAxisMultiplier()
+            delay(100L)
+        }
+    }
 
     if (showResetDialog) {
         AlertDialog(
@@ -3782,11 +5752,11 @@ private fun ControlCard(
     }
 
     androidx.compose.material3.Card(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = materialCardBorder(nothingStyleEnabled),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -3961,6 +5931,14 @@ private fun ControlCard(
                         )
                     }
                 }
+            }
+
+            glyphPatternDescription?.let { description ->
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (supportsFillOtherGlyphLights) {
@@ -4153,8 +6131,14 @@ private fun ControlCard(
                         nothingStyleEnabled = nothingStyleEnabled
                     )
 
-                    if (GlyphPatternRegistry.isAllBrightness(glyphMode) ||
-                        (GlyphPatternRegistry.isSpectrum(glyphMode) && !isPhone3Device && !isPhone4aProDevice)
+                    if (
+                        GlyphPatternRegistry.isAllBrightness(glyphMode) ||
+                            (GlyphPatternRegistry.isSpectrum(glyphMode) && !isPhone3Device && !isPhone4aProDevice) ||
+                            glyphRenderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
+                            glyphRenderMode == GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER ||
+                            glyphRenderMode == GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE ||
+                            glyphRenderMode == GlyphPatternRenderMode.MATRIX_WAVE_FIELD ||
+                            glyphRenderMode == GlyphPatternRenderMode.MATRIX_PULSE_GRID
                     ) {
                         ParameterSlider(
                             title = stringResource(R.string.param_output_gamma_title),
@@ -4217,7 +6201,33 @@ private fun ControlCard(
                 )
             }
 
-            if (!isPhone3Device && !isPhone4aProDevice) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.binary_mode_title),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (binaryMode) {
+                            stringResource(R.string.binary_mode_on)
+                        } else {
+                            stringResource(R.string.binary_mode_off)
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = binaryMode,
+                    onCheckedChange = onBinaryModeChanged
+                )
+            }
+
+            if (isMatrixDevice) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -4225,22 +6235,57 @@ private fun ControlCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.binary_mode_title),
+                            text = stringResource(R.string.matrix_smooth_motion_title),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (binaryMode) {
-                                stringResource(R.string.binary_mode_on)
+                            text = if (matrixSmoothMotionEnabled) {
+                                stringResource(R.string.matrix_smooth_motion_on)
                             } else {
-                                stringResource(R.string.binary_mode_off)
+                                stringResource(R.string.matrix_smooth_motion_off)
                             },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
-                        checked = binaryMode,
-                        onCheckedChange = onBinaryModeChanged
+                        checked = matrixSmoothMotionEnabled,
+                        onCheckedChange = onMatrixSmoothMotionEnabledChanged
+                    )
+                }
+            }
+
+            if (glyphRenderMode == GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (oscilloscopeAutoTimeAxisEnabled) {
+                                stringResource(
+                                    R.string.oscilloscope_auto_time_axis_title_with_value,
+                                    oscilloscopeTimeAxisMultiplier - 1f
+                                )
+                            } else {
+                                stringResource(R.string.oscilloscope_auto_time_axis_title)
+                            },
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (oscilloscopeAutoTimeAxisEnabled) {
+                                stringResource(R.string.oscilloscope_auto_time_axis_on)
+                            } else {
+                                stringResource(R.string.oscilloscope_auto_time_axis_off)
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = oscilloscopeAutoTimeAxisEnabled,
+                        onCheckedChange = onOscilloscopeAutoTimeAxisEnabledChanged
                     )
                 }
             }
@@ -4356,8 +6401,8 @@ private fun InfoStrip() {
         itemsIndexed(notes) { _, note ->
             Surface(
                 shape = RoundedCornerShape(999.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                border = null
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -4419,15 +6464,24 @@ private fun GlyphVisualizerPreview() {
             isPhone4aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A,
             isPhone1Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE1,
             binaryMode = false,
+            matrixSmoothMotionEnabled = false,
+            oscilloscopeAutoTimeAxisEnabled = false,
             baseIndicatorEnabled = false,
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
             mediaProjectionEnabled = false,
             glyphMeterPreviewEnabled = true,
+            meterVisibleEnabled = true,
+            lightweightMeterEnabled = false,
+            spectrumMeterEnabled = false,
+            nativeMeterViewEnabled = true,
+            mainScreenUiIsolationEnabled = true,
             automaticUpdateCheckEnabled = false,
             mediaPlaybackOnlyEnabled = false,
             experimentalVisualizerStabilizationEnabled = false,
+            experimentalVisualizerSignalWatchdogEnabled = false,
+            experimentalPerformanceOptimizationsEnabled = true,
             showPhone1GlyphDebugControlsEverywhere = false,
             autoEnablePhone1GlyphDebugOnStart = true,
             nothingStyleEnabled = false,
@@ -4447,9 +6501,16 @@ private fun GlyphVisualizerPreview() {
             onLatencyMsChangeFinished = {},
             onLatencyAutoSwitchChanged = {},
             onGlyphMeterPreviewEnabledChanged = {},
+            onMeterVisibleEnabledChanged = {},
+            onLightweightMeterEnabledChanged = {},
+            onSpectrumMeterEnabledChanged = {},
+            onNativeMeterViewEnabledChanged = {},
             onAutomaticUpdateCheckEnabledChanged = {},
             onMediaPlaybackOnlyEnabledChanged = {},
             onExperimentalVisualizerStabilizationEnabledChanged = {},
+            onExperimentalVisualizerSignalWatchdogEnabledChanged = {},
+            onMatrixSmoothMotionEnabledChanged = {},
+            onOscilloscopeAutoTimeAxisEnabledChanged = {},
             onShowPhone1GlyphDebugControlsEverywhereChanged = {},
             onAutoEnablePhone1GlyphDebugOnStartChanged = {},
             onBaseIndicatorEnabledChanged = {},

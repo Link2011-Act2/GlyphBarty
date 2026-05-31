@@ -55,8 +55,10 @@ import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.isUpdateCheckIntervalIgnoredForTesting
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
 import jp.linkserver.glyphvisualizer.update.setShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.setUpdateCheckIntervalIgnoredForTesting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,6 +101,7 @@ fun AboutScreen(
     var updateStatus by remember { mutableStateOf<String?>(null) }
     val isIntDevBuild = remember { isIntDevBuild() }
     var showLatestForTesting by remember { mutableStateOf(isShowLatestReleaseForTestingEnabled(context)) }
+    var ignoreCheckIntervalForTesting by remember { mutableStateOf(isUpdateCheckIntervalIgnoredForTesting(context)) }
     val repositoryUrl = stringResource(R.string.about_support_site_url)
 
     fun startUpdateCheck(manual: Boolean) {
@@ -287,35 +290,68 @@ fun AboutScreen(
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                        Column {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = stringResource(R.string.about_update_test_mode_title),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = stringResource(R.string.about_update_test_mode_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.about_update_test_mode_title),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.about_update_test_mode_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = showLatestForTesting,
+                                    onCheckedChange = { enabled ->
+                                        showLatestForTesting = enabled
+                                        setShowLatestReleaseForTestingEnabled(context, enabled)
+                                    }
                                 )
                             }
-                            Switch(
-                                checked = showLatestForTesting,
-                                onCheckedChange = { enabled ->
-                                    showLatestForTesting = enabled
-                                    setShowLatestReleaseForTestingEnabled(context, enabled)
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.about_update_ignore_interval_test_title),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.about_update_ignore_interval_test_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                            )
+                                Switch(
+                                    checked = ignoreCheckIntervalForTesting,
+                                    onCheckedChange = { enabled ->
+                                        ignoreCheckIntervalForTesting = enabled
+                                        setUpdateCheckIntervalIgnoredForTesting(context, enabled)
+                                    }
+                                )
+                            }
                         }
                     }
                 }

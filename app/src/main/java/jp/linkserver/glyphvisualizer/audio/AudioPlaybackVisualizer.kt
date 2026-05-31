@@ -40,6 +40,7 @@ class AudioPlaybackVisualizer(
         toneFocusProvider: () -> Float,
         smoothingProvider: () -> Float,
         smoothingBalanceProvider: () -> Float,
+        experimentalPerformanceOptimizationsEnabled: Boolean,
         onStateChanged: (String) -> Unit,
         onLevelChanged: (
             level: Float,
@@ -49,7 +50,8 @@ class AudioPlaybackVisualizer(
             leftLevel: Float,
             rightLevel: Float,
             spectrumBands: FloatArray,
-            phone4aBaseBandLevel: Float
+            phone4aBaseBandLevel: Float,
+            waveformSamples: FloatArray
         ) -> Unit
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -128,6 +130,8 @@ class AudioPlaybackVisualizer(
             name = "glyph-audio-visualizer"
         ) {
             val sampleBuffer = ShortArray(bufferSize / 2)
+            var lastSpectrumAnalysis = SpectrumAnalyzer.AnalysisResult(FloatArray(25), 0f, 0f)
+            var lastSpectrumAnalysisAtMs = 0L
             var smoothedLevel = 0f
             var displayedLevel = 0f
             var displayedLeft = 0f
@@ -205,7 +209,11 @@ class AudioPlaybackVisualizer(
                 val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
                 val noReleaseSmoothing = smoothing >= 0.54f
                 val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                val release = if (noReleaseSmoothing) 1f else smoothing
+                val release = if (noReleaseSmoothing) {
+                    1f
+                } else {
+                    (smoothing * 1.25f).coerceIn(0.0625f, 0.75f)
+                }
                 if (bounded > smoothedLevel) {
                     smoothedLevel = bounded
                 } else {
@@ -227,12 +235,23 @@ class AudioPlaybackVisualizer(
                     displayedRight += (rightLevel - displayedRight) * release
                 }
                 val peakValue = displayedLevel
-                val spectrumAnalysis = SpectrumAnalyzer.analyzeLogBands(
-                    samples = monoSamples,
-                    sampleRateHz = 44_100,
-                    bandCount = 25
-                )
-
+                val nowMs = android.os.SystemClock.elapsedRealtime()
+                val shouldRefreshSpectrum =
+                    !experimentalPerformanceOptimizationsEnabled ||
+                        lastSpectrumAnalysisAtMs <= 0L ||
+                        (nowMs - lastSpectrumAnalysisAtMs) >= 33L
+                val spectrumAnalysis = if (shouldRefreshSpectrum) {
+                    SpectrumAnalyzer.analyzeLogBands(
+                        samples = monoSamples,
+                        sampleRateHz = 44_100,
+                        bandCount = 25
+                    ).also {
+                        lastSpectrumAnalysis = it
+                        lastSpectrumAnalysisAtMs = nowMs
+                    }
+                } else {
+                    lastSpectrumAnalysis
+                }
                 mainHandler.post {
                     onLevelChanged(
                         displayedLevel,
@@ -242,7 +261,8 @@ class AudioPlaybackVisualizer(
                         displayedLeft,
                         displayedRight,
                         spectrumAnalysis.bands,
-                        spectrumAnalysis.rangePeak
+                        spectrumAnalysis.rangePeak,
+                        WaveformSampler.downsample(monoSamples)
                     )
                 }
             }

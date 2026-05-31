@@ -65,6 +65,12 @@ class GlyphTileService : TileService() {
                 latencyMs = resolved.latencyMs,
                 mediaPlaybackOnlyEnabled = resolved.mediaPlaybackOnlyEnabled,
                 experimentalVisualizerStabilizationEnabled = resolved.experimentalVisualizerStabilizationEnabled,
+                experimentalVisualizerSignalWatchdogEnabled = resolved.experimentalVisualizerSignalWatchdogEnabled,
+                experimentalSpectrumDecayEnabled = resolved.experimentalSpectrumDecayEnabled,
+                experimentalPerformanceOptimizationsEnabled = resolved.experimentalPerformanceOptimizationsEnabled,
+                matrixSmoothMotionEnabled = resolved.matrixSmoothMotionEnabled,
+                outputGamma = resolved.outputGamma,
+                oscilloscopeAutoTimeAxisEnabled = resolved.oscilloscopeAutoTimeAxisEnabled,
                 turnOffWhenBackDown = resolved.turnOffWhenBackDown
             )
         }

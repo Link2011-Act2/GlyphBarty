@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "jp.linkserver.glyphvisualizer"
+
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -15,8 +16,8 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0-Release"
+        versionCode = 5
+        versionName = "1.3.0-IntDev_rev1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -76,6 +77,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.ext.tables)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     testImplementation(libs.junit)

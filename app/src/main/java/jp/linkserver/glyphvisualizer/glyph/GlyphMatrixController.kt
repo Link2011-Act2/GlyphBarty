@@ -11,10 +11,12 @@ import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 class GlyphMatrixController(
     private val context: Context,
@@ -25,8 +27,11 @@ class GlyphMatrixController(
         private const val TAG = "GlyphMatrixController"
         private const val COLOR_ON = 255
         private const val COLOR_OFF = 0
-        private const val SILENCE_RELEASE_MS = 3_000L
+        private const val SILENCE_BLACKOUT_MS = 120L
+        private const val SILENCE_RELEASE_MS = 450L
         private const val SILENCE_ACTIVITY_THRESHOLD = 0.003f
+        private const val RIPPLE_SILENCE_DRAIN_MS = 900L
+        private const val SILENCE_DRAIN_BRIGHTNESS_THRESHOLD = 0.02f
         private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
@@ -34,7 +39,17 @@ class GlyphMatrixController(
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
         private const val ALL_BRIGHTNESS_MIN_LIGHT_MATRIX = 60
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
-        private const val FRAME_INTERVAL_MS = 16L // ~60fps
+        private const val FRAME_INTERVAL_SMOOTH_MS = 12L // allow higher effective fps when callbacks are uneven
+        private const val FRAME_INTERVAL_REDUCED_MS = 33L // ~30fps
+        private const val SIGNATURE_EDGE_BRIGHTNESS_STEP = 32
+        private const val SIGNATURE_ALL_BRIGHTNESS_STEP = 8
+        private const val RAIN_TAIL_LENGTH = 4
+        private const val MATRIX_WAVE_FIELD_BRIGHTNESS_BOOST = 1.55f
+        private const val MATRIX_RIPPLE_BRIGHTNESS_BOOST = 1.7f
+        private const val MATRIX_RAIN_BRIGHTNESS_BOOST = 1.45f
+        private const val MATRIX_SPECTROGRAM_BRIGHTNESS_BOOST = 1.3f
+        private const val MATRIX_SPECTRUM_ANALYZER_BRIGHTNESS_BOOST = 1.35f
+        private const val MATRIX_PULSE_GRID_BRIGHTNESS_BOOST = 1.45f
     }
 
     private val glyphMatrixManager = GlyphMatrixManager.getInstance(context.applicationContext)
@@ -42,6 +57,9 @@ class GlyphMatrixController(
     private var isSessionOpen = false
     private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
+    private var binaryMode = false
+    private var experimentalPerformanceOptimizationsEnabled = false
+    private var matrixSmoothMotionEnabled = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
@@ -59,6 +77,7 @@ class GlyphMatrixController(
     private var pendingLevel = -1f
     private var lastRenderAt = 0L
     private var lastLitRows = -1
+    private var lastMatrixBrightness = -1
     private var failureCount = 0
     private var frameBuffer = IntArray(0)
     private var lowEnergy = 0f
@@ -66,11 +85,13 @@ class GlyphMatrixController(
     private var leftLevel = 0f
     private var rightLevel = 0f
     private var spectrumBands = FloatArray(0)
+    private var waveformSamples = FloatArray(0)
     private var smoothedSpectrumBands = FloatArray(0)
     private var spectrumBandMins = FloatArray(0)
     private var spectrumBandMaxs = FloatArray(0)
     private var lastSpectrumUpdateMs = 0L
     private var silenceStartedAt = 0L
+    private var matrixTurnedOffForSilence = false
     private var matrixReleasedForSilence = false
     private var matrixProfile = GlyphDeviceProfile.PHONE3_MATRIX
     
@@ -78,7 +99,35 @@ class GlyphMatrixController(
     private var cachedMaxPixelsByColumn: IntArray? = null
     private var cachedMaxPixelsLength = -1
     private var normalizedSpectrumBands = FloatArray(0)
-
+    private var cachedCircleRingIndexLength = -1
+    private var cachedCircleRingIndexNormal: IntArray? = null
+    private var cachedCircleRingIndexReverse: IntArray? = null
+    private var cachedSpectrumBandIndexLength = -1
+    private var cachedSpectrumBandIndexBandCount = -1
+    private var cachedSpectrumBandIndexNormal: IntArray? = null
+    private var cachedSpectrumBandIndexReverse: IntArray? = null
+    private var cachedSpectrumBandIndexCenterNormal: IntArray? = null
+    private var cachedSpectrumBandIndexCenterReverse: IntArray? = null
+    private var lastRenderSignature = Long.MIN_VALUE
+    private var cachedBrightnessLut = IntArray(0)
+    private var cachedBrightnessLutGamma = Float.NaN
+    private var lastRenderedMode: GlyphPatternRenderMode? = null
+    private var lastRowBrightnessByRow = IntArray(0)
+    private var lastSpectrumFullPxByColumn = IntArray(0)
+    private var lastSpectrumEdgeBrightnessByColumn = IntArray(0)
+    private var lastCircleBrightnessByRing = IntArray(0)
+    private var cachedCircleRingPixelsLength = -1
+    private var cachedCircleRingPixelsNormal: Array<IntArray>? = null
+    private var cachedCircleRingPixelsReverse: Array<IntArray>? = null
+    private var rainHeadByColumn = FloatArray(0)
+    private var rainBrightnessByColumn = FloatArray(0)
+    private var rainSpeedByColumn = FloatArray(0)
+    private var lastRainUpdateMs = 0L
+    private var spectrogramHistory = FloatArray(0)
+    private var wavePhase = 0f
+    private var pulsePhase = 0f
+    private var ripplePhase = 0f
+    private var pulseGridSeed = 0
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
             val currentDevice = GlyphDeviceCatalog.currentOrNull()
@@ -108,7 +157,12 @@ class GlyphMatrixController(
             isSessionOpen = true
             failureCount = 0
             lastLitRows = -1
+            lastMatrixBrightness = -1
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+            pulseGridSeed = ((SystemClock.elapsedRealtimeNanos() xor matrixLength.toLong()) and 0x7fffffffL).toInt()
             silenceStartedAt = 0L
+            matrixTurnedOffForSilence = false
             matrixReleasedForSilence = false
             try {
                 glyphMatrixManager.setGlyphMatrixTimeout(true)
@@ -147,25 +201,58 @@ class GlyphMatrixController(
     }
 
     override fun setReverseDirection(reverse: Boolean) {
-        reverseDirection = reverse
+        if (reverseDirection != reverse) {
+            reverseDirection = reverse
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+        }
     }
 
     override fun setGlyphMode(mode: String) {
         if (glyphMode != mode) {
             glyphMode = mode
             lastLitRows = -1
+            lastMatrixBrightness = -1
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
             resetLevelScaleTracking()
             resetSpectrumScaleTracking()
             resetAllBrightnessScaleTracking()
+            resetPatternVisualState()
         }
     }
 
     override fun setBinaryMode(binary: Boolean) {
-        // Matrix minimum implementation does not use binary mode yet.
+        if (binaryMode != binary) {
+            binaryMode = binary
+            lastMatrixBrightness = -1
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+            resetPatternVisualState()
+        }
+    }
+
+    override fun setExperimentalPerformanceOptimizationsEnabled(enabled: Boolean) {
+        if (experimentalPerformanceOptimizationsEnabled != enabled) {
+            experimentalPerformanceOptimizationsEnabled = enabled
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+            resetPatternVisualState()
+        }
+    }
+
+    override fun setMatrixSmoothMotionEnabled(enabled: Boolean) {
+        if (matrixSmoothMotionEnabled != enabled) {
+            matrixSmoothMotionEnabled = enabled
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+            resetPatternVisualState()
+        }
     }
 
     override fun setOutputGamma(gamma: Float) {
         outputGamma = gamma.coerceIn(0.6f, 2.6f)
+        cachedBrightnessLutGamma = Float.NaN
     }
 
     override fun setLevelAutoScaleEnabled(enabled: Boolean) {
@@ -214,7 +301,8 @@ class GlyphMatrixController(
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
-        phone4aBaseBandLevel: Float
+        phone4aBaseBandLevel: Float,
+        waveformSamples: FloatArray?
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
@@ -227,6 +315,7 @@ class GlyphMatrixController(
             raw
         }
         this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(resampled))
+        this.waveformSamples = waveformSamples?.copyOf() ?: FloatArray(0)
     }
 
     private fun applySpectrumSmoothing(input: FloatArray): FloatArray {
@@ -360,84 +449,259 @@ class GlyphMatrixController(
         val now = SystemClock.elapsedRealtime()
 
         val clamped = level.coerceIn(0f, 1f)
-        val renderLevel = normalizeLevelForMode(clamped)
-        lastPreviewLevel = renderLevel
+        var renderLevel = normalizeLevelForMode(clamped)
         val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
-        if (activity < SILENCE_ACTIVITY_THRESHOLD) {
+        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
+            ?: GlyphPatternRenderMode.MATRIX_BAR
+        val silenceDrainsBeforeRelease = renderMode == GlyphPatternRenderMode.MATRIX_RAIN ||
+            renderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
+            renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
+        val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD
+        val silenceElapsedMs = if (isSilent) {
             if (silenceStartedAt <= 0L) silenceStartedAt = now
+            now - silenceStartedAt
+        } else {
+            0L
+        }
+        val renderingSilenceDrain = isSilent && silenceDrainsBeforeRelease
+        val rippleDrainProgress = if (renderingSilenceDrain && renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE) {
+            (silenceElapsedMs / RIPPLE_SILENCE_DRAIN_MS.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        if (isSilent && !silenceDrainsBeforeRelease) {
+            if (!matrixTurnedOffForSilence && now - silenceStartedAt >= SILENCE_BLACKOUT_MS) {
+                blackoutMatrixForSilence()
+            }
             if (!matrixReleasedForSilence && now - silenceStartedAt >= SILENCE_RELEASE_MS) {
                 releaseMatrixForSilence()
             }
             return
         }
-        silenceStartedAt = 0L
+        if (isSilent && matrixReleasedForSilence) {
+            return
+        }
+        if (!isSilent) {
+            silenceStartedAt = 0L
+        }
+        if (renderingSilenceDrain) {
+            renderLevel = when (renderMode) {
+                GlyphPatternRenderMode.MATRIX_RIPPLE -> (1f - (rippleDrainProgress * 0.15f)).coerceIn(0f, 1f)
+                else -> 0f
+            }
+        } else {
+            lastPreviewLevel = renderLevel
+        }
+        if (matrixTurnedOffForSilence && !isSilent) {
+            matrixTurnedOffForSilence = false
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+        }
 
-        if (matrixReleasedForSilence) {
-            val registered = glyphMatrixManager.register(currentDeviceCode())
+        if (matrixReleasedForSilence && !isSilent) {
+            val registered = try {
+                glyphMatrixManager.register(currentDeviceCode())
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "register during silence resume failed", error)
+                false
+            }
             if (!registered) {
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_resume_failed))
                 return
             }
+            try {
+                glyphMatrixManager.setGlyphMatrixTimeout(true)
+            } catch (error: GlyphException) {
+                AppLogger.w(TAG, "setGlyphMatrixTimeout during silence resume failed", error)
+            }
             matrixReleasedForSilence = false
+            matrixTurnedOffForSilence = false
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
         }
 
-        if (now - lastRenderAt < FRAME_INTERVAL_MS) return
+        val frameIntervalMs = if (matrixSmoothMotionEnabled) {
+            FRAME_INTERVAL_SMOOTH_MS
+        } else {
+            FRAME_INTERVAL_REDUCED_MS
+        }
+        if (now - lastRenderAt < frameIntervalMs) return
         lastRenderAt = now
 
-        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
-            ?: GlyphPatternRenderMode.MATRIX_BAR
         val litRows = (renderLevel * matrixLength).roundToInt().coerceIn(0, matrixLength)
-        if (renderMode == GlyphPatternRenderMode.MATRIX_BAR && litRows == lastLitRows) return
+        val renderBrightness = matrixBrightnessFor(renderLevel)
         if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS && renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
             turnOff()
             return
         }
         lastLitRows = litRows
+        lastMatrixBrightness = renderBrightness
 
         if (frameBuffer.size != matrixLength * matrixLength) {
             frameBuffer = IntArray(matrixLength * matrixLength)
         }
-        frameBuffer.fill(COLOR_OFF)
 
         val barWidth = (matrixLength / 8).coerceAtLeast(1)
         val leftCenter = (matrixLength * 0.35f).roundToInt().coerceIn(0, matrixLength - 1)
         val rightCenter = (matrixLength * 0.65f).roundToInt().coerceIn(0, matrixLength - 1)
+        val virtualRows = renderLevel.coerceIn(0f, 1f) * matrixLength
+        val fullRows = virtualRows.toInt().coerceIn(0, matrixLength)
+        val edgeRowBrightness = if (binaryMode) {
+            COLOR_OFF
+        } else {
+            ((virtualRows - fullRows) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+        }
+        val circleRingCount = (((matrixLength - 1) / 2f).toInt()).coerceAtLeast(1)
+        val virtualRings = renderLevel.coerceIn(0f, 1f) * circleRingCount
+        val fullRings = virtualRings.toInt().coerceIn(0, circleRingCount)
+        val edgeRingBrightness = if (binaryMode) {
+            COLOR_OFF
+        } else {
+            ((virtualRings - fullRings) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+        }
+        val allBrightnessSignature = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS && renderLevel > ALL_BRIGHTNESS_OFF_THRESHOLD) {
+            val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
+                normalizeAllBrightnessLevel(renderLevel)
+            } else {
+                renderLevel
+            }
+            val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+                .coerceIn(0f, 1f)
+            val shaped = normalized.pow(outputGamma)
+            (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX + ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped)).roundToInt()
+                .coerceIn(0, 255)
+        } else {
+            0
+        }
+        if (experimentalPerformanceOptimizationsEnabled) {
+            val renderSignature = when (renderMode) {
+                GlyphPatternRenderMode.MATRIX_SPECTRUM ->
+                    computeSpectrumRenderSignature(renderLevel, centerLowToHigh = false)
+                GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER ->
+                    computeSpectrumRenderSignature(renderLevel, centerLowToHigh = true)
+                GlyphPatternRenderMode.MATRIX_SPECTRUM_BOTTOM ->
+                    computeSpectrumRenderSignature(renderLevel, centerLowToHigh = false)
+                else -> computeRenderSignature(
+                    renderMode = renderMode,
+                    fullRows = fullRows,
+                    edgeRowBrightness = edgeRowBrightness,
+                    fullRings = fullRings,
+                    edgeRingBrightness = edgeRingBrightness,
+                    allBrightness = allBrightnessSignature
+                )
+            }
+            if (renderSignature != null && renderSignature == lastRenderSignature) {
+                return
+            }
+            lastRenderSignature = renderSignature ?: Long.MIN_VALUE
+        } else {
+            lastRenderSignature = Long.MIN_VALUE
+        }
 
-        fun drawBar(centerX: Int, rows: Int) {
+        val supportsDiffRendering =
+            experimentalPerformanceOptimizationsEnabled && when (renderMode) {
+                GlyphPatternRenderMode.MATRIX_BAR,
+                GlyphPatternRenderMode.MATRIX_FIELD,
+                GlyphPatternRenderMode.MATRIX_CIRCLE,
+                GlyphPatternRenderMode.MATRIX_SPECTRUM,
+                GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER,
+                GlyphPatternRenderMode.MATRIX_SPECTRUM_BOTTOM,
+                GlyphPatternRenderMode.ALL_BRIGHTNESS -> true
+                else -> false
+            }
+        val diffModeContinuing = supportsDiffRendering && lastRenderedMode == renderMode
+
+        if (!diffModeContinuing && renderMode != GlyphPatternRenderMode.ALL_BRIGHTNESS) {
+            frameBuffer.fill(COLOR_OFF)
+        }
+        var silenceDrainComplete = false
+
+        fun rowBrightnessForMeter(index: Int): Int {
+            return when {
+                index < fullRows -> COLOR_ON
+                index == fullRows && fullRows < matrixLength -> edgeRowBrightness
+                else -> COLOR_OFF
+            }
+        }
+
+        fun sampleBandForRatio(ratio: Float): Float {
+            if (spectrumBands.isNotEmpty()) {
+                if (spectrumBands.size == 1) return spectrumBands[0].coerceIn(0f, 1f)
+                val scaled = ratio.coerceIn(0f, 1f) * (spectrumBands.size - 1)
+                val lo = scaled.toInt().coerceIn(0, spectrumBands.lastIndex)
+                val hi = (lo + 1).coerceIn(0, spectrumBands.lastIndex)
+                val t = scaled - lo
+                return ((spectrumBands[lo] * (1f - t)) + (spectrumBands[hi] * t)).coerceIn(0f, 1f)
+            }
+            return ((lowEnergy * (1f - ratio)) + (highEnergy * ratio)).coerceIn(0f, 1f)
+        }
+
+        fun drawBar(centerX: Int) {
             val startX = (centerX - barWidth / 2).coerceAtLeast(0)
             val endXExclusive = (startX + barWidth).coerceAtMost(matrixLength)
 
-            for (row in 0 until rows.coerceIn(0, matrixLength)) {
+            if (supportsDiffRendering) {
+                ensureRowBrightnessCache()
+                for (row in 0 until matrixLength) {
+                    val brightness = rowBrightnessForMeter(row)
+                    val y = if (reverseDirection) row else (matrixLength - 1 - row)
+                    if (diffModeContinuing && lastRowBrightnessByRow[y] == brightness) continue
+                    val rowOffset = y * matrixLength
+                    for (x in startX until endXExclusive) {
+                        frameBuffer[rowOffset + x] = brightness
+                    }
+                    lastRowBrightnessByRow[y] = brightness
+                }
+                return
+            }
+
+            for (row in 0 until matrixLength) {
+                val brightness = rowBrightnessForMeter(row)
+                if (brightness <= 0) continue
                 val y = if (reverseDirection) row else (matrixLength - 1 - row)
                 val rowOffset = y * matrixLength
                 for (x in startX until endXExclusive) {
-                    frameBuffer[rowOffset + x] = COLOR_ON
+                    frameBuffer[rowOffset + x] = brightness
                 }
             }
         }
 
-        fun drawSpectrum(centerLowToHigh: Boolean) {
+        fun drawSpectrum(centerLowToHigh: Boolean, anchorBottom: Boolean = false) {
             val centerY = matrixLength / 2
             val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            val bandIndexByColumn = if (spectrumBands.isNotEmpty() && experimentalPerformanceOptimizationsEnabled) {
+                buildSpectrumBandIndexMap(matrixLength, spectrumBands.size, centerLowToHigh, reverseDirection)
+            } else {
+                null
+            }
+            if (supportsDiffRendering) {
+                ensureSpectrumColumnCaches()
+            }
 
             fun sampleBandForColumn(x: Int): Float {
+                if (spectrumBands.isNotEmpty()) {
+                    val idx = bandIndexByColumn?.get(x) ?: run {
+                        val sampledX = if (!centerLowToHigh && reverseDirection) {
+                            matrixLength - 1 - x
+                        } else {
+                            x
+                        }
+                        val rawRatio = if (centerLowToHigh) {
+                            val center = (matrixLength - 1f) / 2f
+                            if (center <= 0f) 0f else (kotlin.math.abs(sampledX - center) / center).coerceIn(0f, 1f)
+                        } else {
+                            if (matrixLength <= 1) 0f else (sampledX / (matrixLength - 1f)).coerceIn(0f, 1f)
+                        }
+                        val ratio = if (centerLowToHigh && reverseDirection) 1f - rawRatio else rawRatio
+                        (ratio * (spectrumBands.size - 1)).roundToInt().coerceIn(0, spectrumBands.lastIndex)
+                    }
+                    return spectrumBands[idx].coerceIn(0f, 1f)
+                }
                 val sampledX = if (!centerLowToHigh && reverseDirection) {
                     matrixLength - 1 - x
                 } else {
                     x
-                }
-                if (spectrumBands.isNotEmpty()) {
-                    val rawRatio = if (centerLowToHigh) {
-                        val center = (matrixLength - 1f) / 2f
-                        if (center <= 0f) 0f else (kotlin.math.abs(sampledX - center) / center).coerceIn(0f, 1f)
-                    } else {
-                        if (matrixLength <= 1) 0f else (sampledX / (matrixLength - 1f)).coerceIn(0f, 1f)
-                    }
-                    // Spectrum Center では方向トグルで中心/端の周波数割り当てを反転する
-                    val ratio = if (centerLowToHigh && reverseDirection) 1f - rawRatio else rawRatio
-                    val idx = (ratio * (spectrumBands.size - 1)).roundToInt().coerceIn(0, spectrumBands.lastIndex)
-                    return spectrumBands[idx].coerceIn(0f, 1f)
                 }
                 val rawRatio = if (centerLowToHigh) {
                     val center = (matrixLength - 1f) / 2f
@@ -452,90 +716,549 @@ class GlyphMatrixController(
             for (x in 0 until matrixLength) {
                 val band = sampleBandForColumn(x)
                 val maxPx = maxPixelsByColumn[x].coerceAtLeast(1)
-                val activePx = (maxPx * renderLevel * band).roundToInt().coerceIn(0, maxPx)
-                if (activePx <= 0) continue
-
-                // 奇数画素で中央軸対称にする
-                val oddPx = if (activePx % 2 == 0) (activePx - 1).coerceAtLeast(1) else activePx
-                val half = oddPx / 2
-
-                // 中央を軸に上下へ広がる（1列=1マス、列間ギャップなし）
-                for (dy in 0..half) {
-                    val yTop = (centerY - dy).coerceIn(0, matrixLength - 1)
-                    val yBottom = (centerY + dy).coerceIn(0, matrixLength - 1)
-                    frameBuffer[yTop * matrixLength + x] = COLOR_ON
-                    frameBuffer[yBottom * matrixLength + x] = COLOR_ON
+                val weightedLevel = (renderLevel * band).coerceIn(0f, 1f)
+                val virtualPx = maxPx * weightedLevel
+                val fullPx = virtualPx.toInt().coerceIn(0, maxPx)
+                val edgeBrightness = if (binaryMode) {
+                    COLOR_OFF
+                } else {
+                    ((virtualPx - fullPx) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
                 }
+                if (supportsDiffRendering &&
+                    diffModeContinuing &&
+                    lastSpectrumFullPxByColumn[x] == fullPx &&
+                    lastSpectrumEdgeBrightnessByColumn[x] == edgeBrightness
+                ) continue
+                if (supportsDiffRendering) {
+                    clearSpectrumColumn(x)
+                }
+                if (fullPx <= 0 && edgeBrightness <= 0) {
+                    if (supportsDiffRendering) {
+                        lastSpectrumFullPxByColumn[x] = fullPx
+                        lastSpectrumEdgeBrightnessByColumn[x] = edgeBrightness
+                    }
+                    continue
+                }
+
+                if (anchorBottom) {
+                    val columnHeight = maxPx.coerceAtLeast(1)
+                    val topPadding = (matrixLength - columnHeight) / 2
+                    val bottomY = (topPadding + columnHeight - 1).coerceIn(0, matrixLength - 1)
+                    for (step in 0 until fullPx.coerceAtMost(columnHeight)) {
+                        val y = (bottomY - step).coerceIn(0, matrixLength - 1)
+                        frameBuffer[y * matrixLength + x] = COLOR_ON
+                    }
+                    if (edgeBrightness > 0 && fullPx < columnHeight) {
+                        val y = (bottomY - fullPx).coerceIn(0, matrixLength - 1)
+                        frameBuffer[y * matrixLength + x] = edgeBrightness
+                    }
+                } else {
+                    // 奇数画素で中央軸対称にする
+                    val oddFullPx = if (fullPx % 2 == 0) (fullPx - 1).coerceAtLeast(0) else fullPx
+                    val fullHalf = oddFullPx / 2
+
+                    // 中央を軸に、まず full の明るさで埋める
+                    for (dy in 0..fullHalf) {
+                        val yTop = (centerY - dy).coerceIn(0, matrixLength - 1)
+                        val yBottom = (centerY + dy).coerceIn(0, matrixLength - 1)
+                        frameBuffer[yTop * matrixLength + x] = COLOR_ON
+                        frameBuffer[yBottom * matrixLength + x] = COLOR_ON
+                    }
+
+                    // 端の1段だけ partial 明るさにして、Matrix Bar に近い見た目へ寄せる
+                    if (edgeBrightness > 0 && oddFullPx < maxPx) {
+                        val edgeOffset = fullHalf + 1
+                        val yTop = (centerY - edgeOffset).coerceIn(0, matrixLength - 1)
+                        val yBottom = (centerY + edgeOffset).coerceIn(0, matrixLength - 1)
+                        frameBuffer[yTop * matrixLength + x] = edgeBrightness
+                        frameBuffer[yBottom * matrixLength + x] = edgeBrightness
+                    }
+                }
+                if (supportsDiffRendering) {
+                    lastSpectrumFullPxByColumn[x] = fullPx
+                    lastSpectrumEdgeBrightnessByColumn[x] = edgeBrightness
+                }
+            }
+        }
+
+        fun drawSkyline() {
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            for (x in 0 until matrixLength) {
+                val ratio = if (matrixLength <= 1) 0f else x / (matrixLength - 1f)
+                val smoothedBand = (
+                    sampleBandForRatio((ratio - 0.08f).coerceIn(0f, 1f)) * 0.2f +
+                        sampleBandForRatio((ratio - 0.04f).coerceIn(0f, 1f)) * 0.3f +
+                        sampleBandForRatio(ratio) * 0.35f +
+                        sampleBandForRatio((ratio + 0.04f).coerceIn(0f, 1f)) * 0.1f +
+                        sampleBandForRatio((ratio + 0.08f).coerceIn(0f, 1f)) * 0.05f
+                    ).coerceIn(0f, 1f)
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                val weightedLevel = (renderLevel * (0.18f + smoothedBand * 0.82f)).coerceIn(0f, 1f)
+                val virtualPx = columnHeight * weightedLevel
+                val fullPx = virtualPx.toInt().coerceIn(0, columnHeight)
+                val edgeBrightness = if (binaryMode) {
+                    COLOR_OFF
+                } else {
+                    ((virtualPx - fullPx) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+                }
+                val topPadding = (matrixLength - columnHeight) / 2
+                val bottomY = (topPadding + columnHeight - 1).coerceIn(0, matrixLength - 1)
+                for (step in 0 until fullPx.coerceAtMost(columnHeight)) {
+                    val y = (bottomY - step).coerceIn(0, matrixLength - 1)
+                    frameBuffer[y * matrixLength + x] = COLOR_ON
+                }
+                if (edgeBrightness > 0 && fullPx < columnHeight) {
+                    val y = (bottomY - fullPx).coerceIn(0, matrixLength - 1)
+                    frameBuffer[y * matrixLength + x] = edgeBrightness
+                }
+            }
+        }
+
+        fun drawWaveField() {
+            val elapsedMs = if (lastRenderAt <= 0L) frameIntervalMs else frameIntervalMs
+            wavePhase += (elapsedMs.toFloat() / 1000f) * (2.8f + (highEnergy * 4.2f))
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            for (x in 0 until matrixLength) {
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                val topPadding = (matrixLength - columnHeight) / 2
+                val ratio = if (matrixLength <= 1) 0f else x / (matrixLength - 1f)
+                val band = sampleBandForRatio(ratio)
+                for (localY in 0 until columnHeight) {
+                    val y = topPadding + localY
+                    val normX = if (matrixLength <= 1) 0f else x / (matrixLength - 1f)
+                    val normY = if (columnHeight <= 1) 0f else localY / (columnHeight - 1f)
+                    val wave = ((sin(wavePhase + (normX * 6.5f) - (normY * 5.5f) + band * 2.5f) + 1f) * 0.5f)
+                    val envelope = ((0.08f + renderLevel * 0.92f) * (0.10f + band * 0.90f)).coerceIn(0f, 1f)
+                    val brightness = (wave * envelope * MATRIX_WAVE_FIELD_BRIGHTNESS_BOOST).coerceIn(0f, 1f)
+                    if (brightness <= 0.02f) continue
+                    frameBuffer[y * matrixLength + x] = brightnessToMatrixColor(brightness)
+                }
+            }
+        }
+
+        fun drawSpectrogram() {
+            ensureSpectrogramState()
+            val rowCount = matrixLength.coerceAtLeast(1)
+            val insertAt = if (reverseDirection) rowCount - 1 else 0
+            if (reverseDirection) {
+                for (x in 0 until rowCount - 1) {
+                    val dstOffset = x * rowCount
+                    val srcOffset = (x + 1) * rowCount
+                    spectrogramHistory.copyInto(
+                        destination = spectrogramHistory,
+                        destinationOffset = dstOffset,
+                        startIndex = srcOffset,
+                        endIndex = srcOffset + rowCount
+                    )
+                }
+            } else {
+                for (x in (rowCount - 1) downTo 1) {
+                    val dstOffset = x * rowCount
+                    val srcOffset = (x - 1) * rowCount
+                    spectrogramHistory.copyInto(
+                        destination = spectrogramHistory,
+                        destinationOffset = dstOffset,
+                        startIndex = srcOffset,
+                        endIndex = srcOffset + rowCount
+                    )
+                }
+            }
+            val insertOffset = insertAt * rowCount
+            for (row in 0 until rowCount) {
+                val bandRatio = if (rowCount <= 1) {
+                    0.5f
+                } else {
+                    1f - (row / (rowCount - 1f))
+                }
+                spectrogramHistory[insertOffset + row] = if (renderingSilenceDrain) {
+                    0f
+                } else {
+                    val band = sampleBandForRatio(bandRatio)
+                    (
+                        (0.03f + band * 0.97f) *
+                            (0.08f + renderLevel * 0.92f) *
+                            MATRIX_SPECTROGRAM_BRIGHTNESS_BOOST
+                        ).coerceIn(0f, 1f)
+                }
+            }
+
+            for (x in 0 until matrixLength) {
+                val columnOffset = x * rowCount
+                for (y in 0 until matrixLength) {
+                    val historyRow = y.coerceIn(0, rowCount - 1)
+                    val brightness = spectrogramHistory[columnOffset + historyRow]
+                    if (brightness <= 0.02f) continue
+                    frameBuffer[y * matrixLength + x] = brightnessToMatrixColor(brightness)
+                }
+            }
+            if (renderingSilenceDrain) {
+                silenceDrainComplete = spectrogramHistory.all { it <= SILENCE_DRAIN_BRIGHTNESS_THRESHOLD }
+            }
+        }
+
+        fun drawSpectrumAnalyzer() {
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            var previousY = -1f
+            var previousBrightness = 0f
+
+            fun plotAnalyzerPoint(x: Int, yFloat: Float, brightness: Float) {
+                if (x !in 0 until matrixLength || brightness <= 0.01f) return
+                val primaryY = yFloat.roundToInt().coerceIn(0, matrixLength - 1)
+                val primary = brightnessToMatrixColor(brightness)
+                val rowOffset = primaryY * matrixLength
+                frameBuffer[rowOffset + x] = max(frameBuffer[rowOffset + x], primary)
+
+                val glow = brightnessToMatrixColor((brightness * 0.45f).coerceIn(0f, 1f))
+                if (glow > COLOR_OFF) {
+                    if (primaryY > 0) {
+                        val upperOffset = (primaryY - 1) * matrixLength
+                        frameBuffer[upperOffset + x] = max(frameBuffer[upperOffset + x], glow)
+                    }
+                    if (primaryY < matrixLength - 1) {
+                        val lowerOffset = (primaryY + 1) * matrixLength
+                        frameBuffer[lowerOffset + x] = max(frameBuffer[lowerOffset + x], glow)
+                    }
+                }
+            }
+
+            for (x in 0 until matrixLength) {
+                val ratio = if (matrixLength <= 1) {
+                    0.5f
+                } else {
+                    x / (matrixLength - 1f)
+                }
+                val smoothedBand = (
+                    sampleBandForRatio((ratio - 0.06f).coerceIn(0f, 1f)) * 0.18f +
+                        sampleBandForRatio((ratio - 0.02f).coerceIn(0f, 1f)) * 0.28f +
+                        sampleBandForRatio(ratio) * 0.34f +
+                        sampleBandForRatio((ratio + 0.02f).coerceIn(0f, 1f)) * 0.14f +
+                        sampleBandForRatio((ratio + 0.06f).coerceIn(0f, 1f)) * 0.06f
+                    ).coerceIn(0f, 1f)
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                val topPadding = (matrixLength - columnHeight) / 2
+                val curveLevel = (0.06f + (smoothedBand * renderLevel * 0.94f)).coerceIn(0f, 1f)
+                val yFloat = (topPadding + (1f - curveLevel) * (columnHeight - 1)).coerceIn(
+                    topPadding.toFloat(),
+                    (topPadding + columnHeight - 1).toFloat()
+                )
+                val brightness = if (binaryMode) {
+                    1f
+                } else {
+                    ((0.22f + smoothedBand * 0.78f) * MATRIX_SPECTRUM_ANALYZER_BRIGHTNESS_BOOST)
+                        .coerceIn(0f, 1f)
+                }
+
+                if (previousY >= 0f) {
+                    val steps = max(1, abs(yFloat - previousY).roundToInt())
+                    for (step in 1..steps) {
+                        val t = step / steps.toFloat()
+                        val interpY = previousY + ((yFloat - previousY) * t)
+                        val interpBrightness = (previousBrightness * (1f - t)) + (brightness * t)
+                        plotAnalyzerPoint(x, interpY, interpBrightness)
+                    }
+                } else {
+                    plotAnalyzerPoint(x, yFloat, brightness)
+                }
+                previousY = yFloat
+                previousBrightness = brightness
+            }
+        }
+
+        fun drawOscilloscope() {
+            if (waveformSamples.isEmpty()) return
+            val verticalPadding = when {
+                matrixLength >= 21 -> 2
+                matrixLength >= 9 -> 1
+                else -> 0
+            }
+            val topY = verticalPadding.coerceAtMost((matrixLength - 1) / 2)
+            val bottomY = (matrixLength - 1 - verticalPadding).coerceAtLeast(topY)
+            val drawableHeight = (bottomY - topY + 1).coerceAtLeast(1)
+            val centerY = topY + ((drawableHeight - 1) / 2f)
+            val amplitudeRange = ((drawableHeight - 1) * 0.40f).coerceAtLeast(0.5f)
+
+            fun sampleWaveform(ratio: Float): Float {
+                if (waveformSamples.size == 1) return waveformSamples[0].coerceIn(-1f, 1f)
+                val scaled = ratio.coerceIn(0f, 1f) * (waveformSamples.size - 1)
+                val lo = scaled.toInt().coerceIn(0, waveformSamples.lastIndex)
+                val hi = (lo + 1).coerceIn(0, waveformSamples.lastIndex)
+                val t = scaled - lo
+                return ((waveformSamples[lo] * (1f - t)) + (waveformSamples[hi] * t)).coerceIn(-1f, 1f)
+            }
+
+            fun plotWavePoint(xFloat: Float, yFloat: Float, visible: Boolean) {
+                if (!visible) return
+                if (binaryMode) {
+                    val x = xFloat.roundToInt().coerceIn(0, matrixLength - 1)
+                    val y = yFloat.roundToInt().coerceIn(0, matrixLength - 1)
+                    frameBuffer[y * matrixLength + x] = COLOR_ON
+                    return
+                }
+                val clampedX = xFloat.coerceIn(0f, (matrixLength - 1).toFloat())
+                val leftX = clampedX.toInt().coerceIn(0, matrixLength - 1)
+                val rightX = (leftX + 1).coerceIn(0, matrixLength - 1)
+                val xFraction = (clampedX - leftX).coerceIn(0f, 1f)
+
+                fun plotAt(x: Int, xWeight: Float) {
+                    if (x !in 0 until matrixLength || xWeight <= 0f) return
+                    val clampedY = yFloat.coerceIn(topY.toFloat(), bottomY.toFloat())
+                    val lowerY = clampedY.toInt().coerceIn(0, matrixLength - 1)
+                    val upperY = (lowerY + 1).coerceIn(0, matrixLength - 1)
+                    val yFraction = (clampedY - lowerY).coerceIn(0f, 1f)
+                    val lowerBrightness = brightnessToMatrixColor(((1f - yFraction) * xWeight).coerceIn(0f, 1f))
+                    frameBuffer[lowerY * matrixLength + x] = max(frameBuffer[lowerY * matrixLength + x], lowerBrightness)
+                    if (upperY != lowerY && yFraction > 0f) {
+                        val upperBrightness = brightnessToMatrixColor((yFraction * xWeight).coerceIn(0f, 1f))
+                        frameBuffer[upperY * matrixLength + x] = max(frameBuffer[upperY * matrixLength + x], upperBrightness)
+                    }
+                }
+
+                plotAt(leftX, 1f - xFraction)
+                if (rightX != leftX && xFraction > 0f) {
+                    plotAt(rightX, xFraction)
+                }
+            }
+
+            var previousY = -1f
+            var previousX = -1f
+            var previousVisible = false
+            for (x in 0 until matrixLength) {
+                val sourceX = if (reverseDirection) matrixLength - 1 - x else x
+                val ratio = if (matrixLength <= 1) 0.5f else sourceX / (matrixLength - 1f)
+                val sample = sampleWaveform(ratio)
+                val amplitudeScale = (0.72f + renderLevel * 0.24f).coerceIn(0.65f, 0.96f)
+                val yFloat = (centerY - (sample * amplitudeRange * amplitudeScale)).coerceIn(
+                    topY.toFloat(),
+                    bottomY.toFloat()
+                )
+                val sampleStrength = abs(sample)
+                val visible = sampleStrength > 0.015f || renderLevel > 0.02f
+
+                if (previousY >= 0f) {
+                    val steps = max(1, max(abs(yFloat - previousY), abs(x - previousX)).roundToInt())
+                    for (step in 1..steps) {
+                        val t = step / steps.toFloat()
+                        val interpX = previousX + ((x - previousX) * t)
+                        val interpY = previousY + ((yFloat - previousY) * t)
+                        plotWavePoint(interpX, interpY, visible || previousVisible)
+                    }
+                } else {
+                    plotWavePoint(x.toFloat(), yFloat, visible)
+                }
+                previousY = yFloat
+                previousX = x.toFloat()
+                previousVisible = visible
+            }
+        }
+
+        fun drawPulseGrid() {
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            val centerX = (matrixLength - 1f) / 2f
+            val centerY = (matrixLength - 1f) / 2f
+            val maxRadius = max(centerX, centerY).coerceAtLeast(1f)
+            for (x in 0 until matrixLength) {
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                val topPadding = (matrixLength - columnHeight) / 2
+                for (localY in 0 until columnHeight) {
+                    val y = topPadding + localY
+                    val dx = x - centerX
+                    val dy = y - centerY
+                    val radialRatio = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                        .div(maxRadius)
+                        .coerceIn(0f, 1f)
+                    val verticalRatio = if (columnHeight <= 1) 0.5f else (localY / (columnHeight - 1f)).coerceIn(0f, 1f)
+                    val hash = ((x * 73856093) xor (y * 19349663) xor (matrixLength * 83492791) xor pulseGridSeed) and 0x7fffffff
+                    val randomUnit = (hash % 10_000) / 9_999f
+                    val randomOffset = (randomUnit - 0.5f) * 0.34f
+                    val structuredRatio = ((radialRatio * 0.72f) + (verticalRatio * 0.18f) + 0.05f + randomOffset)
+                        .coerceIn(0f, 1f)
+                    val bandRatio = if (reverseDirection) 1f - structuredRatio else structuredRatio
+                    val pixelBand = sampleBandForRatio(bandRatio)
+                    val brightness = (
+                        (0.05f + pixelBand * 0.95f) *
+                            (0.10f + renderLevel * 0.90f) *
+                            MATRIX_PULSE_GRID_BRIGHTNESS_BOOST
+                        ).coerceIn(0f, 1f)
+                    if (brightness > 0.015f) {
+                        frameBuffer[y * matrixLength + x] = brightnessToMatrixColor(brightness)
+                    }
+                }
+            }
+        }
+
+        fun drawRipple() {
+            val elapsedMs = if (lastRenderAt <= 0L) frameIntervalMs else frameIntervalMs
+            ripplePhase += (elapsedMs.toFloat() / 1000f) * (2.1f + renderLevel * 3.4f)
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            val centerX = (matrixLength - 1f) / 2f
+            val centerY = (matrixLength - 1f) / 2f
+            val maxRadius = max(centerX, centerY).coerceAtLeast(1f)
+            val activeRadius = if (renderingSilenceDrain) {
+                (0.12f + rippleDrainProgress * 1.22f).coerceIn(0f, 1.34f)
+            } else {
+                (0.12f + renderLevel * 0.88f).coerceIn(0f, 1f)
+            }
+            val drainFade = if (renderingSilenceDrain) {
+                (1f - rippleDrainProgress).coerceIn(0f, 1f)
+            } else {
+                1f
+            }
+            for (x in 0 until matrixLength) {
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                val topPadding = (matrixLength - columnHeight) / 2
+                for (localY in 0 until columnHeight) {
+                    val y = topPadding + localY
+                    val dx = x - centerX
+                    val dy = y - centerY
+                    val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                    val radius = (distance / maxRadius).coerceIn(0f, 1f)
+                    val ripple = ((sin((radius * 11f) - (ripplePhase * 4.2f)) + 1f) * 0.5f)
+                    val radiusWindow = (1f - (abs(radius - activeRadius) * 2.4f)).coerceIn(0f, 1f)
+                    val envelope = ((0.32f + renderLevel * 0.68f) * (0.48f + radiusWindow * 0.52f) * drainFade).coerceIn(0f, 1f)
+                    val brightness = (ripple * envelope * MATRIX_RIPPLE_BRIGHTNESS_BOOST).coerceIn(0f, 1f)
+                    if (brightness <= 0.03f) continue
+                    frameBuffer[y * matrixLength + x] = brightnessToMatrixColor(brightness)
+                }
+            }
+            if (renderingSilenceDrain) {
+                silenceDrainComplete = rippleDrainProgress >= 1f
+            }
+        }
+
+        fun drawRain() {
+            ensureRainState()
+            val elapsedMs = if (lastRainUpdateMs <= 0L) frameIntervalMs else (now - lastRainUpdateMs).coerceAtLeast(1L)
+            lastRainUpdateMs = now
+            val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+            for (x in 0 until matrixLength) {
+                val ratio = if (matrixLength <= 1) 0f else x / (matrixLength - 1f)
+                val band = sampleBandForRatio(ratio)
+                val intensity = ((0.26f + renderLevel * 0.74f) * (0.36f + band * 0.64f) * MATRIX_RAIN_BRIGHTNESS_BOOST)
+                    .coerceIn(0f, 1f)
+                val columnHeight = maxPixelsByColumn[x].coerceAtLeast(1)
+                if (rainHeadByColumn[x] < 0f) {
+                    val spawnWindow = ((intensity * 10f).roundToInt()).coerceIn(0, 9)
+                    val bucket = ((now / frameIntervalMs) + (x * 7L)) % 10L
+                    if (!renderingSilenceDrain && intensity > 0.16f && bucket <= spawnWindow.toLong()) {
+                        rainHeadByColumn[x] = 0f
+                        rainBrightnessByColumn[x] = (0.62f + intensity * 0.38f).coerceIn(0f, 1f)
+                        rainSpeedByColumn[x] = (0.45f + intensity * 1.35f).coerceIn(0.35f, 2.1f)
+                    }
+                } else {
+                    rainHeadByColumn[x] += rainSpeedByColumn[x] * (elapsedMs / 33f)
+                    rainBrightnessByColumn[x] = (rainBrightnessByColumn[x] - (elapsedMs / 1000f) * 0.08f).coerceAtLeast(0.32f)
+                    if (rainHeadByColumn[x] > columnHeight + RAIN_TAIL_LENGTH) {
+                        rainHeadByColumn[x] = -1f
+                        rainBrightnessByColumn[x] = 0f
+                        rainSpeedByColumn[x] = 0f
+                    }
+                }
+                if (rainHeadByColumn[x] < 0f) continue
+                val topPadding = (matrixLength - columnHeight) / 2
+                val bottomY = (topPadding + columnHeight - 1).coerceIn(0, matrixLength - 1)
+                val headRow = rainHeadByColumn[x].roundToInt()
+                for (tail in 0..RAIN_TAIL_LENGTH) {
+                    val progress = 1f - (tail / (RAIN_TAIL_LENGTH + 1f))
+                    val localBrightness = (rainBrightnessByColumn[x] * progress).coerceIn(0f, 1f)
+                    val localRow = headRow - tail
+                    if (localRow < 0 || localRow >= columnHeight) continue
+                    val y = if (reverseDirection) {
+                        (bottomY - localRow).coerceIn(0, matrixLength - 1)
+                    } else {
+                        (topPadding + localRow).coerceIn(0, matrixLength - 1)
+                    }
+                    frameBuffer[y * matrixLength + x] = max(
+                        frameBuffer[y * matrixLength + x],
+                        brightnessToMatrixColor(localBrightness)
+                    )
+                }
+            }
+            if (renderingSilenceDrain) {
+                silenceDrainComplete = rainHeadByColumn.all { it < 0f }
             }
         }
 
         when (renderMode) {
             GlyphPatternRenderMode.MATRIX_FIELD -> {
-                // 端っこまで広げたフィールド：全幅を使用
-                for (row in 0 until litRows.coerceIn(0, matrixLength)) {
+                // 行ごとに full / partial / off を持たせ、Linear のように先端だけ半点灯させる
+                if (supportsDiffRendering) {
+                    ensureRowBrightnessCache()
+                }
+                for (row in 0 until matrixLength) {
+                    val brightness = rowBrightnessForMeter(row)
                     val y = if (reverseDirection) row else (matrixLength - 1 - row)
+                    if (supportsDiffRendering && diffModeContinuing && lastRowBrightnessByRow[y] == brightness) continue
                     val rowOffset = y * matrixLength
                     for (x in 0 until matrixLength) {
-                        frameBuffer[rowOffset + x] = COLOR_ON
+                        frameBuffer[rowOffset + x] = brightness
+                    }
+                    if (supportsDiffRendering) {
+                        lastRowBrightnessByRow[y] = brightness
                     }
                 }
             }
             GlyphPatternRenderMode.MATRIX_CIRCLE -> {
-                // 中心からの距離で円を描画
-                val center = (matrixLength - 1) / 2f
-                val maxRadius = (matrixLength - 1) / 2f
-                    val radius = (litRows / matrixLength.toFloat()) * maxRadius
-                
-                if (reverseDirection) {
-                    // 反転時は背景を点灯させ、音が小さいほど内側を大きく削る
-                    if (litRows <= 0) {
-                        // 無音時は完全に削く（全て黒）
-                        frameBuffer.fill(COLOR_OFF)
-                    } else {
-                        val cutoutRows = (matrixLength - litRows).coerceIn(0, matrixLength)
-                        val cutoutRadius = (cutoutRows / matrixLength.toFloat()) * maxRadius
-                        frameBuffer.fill(COLOR_ON)
-                        for (y in 0 until matrixLength) {
-                            val rowOffset = y * matrixLength
-                            for (x in 0 until matrixLength) {
-                                val dx = x - center
-                                val dy = y - center
-                                val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                fun ringBrightnessForMeter(index: Int): Int {
+                    return when {
+                        index < fullRings -> COLOR_ON
+                        index == fullRings && fullRings < circleRingCount -> edgeRingBrightness
+                        else -> COLOR_OFF
+                    }
+                }
 
-                                if (distance <= cutoutRadius) {
-                                    frameBuffer[rowOffset + x] = COLOR_OFF
-                                }
-                            }
+                if (supportsDiffRendering) {
+                    ensureCircleRingBrightnessCache(circleRingCount)
+                    val ringPixelsByRing = buildCircleRingPixelBuckets(matrixLength, reverseDirection)
+                    for (ringIndex in 0 until circleRingCount) {
+                        val brightness = ringBrightnessForMeter(ringIndex)
+                        if (diffModeContinuing && lastCircleBrightnessByRing[ringIndex] == brightness) continue
+                        for (pixelIndex in ringPixelsByRing[ringIndex]) {
+                            frameBuffer[pixelIndex] = brightness
                         }
+                        lastCircleBrightnessByRing[ringIndex] = brightness
                     }
                 } else {
-                    // 通常時：中心から円を拡大
-                    for (y in 0 until matrixLength) {
-                        val rowOffset = y * matrixLength
-                        for (x in 0 until matrixLength) {
+                    val ringIndexByPixel = if (experimentalPerformanceOptimizationsEnabled) {
+                        buildCircleRingIndexMap(matrixLength, reverseDirection)
+                    } else {
+                        null
+                    }
+                    val center = (matrixLength - 1) / 2f
+                    val maxRadius = (matrixLength - 1) / 2f
+                    for (index in frameBuffer.indices) {
+                        val ringIndex = ringIndexByPixel?.get(index) ?: run {
+                            val y = index / matrixLength
+                            val x = index % matrixLength
                             val dx = x - center
                             val dy = y - center
                             val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                            
-                            if (distance <= radius) {
-                                frameBuffer[rowOffset + x] = COLOR_ON
+                            if (distance > maxRadius) {
+                                -1
+                            } else if (reverseDirection) {
+                                ((maxRadius - distance).coerceAtLeast(0f)).toInt().coerceIn(0, circleRingCount - 1)
+                            } else {
+                                distance.toInt().coerceIn(0, circleRingCount - 1)
                             }
+                        }
+                        if (ringIndex < 0) continue
+                        val brightness = ringBrightnessForMeter(ringIndex)
+                        if (brightness > 0) {
+                            frameBuffer[index] = brightness
                         }
                     }
                 }
-                
-                // 無音時は中心の点を消灯
-                if (litRows <= 0) {
-                    val cx = center.roundToInt()
-                    val cy = center.roundToInt()
-                    val centerOffset = cy * matrixLength + cx
-                    if (centerOffset >= 0 && centerOffset < frameBuffer.size) {
-                        frameBuffer[centerOffset] = COLOR_OFF
-                    }
-                }
             }
+            GlyphPatternRenderMode.MATRIX_RIPPLE -> drawRipple()
             GlyphPatternRenderMode.MATRIX_SPECTRUM -> drawSpectrum(centerLowToHigh = false)
             GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER -> drawSpectrum(centerLowToHigh = true)
+            GlyphPatternRenderMode.MATRIX_SPECTRUM_BOTTOM -> drawSpectrum(centerLowToHigh = false, anchorBottom = true)
+            GlyphPatternRenderMode.MATRIX_SPECTROGRAM -> drawSpectrogram()
+            GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER -> drawSpectrumAnalyzer()
+            GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE -> drawOscilloscope()
+            GlyphPatternRenderMode.MATRIX_RAIN -> drawRain()
+            GlyphPatternRenderMode.MATRIX_WAVE_FIELD -> drawWaveField()
+            GlyphPatternRenderMode.MATRIX_SKYLINE -> drawSkyline()
+            GlyphPatternRenderMode.MATRIX_PULSE_GRID -> drawPulseGrid()
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
                 val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
                     normalizeAllBrightnessLevel(renderLevel)
@@ -548,15 +1271,24 @@ class GlyphMatrixController(
                     val shaped = normalized.pow(outputGamma)
                     val brightness = (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX + ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped)).roundToInt()
                         .coerceIn(0, 255)
-                    frameBuffer.fill(brightness)
+                    if (!diffModeContinuing || lastMatrixBrightness != brightness) {
+                        frameBuffer.fill(brightness)
+                    }
                 } else {
-                    frameBuffer.fill(COLOR_OFF)
+                    if (!diffModeContinuing || lastMatrixBrightness != COLOR_OFF) {
+                        frameBuffer.fill(COLOR_OFF)
+                    }
                 }
             }
-            else -> drawBar(matrixLength / 2, litRows)
+            else -> drawBar(matrixLength / 2)
         }
+        lastRenderedMode = renderMode
 
-        if (lastSentFrameBuffer.size != frameBuffer.size) {
+        if (experimentalPerformanceOptimizationsEnabled) {
+            if (lastSentFrameBuffer.size != frameBuffer.size) {
+                lastSentFrameBuffer = IntArray(frameBuffer.size)
+            }
+        } else if (lastSentFrameBuffer.size != frameBuffer.size) {
             lastSentFrameBuffer = frameBuffer.copyOf()
         } else if (lastSentFrameBuffer.contentEquals(frameBuffer)) {
             // フレームの変更がなければSDKへの転送をスキップし、処理を軽量化する
@@ -567,6 +1299,9 @@ class GlyphMatrixController(
 
         try {
             glyphMatrixManager.setAppMatrixFrame(frameBuffer)
+            if (experimentalPerformanceOptimizationsEnabled) {
+                frameBuffer.copyInto(lastSentFrameBuffer)
+            }
             failureCount = 0
         } catch (error: GlyphException) {
             failureCount += 1
@@ -583,12 +1318,19 @@ class GlyphMatrixController(
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_update_crashed))
             }
         }
+        if (renderingSilenceDrain && silenceDrainComplete && !matrixReleasedForSilence) {
+            releaseMatrixForSilence()
+        }
     }
 
     override fun turnOff() {
         lastPreviewLevel = 0f
         silenceStartedAt = 0L
+        matrixTurnedOffForSilence = false
         matrixReleasedForSilence = false
+        lastRenderSignature = Long.MIN_VALUE
+        lastRenderedMode = null
+        resetPatternVisualState()
         try {
             glyphMatrixManager.turnOff()
         } catch (error: Throwable) {
@@ -611,12 +1353,288 @@ class GlyphMatrixController(
         } catch (error: Throwable) {
             AppLogger.w(TAG, "closeAppMatrix during silence release failed", error)
         }
+        matrixTurnedOffForSilence = true
         matrixReleasedForSilence = true
+    }
+
+    private fun blackoutMatrixForSilence() {
+        try {
+            glyphMatrixManager.turnOff()
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "turnOff during silence blackout failed", error)
+        }
+        lastRenderSignature = Long.MIN_VALUE
+        lastRenderedMode = null
+        matrixTurnedOffForSilence = true
     }
 
     private fun currentDeviceCode(): String {
         return requireNotNull(GlyphDeviceCatalog.currentOrNull()?.matrixSpec?.sdkDeviceId) {
             "Matrix device spec is unavailable for the current device."
+        }
+    }
+
+    private fun matrixBrightnessFor(level: Float): Int {
+        val clamped = level.coerceIn(0f, 1f)
+        if (clamped <= 0f) return COLOR_OFF
+        if (binaryMode) return COLOR_ON
+        if (experimentalPerformanceOptimizationsEnabled) {
+            ensureBrightnessLut()
+            val index = (clamped * 255f).roundToInt().coerceIn(0, 255)
+            return cachedBrightnessLut[index]
+        }
+        return (clamped.pow(outputGamma) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+    }
+
+    private fun ensureBrightnessLut() {
+        if (cachedBrightnessLut.size == 256 && cachedBrightnessLutGamma == outputGamma) return
+        cachedBrightnessLut = IntArray(256) { index ->
+            val clamped = index / 255f
+            if (clamped <= 0f) {
+                COLOR_OFF
+            } else {
+                (clamped.pow(outputGamma) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+            }
+        }
+        cachedBrightnessLutGamma = outputGamma
+    }
+
+    private fun ensureRowBrightnessCache() {
+        if (lastRowBrightnessByRow.size != matrixLength) {
+            lastRowBrightnessByRow = IntArray(matrixLength) { -1 }
+        }
+    }
+
+    private fun ensureSpectrumColumnCaches() {
+        if (lastSpectrumFullPxByColumn.size != matrixLength) {
+            lastSpectrumFullPxByColumn = IntArray(matrixLength) { -1 }
+        }
+        if (lastSpectrumEdgeBrightnessByColumn.size != matrixLength) {
+            lastSpectrumEdgeBrightnessByColumn = IntArray(matrixLength) { -1 }
+        }
+    }
+
+    private fun ensureCircleRingBrightnessCache(ringCount: Int) {
+        if (lastCircleBrightnessByRing.size != ringCount) {
+            lastCircleBrightnessByRing = IntArray(ringCount) { -1 }
+        }
+    }
+
+    private fun clearSpectrumColumn(x: Int) {
+        for (y in 0 until matrixLength) {
+            frameBuffer[y * matrixLength + x] = COLOR_OFF
+        }
+    }
+
+    private fun computeSpectrumRenderSignature(renderLevel: Float, centerLowToHigh: Boolean): Long {
+        val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
+        val bandIndexByColumn = if (spectrumBands.isNotEmpty()) {
+            buildSpectrumBandIndexMap(matrixLength, spectrumBands.size, centerLowToHigh, reverseDirection)
+        } else {
+            null
+        }
+        var signature = if (centerLowToHigh) (6L shl 60) else (5L shl 60)
+        for (x in 0 until matrixLength) {
+            val band = if (spectrumBands.isNotEmpty()) {
+                spectrumBands[bandIndexByColumn!![x]].coerceIn(0f, 1f)
+            } else {
+                val sampledX = if (!centerLowToHigh && reverseDirection) {
+                    matrixLength - 1 - x
+                } else {
+                    x
+                }
+                val rawRatio = if (centerLowToHigh) {
+                    val center = (matrixLength - 1f) / 2f
+                    if (center <= 0f) 0f else (kotlin.math.abs(sampledX - center) / center).coerceIn(0f, 1f)
+                } else {
+                    if (matrixLength <= 1) 0f else (sampledX / (matrixLength - 1f)).coerceIn(0f, 1f)
+                }
+                val ratio = if (centerLowToHigh && reverseDirection) 1f - rawRatio else rawRatio
+                ((lowEnergy * (1f - ratio)) + (highEnergy * ratio)).coerceIn(0f, 1f)
+            }
+            val maxPx = maxPixelsByColumn[x].coerceAtLeast(1)
+            val weightedLevel = (renderLevel * band).coerceIn(0f, 1f)
+            val virtualPx = maxPx * weightedLevel
+            val fullPx = virtualPx.toInt().coerceIn(0, maxPx)
+            val edgeBrightness = if (binaryMode) {
+                COLOR_OFF
+            } else {
+                ((virtualPx - fullPx) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+            }
+            val quantizedEdgeBrightness = quantizeForSignature(edgeBrightness, SIGNATURE_EDGE_BRIGHTNESS_STEP)
+            signature = (signature * 1315423911L) xor ((fullPx.toLong() shl 8) or quantizedEdgeBrightness.toLong())
+        }
+        return signature
+    }
+
+    private fun computeRenderSignature(
+        renderMode: GlyphPatternRenderMode,
+        fullRows: Int,
+        edgeRowBrightness: Int,
+        fullRings: Int,
+        edgeRingBrightness: Int,
+        allBrightness: Int
+    ): Long? {
+        val reverseBit = if (reverseDirection) 1L else 0L
+        val quantizedEdgeRowBrightness = quantizeForSignature(edgeRowBrightness, SIGNATURE_EDGE_BRIGHTNESS_STEP)
+        val quantizedEdgeRingBrightness = quantizeForSignature(edgeRingBrightness, SIGNATURE_EDGE_BRIGHTNESS_STEP)
+        val quantizedAllBrightness = quantizeForSignature(allBrightness, SIGNATURE_ALL_BRIGHTNESS_STEP)
+        return when (renderMode) {
+            GlyphPatternRenderMode.MATRIX_BAR ->
+                (1L shl 60) or (reverseBit shl 59) or (fullRows.toLong() shl 16) or quantizedEdgeRowBrightness.toLong()
+            GlyphPatternRenderMode.MATRIX_FIELD ->
+                (2L shl 60) or (reverseBit shl 59) or (fullRows.toLong() shl 16) or quantizedEdgeRowBrightness.toLong()
+            GlyphPatternRenderMode.MATRIX_CIRCLE ->
+                (3L shl 60) or (reverseBit shl 59) or (fullRings.toLong() shl 16) or quantizedEdgeRingBrightness.toLong()
+            GlyphPatternRenderMode.ALL_BRIGHTNESS ->
+                (4L shl 60) or quantizedAllBrightness.toLong()
+            else -> null
+        }
+    }
+
+    private fun brightnessToMatrixColor(value: Float): Int {
+        val safe = value.coerceIn(0f, 1f)
+        if (binaryMode) {
+            return if (safe >= 0.5f) COLOR_ON else COLOR_OFF
+        }
+        return (safe.pow(outputGamma) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+    }
+
+    private fun ensureRainState() {
+        if (rainHeadByColumn.size == matrixLength) return
+        rainHeadByColumn = FloatArray(matrixLength) { -1f }
+        rainBrightnessByColumn = FloatArray(matrixLength)
+        rainSpeedByColumn = FloatArray(matrixLength)
+        lastRainUpdateMs = 0L
+    }
+
+    private fun ensureSpectrogramState() {
+        val requiredSize = matrixLength * matrixLength
+        if (spectrogramHistory.size == requiredSize) return
+        spectrogramHistory = FloatArray(requiredSize)
+    }
+
+    private fun resetPatternVisualState() {
+        rainHeadByColumn = FloatArray(0)
+        rainBrightnessByColumn = FloatArray(0)
+        rainSpeedByColumn = FloatArray(0)
+        spectrogramHistory = FloatArray(0)
+        lastRainUpdateMs = 0L
+        wavePhase = 0f
+        pulsePhase = 0f
+        ripplePhase = 0f
+    }
+
+    private fun quantizeForSignature(value: Int, step: Int): Int {
+        if (value <= 0 || step <= 1) return value.coerceAtLeast(0)
+        return ((value + (step / 2)) / step) * step
+    }
+
+    private fun buildCircleRingIndexMap(length: Int, reverseDirection: Boolean): IntArray {
+        if (cachedCircleRingIndexLength != length || cachedCircleRingIndexNormal == null || cachedCircleRingIndexReverse == null) {
+            val center = (length - 1) / 2f
+            val maxRadius = (length - 1) / 2f
+            val ringCount = maxRadius.toInt().coerceAtLeast(1)
+            val normal = IntArray(length * length)
+            val reverse = IntArray(length * length)
+            for (index in normal.indices) {
+                val y = index / length
+                val x = index % length
+                val dx = x - center
+                val dy = y - center
+                val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                if (distance > maxRadius) {
+                    normal[index] = -1
+                    reverse[index] = -1
+                } else {
+                    normal[index] = distance.toInt().coerceIn(0, ringCount - 1)
+                    reverse[index] = ((maxRadius - distance).coerceAtLeast(0f)).toInt().coerceIn(0, ringCount - 1)
+                }
+            }
+            cachedCircleRingIndexLength = length
+            cachedCircleRingIndexNormal = normal
+            cachedCircleRingIndexReverse = reverse
+        }
+        return if (reverseDirection) {
+            cachedCircleRingIndexReverse!!
+        } else {
+            cachedCircleRingIndexNormal!!
+        }
+    }
+
+    private fun buildCircleRingPixelBuckets(length: Int, reverseDirection: Boolean): Array<IntArray> {
+        if (cachedCircleRingPixelsLength != length ||
+            cachedCircleRingPixelsNormal == null ||
+            cachedCircleRingPixelsReverse == null
+        ) {
+            val ringCount = (((length - 1) / 2f).toInt()).coerceAtLeast(1)
+            val normalIndexMap = buildCircleRingIndexMap(length, reverseDirection = false)
+            val reverseIndexMap = buildCircleRingIndexMap(length, reverseDirection = true)
+
+            fun buildBuckets(indexMap: IntArray): Array<IntArray> {
+                val counts = IntArray(ringCount)
+                for (ringIndex in indexMap) {
+                    if (ringIndex >= 0) {
+                        counts[ringIndex] += 1
+                    }
+                }
+                val buckets = Array(ringCount) { ring -> IntArray(counts[ring]) }
+                val offsets = IntArray(ringCount)
+                for (pixelIndex in indexMap.indices) {
+                    val ringIndex = indexMap[pixelIndex]
+                    if (ringIndex < 0) continue
+                    buckets[ringIndex][offsets[ringIndex]++] = pixelIndex
+                }
+                return buckets
+            }
+
+            cachedCircleRingPixelsLength = length
+            cachedCircleRingPixelsNormal = buildBuckets(normalIndexMap)
+            cachedCircleRingPixelsReverse = buildBuckets(reverseIndexMap)
+        }
+        return if (reverseDirection) {
+            cachedCircleRingPixelsReverse!!
+        } else {
+            cachedCircleRingPixelsNormal!!
+        }
+    }
+
+    private fun buildSpectrumBandIndexMap(
+        length: Int,
+        bandCount: Int,
+        centerLowToHigh: Boolean,
+        reverseDirection: Boolean
+    ): IntArray {
+        if (cachedSpectrumBandIndexLength != length || cachedSpectrumBandIndexBandCount != bandCount ||
+            cachedSpectrumBandIndexNormal == null || cachedSpectrumBandIndexReverse == null ||
+            cachedSpectrumBandIndexCenterNormal == null || cachedSpectrumBandIndexCenterReverse == null
+        ) {
+            val normal = IntArray(length)
+            val reverse = IntArray(length)
+            val centerNormal = IntArray(length)
+            val centerReverse = IntArray(length)
+            val center = (length - 1f) / 2f
+            for (x in 0 until length) {
+                val ratioNormal = if (length <= 1) 0f else (x / (length - 1f)).coerceIn(0f, 1f)
+                val ratioReverse = if (length <= 1) 0f else ((length - 1 - x) / (length - 1f)).coerceIn(0f, 1f)
+                val centerRatio = if (center <= 0f) 0f else (kotlin.math.abs(x - center) / center).coerceIn(0f, 1f)
+                normal[x] = (ratioNormal * (bandCount - 1)).roundToInt().coerceIn(0, bandCount - 1)
+                reverse[x] = (ratioReverse * (bandCount - 1)).roundToInt().coerceIn(0, bandCount - 1)
+                centerNormal[x] = (centerRatio * (bandCount - 1)).roundToInt().coerceIn(0, bandCount - 1)
+                centerReverse[x] = ((1f - centerRatio) * (bandCount - 1)).roundToInt().coerceIn(0, bandCount - 1)
+            }
+            cachedSpectrumBandIndexLength = length
+            cachedSpectrumBandIndexBandCount = bandCount
+            cachedSpectrumBandIndexNormal = normal
+            cachedSpectrumBandIndexReverse = reverse
+            cachedSpectrumBandIndexCenterNormal = centerNormal
+            cachedSpectrumBandIndexCenterReverse = centerReverse
+        }
+        return when {
+            centerLowToHigh && reverseDirection -> cachedSpectrumBandIndexCenterReverse!!
+            centerLowToHigh -> cachedSpectrumBandIndexCenterNormal!!
+            reverseDirection -> cachedSpectrumBandIndexReverse!!
+            else -> cachedSpectrumBandIndexNormal!!
         }
     }
 

@@ -78,11 +78,25 @@ fun setShowLatestReleaseForTestingEnabled(context: Context, enabled: Boolean) {
 }
 
 fun isUpdateCheckIntervalIgnoredForTesting(context: Context): Boolean {
-    return false
+    if (!isIntDevBuild()) {
+        return false
+    }
+    return context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_IGNORE_CHECK_INTERVAL_FOR_TESTING, false)
 }
 
 fun setUpdateCheckIntervalIgnoredForTesting(context: Context, enabled: Boolean) {
-    // Intentionally disabled. Keep the API for easy restoration later.
+    if (!isIntDevBuild()) {
+        context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_IGNORE_CHECK_INTERVAL_FOR_TESTING, false)
+            .apply()
+        return
+    }
+    context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(KEY_IGNORE_CHECK_INTERVAL_FOR_TESTING, enabled)
+        .apply()
 }
 
 fun isUpdateNotificationDismissed(context: Context, tagName: String): Boolean {

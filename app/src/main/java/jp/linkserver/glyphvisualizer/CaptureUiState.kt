@@ -3,6 +3,8 @@ package jp.linkserver.glyphvisualizer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import android.os.Handler
+import android.os.Looper
 
 data class CaptureUiState(
     val statusText: String = "",
@@ -25,9 +27,9 @@ data class CaptureUiState(
     val fillOtherGlyphLights: Boolean = false,
     val binaryMode: Boolean = false,
     val baseIndicatorEnabled: Boolean = false,
-    val levelAutoScale: Boolean = false,
-    val spectrumAutoScale: Boolean = false,
-    val allBrightnessAutoScale: Boolean = false,
+    val levelAutoScale: Boolean = true,
+    val spectrumAutoScale: Boolean = true,
+    val allBrightnessAutoScale: Boolean = true,
     val autoScaleWindowSeconds: Float = 30f,
     val autoScaleOffset: Float = 0f,
     val latencyMs: Float = 0f,
@@ -36,10 +38,20 @@ data class CaptureUiState(
     val latencyAutoSwitchEnabled: Boolean = true,
     val isBluetoothOutputActive: Boolean = false,
     val mediaProjectionEnabled: Boolean = false,
-    val glyphMeterPreviewEnabled: Boolean = false,
+    val glyphMeterPreviewEnabled: Boolean = true,
+    val meterVisibleEnabled: Boolean = true,
+    val lightweightMeterEnabled: Boolean = false,
+    val spectrumMeterEnabled: Boolean = false,
+    val nativeMeterViewEnabled: Boolean = true,
+    val mainScreenUiIsolationEnabled: Boolean = true,
     val automaticUpdateCheckEnabled: Boolean = false,
     val mediaPlaybackOnlyEnabled: Boolean = false,
     val experimentalVisualizerStabilizationEnabled: Boolean = false,
+    val experimentalVisualizerSignalWatchdogEnabled: Boolean = false,
+    val experimentalSpectrumDecayEnabled: Boolean = false,
+    val experimentalPerformanceOptimizationsEnabled: Boolean = true,
+    val matrixSmoothMotionEnabled: Boolean = false,
+    val oscilloscopeAutoTimeAxisEnabled: Boolean = false,
     val showPhone1GlyphDebugControlsEverywhere: Boolean = false,
     val autoEnablePhone1GlyphDebugOnStart: Boolean = true,
     val nothingStyleEnabled: Boolean = false,
@@ -47,12 +59,102 @@ data class CaptureUiState(
     val logMessage: String? = null
 )
 
+data class CaptureLiveFrame(
+    val level: Float = 0f,
+    val peak: Float = 0f,
+    val meterSegments: Int = 0,
+    val spectrumBands: FloatArray = FloatArray(0)
+)
+
 object CaptureUiStore {
+    private const val TAG = "CaptureUiStore"
+    private const val DEBUG_UI_VISIBILITY_LOGS = false
+    private const val DIRECT_FRAME_DISPATCH_LOG_INTERVAL_MS = 5_000L
     var state by mutableStateOf(CaptureUiState())
         private set
+    var liveFrame by mutableStateOf(CaptureLiveFrame())
+        private set
+    @Volatile
+    private var uiVisible: Boolean = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val directMeterFrameListeners = mutableSetOf<(CaptureLiveFrame) -> Unit>()
+    private var directMeterFrameDispatchCount = 0
+    private var lastDirectMeterFrameDispatchLogAtMs = 0L
 
     fun update(transform: (CaptureUiState) -> CaptureUiState) {
         state = transform(state)
+    }
+
+    fun setUiVisible(visible: Boolean) {
+        if (DEBUG_UI_VISIBILITY_LOGS && uiVisible != visible) {
+            AppLogger.i(TAG, "UI visibility changed: visible=$visible")
+        }
+        uiVisible = visible
+    }
+
+    fun shouldPublishLiveUiFrames(): Boolean {
+        return uiVisible
+    }
+
+    fun publishLiveFrame(
+        level: Float,
+        peak: Float,
+        meterSegments: Int,
+        spectrumBands: FloatArray
+    ) {
+        val nextFrame = CaptureLiveFrame(
+            level = level,
+            peak = peak,
+            meterSegments = meterSegments,
+            spectrumBands = spectrumBands
+        )
+        liveFrame = nextFrame
+        publishDirectMeterFrame(nextFrame)
+        if (!state.mainScreenUiIsolationEnabled) {
+            state = state.copy(
+                level = level,
+                peak = peak,
+                meterSegments = meterSegments,
+                spectrumBands = spectrumBands
+            )
+        }
+    }
+
+    fun publishDirectLiveFrame(
+        level: Float,
+        peak: Float,
+        meterSegments: Int,
+        spectrumBands: FloatArray
+    ) {
+        val nextFrame = CaptureLiveFrame(
+            level = level,
+            peak = peak,
+            meterSegments = meterSegments,
+            spectrumBands = spectrumBands
+        )
+        liveFrame = nextFrame
+        publishDirectMeterFrame(nextFrame)
+    }
+
+    fun syncLiveFrameFromState(source: CaptureUiState = state) {
+        val nextFrame = CaptureLiveFrame(
+            level = source.level,
+            peak = source.peak,
+            meterSegments = source.meterSegments,
+            spectrumBands = source.spectrumBands
+        )
+        liveFrame = nextFrame
+        publishDirectMeterFrame(nextFrame)
+    }
+
+    fun applyLiveFrameToState() {
+        val frame = liveFrame
+        state = state.copy(
+            level = frame.level,
+            peak = frame.peak,
+            meterSegments = frame.meterSegments,
+            spectrumBands = frame.spectrumBands
+        )
     }
 
     fun resetLevels(statusText: String = state.statusText, activeMode: String = "IDLE") {
@@ -64,5 +166,60 @@ object CaptureUiStore {
             meterSegments = 0,
             activeMode = activeMode
         )
+        liveFrame = CaptureLiveFrame()
+        publishDirectMeterFrame(liveFrame)
+    }
+
+    fun registerDirectMeterFrameListener(listener: (CaptureLiveFrame) -> Unit) {
+        val listenerCount: Int
+        synchronized(directMeterFrameListeners) {
+            directMeterFrameListeners.add(listener)
+            listenerCount = directMeterFrameListeners.size
+        }
+        if (DEBUG_UI_VISIBILITY_LOGS) {
+            AppLogger.i(TAG, "Direct meter listener registered: count=$listenerCount uiVisible=$uiVisible")
+        }
+        listener(liveFrame)
+    }
+
+    fun unregisterDirectMeterFrameListener(listener: (CaptureLiveFrame) -> Unit) {
+        val listenerCount: Int
+        synchronized(directMeterFrameListeners) {
+            directMeterFrameListeners.remove(listener)
+            listenerCount = directMeterFrameListeners.size
+        }
+        if (DEBUG_UI_VISIBILITY_LOGS) {
+            AppLogger.i(TAG, "Direct meter listener unregistered: count=$listenerCount uiVisible=$uiVisible")
+        }
+    }
+
+    private fun publishDirectMeterFrame(frame: CaptureLiveFrame) {
+        val listeners = synchronized(directMeterFrameListeners) {
+            directMeterFrameListeners.toList()
+        }
+        if (listeners.isEmpty()) return
+        directMeterFrameDispatchCount += 1
+        val now = android.os.SystemClock.uptimeMillis()
+        if (
+            DEBUG_UI_VISIBILITY_LOGS &&
+                (
+                    directMeterFrameDispatchCount == 1 ||
+                        now - lastDirectMeterFrameDispatchLogAtMs >= DIRECT_FRAME_DISPATCH_LOG_INTERVAL_MS
+                    )
+        ) {
+            lastDirectMeterFrameDispatchLogAtMs = now
+            AppLogger.i(
+                TAG,
+                "Direct meter frame dispatched: count=$directMeterFrameDispatchCount listeners=${listeners.size} uiVisible=$uiVisible"
+            )
+        }
+        val dispatch = {
+            listeners.forEach { it(frame) }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            dispatch()
+        } else {
+            mainHandler.post(dispatch)
+        }
     }
 }

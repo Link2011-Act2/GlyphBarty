@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.text.method.LinkMovementMethod
+import android.widget.TextView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,11 +43,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.tables.TablePlugin
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
@@ -268,192 +273,33 @@ private fun ReleaseNotesMarkdown(
     emptyText: String,
     modifier: Modifier = Modifier
 ) {
-    val blocks = rememberMarkdownBlocks(markdown.ifBlank { emptyText })
-    Column(
+    val context = LocalContext.current
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(TablePlugin.create(context))
+            .build()
+    }
+    val markdownText = markdown.ifBlank { emptyText }
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val linkColor = MaterialTheme.colorScheme.primary.toArgb()
+    AndroidView(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        blocks.forEach { block ->
-            when (block) {
-                is MarkdownBlock.Heading -> Text(
-                    text = block.text,
-                    style = when (block.level) {
-                        1 -> MaterialTheme.typography.titleLarge
-                        2 -> MaterialTheme.typography.titleMedium
-                        else -> MaterialTheme.typography.titleSmall
-                    }.copy(fontFamily = FontFamily.SansSerif),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold
-                )
-                is MarkdownBlock.Paragraph -> Text(
-                    text = block.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                is MarkdownBlock.Bullet -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                is MarkdownBlock.Numbered -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "${block.number}.",
-                        modifier = Modifier.width(28.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                is MarkdownBlock.Quote -> Text(
-                    text = block.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
-                )
-                is MarkdownBlock.Code -> Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        factory = { viewContext ->
+            TextView(viewContext).apply {
+                includeFontPadding = true
+                movementMethod = LinkMovementMethod.getInstance()
+                setTextColor(textColor)
+                setLinkTextColor(linkColor)
+                textSize = 14f
             }
+        },
+        update = { textView ->
+            textView.setTextColor(textColor)
+            textView.setLinkTextColor(linkColor)
+            textView.textSize = 14f
+            markwon.setMarkdown(textView, markdownText)
         }
-    }
-}
-
-private sealed interface MarkdownBlock {
-    data class Heading(val level: Int, val text: String) : MarkdownBlock
-    data class Paragraph(val text: String) : MarkdownBlock
-    data class Bullet(val text: String) : MarkdownBlock
-    data class Numbered(val number: Int, val text: String) : MarkdownBlock
-    data class Quote(val text: String) : MarkdownBlock
-    data class Code(val text: String) : MarkdownBlock
-}
-
-@Composable
-private fun rememberMarkdownBlocks(markdown: String): List<MarkdownBlock> {
-    return androidx.compose.runtime.remember(markdown) {
-        parseReleaseNotesMarkdown(markdown)
-    }
-}
-
-private fun parseReleaseNotesMarkdown(markdown: String): List<MarkdownBlock> {
-    val blocks = mutableListOf<MarkdownBlock>()
-    val paragraph = StringBuilder()
-    val code = StringBuilder()
-    var inCodeBlock = false
-
-    fun flushParagraph() {
-        val text = paragraph.toString().trim()
-        if (text.isNotBlank()) {
-            blocks += MarkdownBlock.Paragraph(cleanInlineMarkdown(text))
-        }
-        paragraph.clear()
-    }
-
-    fun flushCode() {
-        val text = code.toString().trimEnd()
-        if (text.isNotBlank()) {
-            blocks += MarkdownBlock.Code(text)
-        }
-        code.clear()
-    }
-
-    markdown
-        .replace(Regex("""(?i)<br\s*/?>"""), "\u000B")
-        .replace("\r\n", "\n")
-        .lineSequence()
-        .forEach { rawLine ->
-        val line = rawLine.trimEnd()
-        val trimmed = line.trim()
-        if (trimmed.startsWith("```")) {
-            if (inCodeBlock) {
-                flushCode()
-            } else {
-                flushParagraph()
-            }
-            inCodeBlock = !inCodeBlock
-            return@forEach
-        }
-        if (inCodeBlock) {
-            code.appendLine(line)
-            return@forEach
-        }
-        if (trimmed.isBlank()) {
-            flushParagraph()
-            return@forEach
-        }
-
-        val headingMatch = Regex("""^(#{1,6})\s+(.+)$""").matchEntire(trimmed)
-        val bulletMatch = Regex("""^[-*+]\s+(.+)$""").matchEntire(trimmed)
-        val numberedMatch = Regex("""^(\d+)[.)]\s+(.+)$""").matchEntire(trimmed)
-        val quoteMatch = Regex("""^>\s?(.+)$""").matchEntire(trimmed)
-        when {
-            headingMatch != null -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Heading(
-                    level = headingMatch.groupValues[1].length,
-                    text = cleanInlineMarkdown(headingMatch.groupValues[2])
-                )
-            }
-            bulletMatch != null -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Bullet(cleanInlineMarkdown(bulletMatch.groupValues[1]))
-            }
-            numberedMatch != null -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Numbered(
-                    number = numberedMatch.groupValues[1].toIntOrNull() ?: 1,
-                    text = cleanInlineMarkdown(numberedMatch.groupValues[2])
-                )
-            }
-            quoteMatch != null -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Quote(cleanInlineMarkdown(quoteMatch.groupValues[1]))
-            }
-            else -> {
-                if (paragraph.isNotEmpty()) paragraph.append(' ')
-                paragraph.append(trimmed)
-            }
-        }
-    }
-    if (inCodeBlock) flushCode()
-    flushParagraph()
-    return blocks.ifEmpty { listOf(MarkdownBlock.Paragraph(markdown)) }
-}
-
-private fun cleanInlineMarkdown(text: String): String {
-    return text
-        .replace("\u000B", "\n")
-        .replace(Regex("""!\[([^]]*)]\([^)]+\)"""), "$1")
-        .replace(Regex("""\[([^]]+)]\([^)]+\)"""), "$1")
-        .replace(Regex("""`([^`]+)`"""), "$1")
-        .replace(Regex("""(\*\*|__)(.*?)\1"""), "$2")
-        .replace(Regex("""(\*|_)(.*?)\1"""), "$2")
-        .trim()
+    )
 }
 
 private fun canRequestPackageInstalls(context: Context): Boolean {
