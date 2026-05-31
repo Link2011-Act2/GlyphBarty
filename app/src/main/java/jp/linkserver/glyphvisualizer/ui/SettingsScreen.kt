@@ -235,7 +235,7 @@ fun SettingsScreen(
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
-                SettingsDivider()
+                SettingsDividerGap()
                 SettingsEntry(
                     title = stringResource(R.string.settings_ui_mode_title),
                     description = if (localNothingStyleEnabled) nothingLabel else materialLabel,
@@ -248,7 +248,7 @@ fun SettingsScreen(
                     }
                 )
                 if (showAutoEnablePhone1GlyphDebugOnStart) {
-                    SettingsDivider()
+                    SettingsDividerGap()
                     SettingsToggleEntry(
                         title = stringResource(R.string.settings_phone1_debug_auto_enable_title),
                         description = stringResource(R.string.settings_phone1_debug_auto_enable_desc),
@@ -279,7 +279,7 @@ fun SettingsScreen(
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
-                SettingsDivider()
+                SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_visualizer_stabilization_title),
                     description = stringResource(R.string.settings_visualizer_stabilization_desc),
@@ -291,7 +291,7 @@ fun SettingsScreen(
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
-                SettingsDivider()
+                SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_visualizer_signal_watchdog_title),
                     description = stringResource(R.string.settings_visualizer_signal_watchdog_desc),
@@ -303,7 +303,7 @@ fun SettingsScreen(
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
-                SettingsDivider()
+                SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_media_projection_title),
                     description = stringResource(R.string.settings_media_projection_desc),
@@ -327,7 +327,7 @@ fun SettingsScreen(
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
-                SettingsDivider()
+                SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_native_meter_view_title),
                     description = stringResource(R.string.settings_native_meter_view_desc),
@@ -356,7 +356,7 @@ fun SettingsScreen(
                     position = if (intDevBuild) SettingsGroupPosition.Top else SettingsGroupPosition.Single
                 )
                 if (intDevBuild) {
-                    SettingsDivider()
+                    SettingsDividerGap()
                     SettingsToggleEntry(
                         title = stringResource(R.string.settings_phone1_debug_controls_title),
                         description = stringResource(R.string.settings_phone1_debug_controls_desc),
@@ -443,6 +443,11 @@ private fun SettingsCategory(
             content = content
         )
     }
+}
+
+@Composable
+private fun SettingsDividerGap() {
+    Spacer(modifier = Modifier.height(2.dp))
 }
 
 @Composable

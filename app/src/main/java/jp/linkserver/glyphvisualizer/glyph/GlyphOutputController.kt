@@ -30,4 +30,7 @@ interface GlyphOutputController {
     fun previewSpectrumBands(): FloatArray = FloatArray(0)
     fun updateLevel(level: Float)
     fun turnOff()
+    fun releaseSession() {
+        turnOff()
+    }
 }

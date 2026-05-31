@@ -114,8 +114,8 @@
     <string name="settings_media_playback_only_open_failed">Unable to open notification access settings</string>
     <string name="settings_visualizer_stabilization_title">Experimental: Stabilize startup</string>
     <string name="settings_visualizer_stabilization_desc">If the app cannot start while using Bluetooth earbuds, try enabling this option.</string>
-    <string name="settings_visualizer_signal_watchdog_title">Experimental: Restart stalled normal mode</string>
-    <string name="settings_visualizer_signal_watchdog_desc">If normal mode is active but the meter stops receiving signal, automatically recreate the Visualizer. Disabled by default.</string>
+    <string name="settings_visualizer_signal_watchdog_title">Experimental: Auto restart</string>
+    <string name="settings_visualizer_signal_watchdog_desc">Automatically restarts when the app is running and music is playing, but the meter receives no signal for a while.</string>
     <string name="settings_automatic_update_check_title">Automatically check for updates</string>
     <string name="settings_automatic_update_check_desc">Shows an in-app notice when a new version is published on GitHub.</string>
     <string name="settings_phone1_debug_controls_title">IntDev only: Always show the Phone (1) debug button</string>

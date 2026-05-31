@@ -1307,14 +1307,14 @@ class GlyphMatrixController(
             failureCount += 1
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame repeatedly failed. disabling matrix output", error)
-                isSessionOpen = false
+                releaseSession()
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_update_failed))
             }
         } catch (error: Throwable) {
             failureCount += 1
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame crashed repeatedly. disabling matrix output", error)
-                isSessionOpen = false
+                releaseSession()
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_update_crashed))
             }
         }
@@ -1340,6 +1340,11 @@ class GlyphMatrixController(
             glyphMatrixManager.closeAppMatrix()
         } catch (_: Throwable) {
         }
+    }
+
+    override fun releaseSession() {
+        turnOff()
+        isSessionOpen = false
     }
 
     private fun releaseMatrixForSilence() {

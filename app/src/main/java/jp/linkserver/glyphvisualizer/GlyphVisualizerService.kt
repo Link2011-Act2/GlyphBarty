@@ -1132,7 +1132,7 @@ class GlyphVisualizerService : Service() {
         }
     }
 
-    private fun stopRunningCapture(clearStatus: Boolean) {
+    private fun stopRunningCapture(clearStatus: Boolean, releaseGlyphSession: Boolean = false) {
         try {
             outputMixVisualizer.stop()
         } catch (error: Throwable) {
@@ -1143,10 +1143,18 @@ class GlyphVisualizerService : Service() {
         } catch (error: Throwable) {
             AppLogger.w(TAG, "audioPlaybackVisualizer.stop failed", error)
         }
-        try {
-            glyphController.turnOff()
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "glyphController.turnOff failed", error)
+        if (releaseGlyphSession) {
+            try {
+                glyphController.releaseSession()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "glyphController.releaseSession failed", error)
+            }
+        } else {
+            try {
+                glyphController.turnOff()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "glyphController.turnOff failed", error)
+            }
         }
         mainHandler.removeCallbacks(latencyDrainRunnable)
         mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
@@ -1243,7 +1251,7 @@ class GlyphVisualizerService : Service() {
 
     private fun stopCapture(status: String) {
         try {
-            stopRunningCapture(clearStatus = false)
+            stopRunningCapture(clearStatus = false, releaseGlyphSession = true)
         } catch (error: Throwable) {
             AppLogger.e(TAG, "stopRunningCapture failed in stopCapture", error)
         }

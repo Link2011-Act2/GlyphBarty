@@ -114,8 +114,8 @@
     <string name="settings_media_playback_only_open_failed">通知アクセス設定を開けませんでした</string>
     <string name="settings_visualizer_stabilization_title">実験的: 開始の安定化</string>
     <string name="settings_visualizer_stabilization_desc">Bluetoothイヤホンを使用すると開始できない場合、これを試してみてください</string>
-    <string name="settings_visualizer_signal_watchdog_title">実験的: 停止した通常モードを再起動</string>
-    <string name="settings_visualizer_signal_watchdog_desc">通常モードが作動中なのにメーター信号が止まった場合、Visualizerを自動で作り直します。デフォルトでは無効です</string>
+    <string name="settings_visualizer_signal_watchdog_title">実験的: 自動再始動</string>
+    <string name="settings_visualizer_signal_watchdog_desc">作動中で音楽が再生されているにも関わらず、メーターに信号が来ない状況が一定時間続いた際に自動で再起動します</string>
     <string name="settings_automatic_update_check_title">アップデートを自動チェック</string>
     <string name="settings_automatic_update_check_desc">新しいバージョンがGitHubで公開された際に、アプリ内で知らせます</string>
     <string name="settings_phone1_debug_controls_title">IntDev専用: Phone (1) デバッグボタンを常に表示</string>
