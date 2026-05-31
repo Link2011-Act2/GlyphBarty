@@ -97,6 +97,7 @@ class GlyphVisualizerService : Service() {
         private const val UI_PEAK_QUANTIZATION_STEPS = 64f
         private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
         private const val MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD = 0.002f
+        private const val MEDIA_PLAYBACK_AUDIBLE_SIGNAL_HOLD_MS = 3_000L
 
         fun startVisualizer(
             context: Context,
@@ -384,6 +385,7 @@ class GlyphVisualizerService : Service() {
     private var lastSuppressedUiPublishLogAtMs = 0L
     private var lastMediaPlaybackCheckAtMs = 0L
     private var lastMediaPlaybackActive = true
+    private var lastAudibleSignalAtMs = 0L
     private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
@@ -1206,6 +1208,7 @@ class GlyphVisualizerService : Service() {
         lastSuppressedUiPublishLogAtMs = 0L
         lastMediaPlaybackCheckAtMs = 0L
         lastMediaPlaybackActive = true
+        lastAudibleSignalAtMs = 0L
         mediaPlaybackSuppressed = false
     }
 
@@ -1287,14 +1290,20 @@ class GlyphVisualizerService : Service() {
     private fun isMediaPlaybackAllowed(frame: DelayedLevelFrame): Boolean {
         if (!mediaPlaybackOnlyEnabled) return true
         val now = SystemClock.uptimeMillis()
+        val hasAudibleSignal = frame.hasAudibleSignal()
+        if (hasAudibleSignal) {
+            lastAudibleSignalAtMs = now
+        }
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
             lastMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
         }
-        if (!lastMediaPlaybackActive && frame.hasAudibleSignal() && AudioRouteDiagnostics.isMusicActive(this)) {
+        if (!lastMediaPlaybackActive && hasAudibleSignal && AudioRouteDiagnostics.isMusicActive(this)) {
             lastMediaPlaybackActive = true
         }
-        return lastMediaPlaybackActive
+        val recentlyAudible = lastAudibleSignalAtMs > 0L &&
+            now - lastAudibleSignalAtMs <= MEDIA_PLAYBACK_AUDIBLE_SIGNAL_HOLD_MS
+        return lastMediaPlaybackActive || recentlyAudible
     }
 
     private fun DelayedLevelFrame.hasAudibleSignal(): Boolean {

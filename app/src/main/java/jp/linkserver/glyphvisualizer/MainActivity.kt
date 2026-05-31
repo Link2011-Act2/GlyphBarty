@@ -5329,8 +5329,8 @@ private fun meterBackgroundBrush(nothingStyleEnabled: Boolean): Brush {
     } else {
         Brush.linearGradient(
             listOf(
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-                MaterialTheme.colorScheme.surfaceContainerHigh
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+                MaterialTheme.colorScheme.surfaceContainerHighest
             )
         )
     }
