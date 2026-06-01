@@ -41,6 +41,8 @@ class GlyphMatrixController(
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
         private const val FRAME_INTERVAL_SMOOTH_MS = 12L // allow higher effective fps when callbacks are uneven
         private const val FRAME_INTERVAL_REDUCED_MS = 33L // ~30fps
+        private const val SPECTROGRAM_REFERENCE_MATRIX_LENGTH = 25
+        private const val SPECTROGRAM_REFERENCE_SHIFT_INTERVAL_MS = FRAME_INTERVAL_REDUCED_MS
         private const val SIGNATURE_EDGE_BRIGHTNESS_STEP = 32
         private const val SIGNATURE_ALL_BRIGHTNESS_STEP = 8
         private const val RAIN_TAIL_LENGTH = 4
@@ -124,6 +126,7 @@ class GlyphMatrixController(
     private var rainSpeedByColumn = FloatArray(0)
     private var lastRainUpdateMs = 0L
     private var spectrogramHistory = FloatArray(0)
+    private var lastSpectrogramShiftMs = 0L
     private var wavePhase = 0f
     private var pulsePhase = 0f
     private var ripplePhase = 0f
@@ -840,28 +843,20 @@ class GlyphMatrixController(
             ensureSpectrogramState()
             val rowCount = matrixLength.coerceAtLeast(1)
             val insertAt = if (reverseDirection) rowCount - 1 else 0
-            if (reverseDirection) {
-                for (x in 0 until rowCount - 1) {
-                    val dstOffset = x * rowCount
-                    val srcOffset = (x + 1) * rowCount
-                    spectrogramHistory.copyInto(
-                        destination = spectrogramHistory,
-                        destinationOffset = dstOffset,
-                        startIndex = srcOffset,
-                        endIndex = srcOffset + rowCount
-                    )
-                }
+            val shiftIntervalMs = spectrogramShiftIntervalMs(rowCount)
+            val shiftCount = if (lastSpectrogramShiftMs <= 0L) {
+                lastSpectrogramShiftMs = now
+                1
             } else {
-                for (x in (rowCount - 1) downTo 1) {
-                    val dstOffset = x * rowCount
-                    val srcOffset = (x - 1) * rowCount
-                    spectrogramHistory.copyInto(
-                        destination = spectrogramHistory,
-                        destinationOffset = dstOffset,
-                        startIndex = srcOffset,
-                        endIndex = srcOffset + rowCount
-                    )
+                val elapsed = (now - lastSpectrogramShiftMs).coerceAtLeast(0L)
+                val steps = (elapsed / shiftIntervalMs).toInt().coerceIn(0, rowCount)
+                if (steps > 0) {
+                    lastSpectrogramShiftMs += shiftIntervalMs * steps
                 }
+                steps
+            }
+            repeat(shiftCount) {
+                shiftSpectrogramHistory(rowCount)
             }
             val insertOffset = insertAt * rowCount
             for (row in 0 until rowCount) {
@@ -1517,6 +1512,39 @@ class GlyphMatrixController(
         val requiredSize = matrixLength * matrixLength
         if (spectrogramHistory.size == requiredSize) return
         spectrogramHistory = FloatArray(requiredSize)
+        lastSpectrogramShiftMs = 0L
+    }
+
+    private fun spectrogramShiftIntervalMs(rowCount: Int): Long {
+        val targetTravelMs = SPECTROGRAM_REFERENCE_MATRIX_LENGTH *
+            SPECTROGRAM_REFERENCE_SHIFT_INTERVAL_MS
+        return ((targetTravelMs + (rowCount / 2)) / rowCount.coerceAtLeast(1)).coerceAtLeast(1L)
+    }
+
+    private fun shiftSpectrogramHistory(rowCount: Int) {
+        if (reverseDirection) {
+            for (x in 0 until rowCount - 1) {
+                val dstOffset = x * rowCount
+                val srcOffset = (x + 1) * rowCount
+                spectrogramHistory.copyInto(
+                    destination = spectrogramHistory,
+                    destinationOffset = dstOffset,
+                    startIndex = srcOffset,
+                    endIndex = srcOffset + rowCount
+                )
+            }
+        } else {
+            for (x in (rowCount - 1) downTo 1) {
+                val dstOffset = x * rowCount
+                val srcOffset = (x - 1) * rowCount
+                spectrogramHistory.copyInto(
+                    destination = spectrogramHistory,
+                    destinationOffset = dstOffset,
+                    startIndex = srcOffset,
+                    endIndex = srcOffset + rowCount
+                )
+            }
+        }
     }
 
     private fun resetPatternVisualState() {
@@ -1524,6 +1552,7 @@ class GlyphMatrixController(
         rainBrightnessByColumn = FloatArray(0)
         rainSpeedByColumn = FloatArray(0)
         spectrogramHistory = FloatArray(0)
+        lastSpectrogramShiftMs = 0L
         lastRainUpdateMs = 0L
         wavePhase = 0f
         pulsePhase = 0f
