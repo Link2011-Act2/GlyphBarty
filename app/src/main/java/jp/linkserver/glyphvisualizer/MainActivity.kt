@@ -115,6 +115,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -3103,7 +3104,7 @@ private fun LatencyScreenContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Switch(
+                            StableSwitch(
                                 checked = latencyAutoSwitchEnabled,
                                 onCheckedChange = onLatencyAutoSwitchChanged
                             )
@@ -6207,7 +6208,7 @@ private fun ControlCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Switch(
+                StableSwitch(
                     checked = reverseDirection,
                     onCheckedChange = onReverseDirectionChanged
                 )
@@ -6233,7 +6234,7 @@ private fun ControlCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Switch(
+                StableSwitch(
                     checked = binaryMode,
                     onCheckedChange = onBinaryModeChanged
                 )
@@ -6260,7 +6261,7 @@ private fun ControlCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    StableSwitch(
                         checked = matrixSmoothMotionEnabled,
                         onCheckedChange = onMatrixSmoothMotionEnabledChanged
                     )
@@ -6295,7 +6296,7 @@ private fun ControlCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    StableSwitch(
                         checked = oscilloscopeAutoTimeAxisEnabled,
                         onCheckedChange = onOscilloscopeAutoTimeAxisEnabledChanged
                     )
@@ -6323,7 +6324,7 @@ private fun ControlCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    StableSwitch(
                         checked = levelAutoScale,
                         onCheckedChange = onLevelAutoScaleChanged
                     )
@@ -6351,7 +6352,7 @@ private fun ControlCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    StableSwitch(
                         checked = spectrumAutoScale,
                         onCheckedChange = onSpectrumAutoScaleChanged
                     )
@@ -6379,7 +6380,7 @@ private fun ControlCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
+                    StableSwitch(
                         checked = allBrightnessAutoScale,
                         onCheckedChange = onAllBrightnessAutoScaleChanged
                     )
@@ -6390,6 +6391,19 @@ private fun ControlCard(
             // some devices already force this behavior at the OS level.
 
         }
+    }
+}
+
+@Composable
+private fun StableSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    key(checked) {
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 
