@@ -29,6 +29,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -115,7 +116,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -6399,12 +6399,17 @@ private fun StableSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    key(checked) {
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
+    var interactionResetKey by remember { mutableStateOf(0) }
+    val interactionSource = remember(interactionResetKey) { MutableInteractionSource() }
+    LaunchedEffect(checked) {
+        delay(220L)
+        interactionResetKey += 1
     }
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        interactionSource = interactionSource
+    )
 }
 
 @Composable
