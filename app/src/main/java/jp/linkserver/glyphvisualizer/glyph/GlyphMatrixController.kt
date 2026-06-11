@@ -1342,6 +1342,10 @@ class GlyphMatrixController(
         isSessionOpen = false
     }
 
+    override fun suspendSession() {
+        releaseMatrixForSilence()
+    }
+
     private fun releaseMatrixForSilence() {
         try {
             glyphMatrixManager.turnOff()

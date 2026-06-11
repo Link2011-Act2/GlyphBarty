@@ -93,11 +93,10 @@ class GlyphVisualizerService : Service() {
         private const val MATRIX_UI_REDUCED_UPDATE_INTERVAL_MS = 33L
         private const val LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS = 100L
         private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
+        private const val MEDIA_PLAYBACK_RESUME_CONFIRM_MS = 1_000L
         private const val UI_LEVEL_QUANTIZATION_STEPS = 64f
         private const val UI_PEAK_QUANTIZATION_STEPS = 64f
         private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
-        private const val MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD = 0.002f
-        private const val MEDIA_PLAYBACK_AUDIBLE_SIGNAL_HOLD_MS = 3_000L
 
         fun startVisualizer(
             context: Context,
@@ -384,8 +383,8 @@ class GlyphVisualizerService : Service() {
     private var suppressedUiPublishCount = 0
     private var lastSuppressedUiPublishLogAtMs = 0L
     private var lastMediaPlaybackCheckAtMs = 0L
-    private var lastMediaPlaybackActive = true
-    private var lastAudibleSignalAtMs = 0L
+    private var lastMediaPlaybackActive = false
+    private var mediaPlaybackResumeCandidateAtMs = 0L
     private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
@@ -1071,20 +1070,19 @@ class GlyphVisualizerService : Service() {
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
         val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
-        val mediaPlaybackActive = isMediaPlaybackAllowed(frame)
+        val mediaPlaybackActive = isMediaPlaybackAllowed()
         if (!mediaPlaybackActive) {
+            val enteringMediaPlaybackSuppression = !mediaPlaybackSuppressed
             mediaPlaybackSuppressed = true
             val silentBands = FloatArray(frame.spectrumBands.size)
-            glyphController.updateAnalysis(
-                lowEnergy = 0f,
-                highEnergy = 0f,
-                leftLevel = 0f,
-                rightLevel = 0f,
-                spectrumBands = silentBands,
-                phone4aBaseBandLevel = 0f,
-                waveformSamples = FloatArray(frame.waveformSamples.size)
-            )
-            glyphController.updateLevel(0f)
+            if (enteringMediaPlaybackSuppression) {
+                try {
+                    glyphController.suspendSession()
+                    AppLogger.i(TAG, "Glyph session suspended because no playing MediaSession is active")
+                } catch (error: Throwable) {
+                    AppLogger.w(TAG, "glyphController.suspendSession failed during media playback suppression", error)
+                }
+            }
             if (shouldPublishUiFrame(frame.mode)) {
                 publishUiFrame(
                     level = 0f,
@@ -1207,8 +1205,8 @@ class GlyphVisualizerService : Service() {
         suppressedUiPublishCount = 0
         lastSuppressedUiPublishLogAtMs = 0L
         lastMediaPlaybackCheckAtMs = 0L
-        lastMediaPlaybackActive = true
-        lastAudibleSignalAtMs = 0L
+        lastMediaPlaybackActive = false
+        mediaPlaybackResumeCandidateAtMs = 0L
         mediaPlaybackSuppressed = false
     }
 
@@ -1287,35 +1285,27 @@ class GlyphVisualizerService : Service() {
         }
     }
 
-    private fun isMediaPlaybackAllowed(frame: DelayedLevelFrame): Boolean {
+    private fun isMediaPlaybackAllowed(): Boolean {
         if (!mediaPlaybackOnlyEnabled) return true
         val now = SystemClock.uptimeMillis()
-        val hasAudibleSignal = frame.hasAudibleSignal()
-        if (hasAudibleSignal) {
-            lastAudibleSignalAtMs = now
-        }
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
-            lastMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
+            val rawMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
+            if (!rawMediaPlaybackActive) {
+                lastMediaPlaybackActive = false
+                mediaPlaybackResumeCandidateAtMs = 0L
+            } else if (!lastMediaPlaybackActive) {
+                if (mediaPlaybackResumeCandidateAtMs <= 0L) {
+                    mediaPlaybackResumeCandidateAtMs = now
+                }
+                if (now - mediaPlaybackResumeCandidateAtMs >= MEDIA_PLAYBACK_RESUME_CONFIRM_MS) {
+                    lastMediaPlaybackActive = true
+                    mediaPlaybackResumeCandidateAtMs = 0L
+                    AppLogger.i(TAG, "MediaSession playback remained active; allowing Glyph session resume")
+                }
+            }
         }
-        if (!lastMediaPlaybackActive && hasAudibleSignal && AudioRouteDiagnostics.isMusicActive(this)) {
-            lastMediaPlaybackActive = true
-        }
-        val recentlyAudible = lastAudibleSignalAtMs > 0L &&
-            now - lastAudibleSignalAtMs <= MEDIA_PLAYBACK_AUDIBLE_SIGNAL_HOLD_MS
-        return lastMediaPlaybackActive || recentlyAudible
-    }
-
-    private fun DelayedLevelFrame.hasAudibleSignal(): Boolean {
-        return level > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            peak > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            lowEnergy > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            highEnergy > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            leftLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            rightLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            phone4aBaseBandLevel > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD ||
-            spectrumBands.any { it > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD } ||
-            waveformSamples.any { kotlin.math.abs(it) > MEDIA_PLAYBACK_SIGNAL_FALLBACK_THRESHOLD }
+        return lastMediaPlaybackActive
     }
 
     private fun publishUiFrame(

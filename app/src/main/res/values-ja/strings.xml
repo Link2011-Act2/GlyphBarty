@@ -110,6 +110,8 @@
     <string name="settings_native_meter_view_desc">メーターをCompose CanvasではなくAndroid Viewで描画します\n軽量化効果が期待できます</string>
     <string name="settings_media_playback_only_title">メディア再生中のみ反応</string>
     <string name="settings_media_playback_only_desc">音楽系アプリからの音声のみ反応させます。通知アクセスが必要です</string>
+    <string name="settings_media_playback_only_permission_status_granted">通知アクセス: 許可済み</string>
+    <string name="settings_media_playback_only_permission_status_not_granted">通知アクセス: 未許可</string>
     <string name="settings_media_playback_only_permission_required">通知アクセスを許可すると、この設定が使えるようになります</string>
     <string name="settings_media_playback_only_open_failed">通知アクセス設定を開けませんでした</string>
     <string name="settings_visualizer_stabilization_title">実験的: 開始の安定化</string>

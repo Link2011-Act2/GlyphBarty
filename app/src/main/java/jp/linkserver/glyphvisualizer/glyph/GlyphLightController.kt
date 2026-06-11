@@ -1193,6 +1193,10 @@ class GlyphLightController(
         closeSession()
     }
 
+    override fun suspendSession() {
+        releaseSessionForSilence()
+    }
+
     private fun updatePhone4aFrame(
         spec: DeviceSpec,
         level: Float,

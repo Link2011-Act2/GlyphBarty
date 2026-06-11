@@ -26,21 +26,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 private enum class MeterStyleMode {
@@ -128,6 +134,31 @@ fun SettingsScreen(
         MeterStyleMode.FAITHFUL -> stringResource(R.string.settings_meter_style_faithful_title)
     }
     val intDevBuild = rememberSaveable { isIntDevBuild() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var notificationAccessGranted by remember {
+        mutableStateOf(MediaSessionPlaybackGate.hasNotificationAccess(context))
+    }
+    val mediaPlaybackOnlyDescription = if (intDevBuild) {
+        val permissionStatus = if (notificationAccessGranted) {
+            stringResource(R.string.settings_media_playback_only_permission_status_granted)
+        } else {
+            stringResource(R.string.settings_media_playback_only_permission_status_not_granted)
+        }
+        "${stringResource(R.string.settings_media_playback_only_desc)}\n$permissionStatus"
+    } else {
+        stringResource(R.string.settings_media_playback_only_desc)
+    }
+
+    DisposableEffect(lifecycleOwner, context, intDevBuild) {
+        if (!intDevBuild) return@DisposableEffect onDispose {}
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationAccessGranted = MediaSessionPlaybackGate.hasNotificationAccess(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(mediaProjectionEnabled) {
         localMediaProjectionEnabled = mediaProjectionEnabled
@@ -268,7 +299,7 @@ fun SettingsScreen(
             ) {
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_media_playback_only_title),
-                    description = stringResource(R.string.settings_media_playback_only_desc),
+                    description = mediaPlaybackOnlyDescription,
                     checked = localMediaPlaybackOnlyEnabled,
                     onCheckedChange = { checked ->
                         if (!checked) {

@@ -33,4 +33,7 @@ interface GlyphOutputController {
     fun releaseSession() {
         turnOff()
     }
+    fun suspendSession() {
+        releaseSession()
+    }
 }

@@ -19,7 +19,7 @@ val buildNumberFiles = (
     ).filter { it.isFile }
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
-val appCodeName = "Renewa"
+val appCodeName = "Renewa" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
 val appVersionName = "1.3.1-IntDev_rev0"
 val buildContentHash = MessageDigest.getInstance("SHA-256").run {
     buildNumberFiles.forEach { file ->

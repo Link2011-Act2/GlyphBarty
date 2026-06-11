@@ -110,6 +110,8 @@
     <string name="settings_native_meter_view_desc">Draw the meter with an Android View instead of Compose Canvas. This may reduce load.</string>
     <string name="settings_media_playback_only_title">Respond only during media playback</string>
     <string name="settings_media_playback_only_desc">Makes the app respond only to audio from music and media apps. Notification access is required.</string>
+    <string name="settings_media_playback_only_permission_status_granted">Notification access: Granted</string>
+    <string name="settings_media_playback_only_permission_status_not_granted">Notification access: Not granted</string>
     <string name="settings_media_playback_only_permission_required">Grant notification access to use this option.</string>
     <string name="settings_media_playback_only_open_failed">Unable to open notification access settings</string>
     <string name="settings_visualizer_stabilization_title">Experimental: Stabilize startup</string>
