@@ -849,6 +849,11 @@ private enum class WelcomeStep {
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val STATE_PENDING_MEDIA_PLAYBACK_PERMISSION =
+            "pending_media_playback_permission"
+    }
+
     private val parameterSyncHandler = Handler(Looper.getMainLooper())
     private val delayedParameterSyncRunnable = Runnable {
         syncCurrentParameters()
@@ -1004,6 +1009,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.init(this)
+        pendingMediaPlaybackOnlyPermissionRequest = savedInstanceState?.getBoolean(
+            STATE_PENDING_MEDIA_PLAYBACK_PERMISSION,
+            false
+        ) ?: false
         CaptureUiStore.setUiVisible(true)
         enableEdgeToEdge()
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
@@ -1191,6 +1200,10 @@ class MainActivity : ComponentActivity() {
                     },
                     onMediaPlaybackOnlyEnabledChanged = { enabled ->
                         if (enabled && !MediaSessionPlaybackGate.hasNotificationAccess(this)) {
+                            pendingMediaPlaybackOnlyPermissionRequest = true
+                            if (CaptureUiStore.state.mediaPlaybackOnlyEnabled) {
+                                applyMediaPlaybackOnlyEnabled(false)
+                            }
                             val opened = openNotificationAccessSettings(this)
                             if (!opened) {
                                 pendingMediaPlaybackOnlyPermissionRequest = false
@@ -1200,7 +1213,6 @@ class MainActivity : ComponentActivity() {
                                     Toast.LENGTH_SHORT
                                 ).show()
                             } else {
-                                pendingMediaPlaybackOnlyPermissionRequest = true
                                 Toast.makeText(
                                     this,
                                     getString(R.string.settings_media_playback_only_permission_required),
@@ -1785,6 +1797,14 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         CaptureUiStore.setUiVisible(false)
         super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(
+            STATE_PENDING_MEDIA_PLAYBACK_PERMISSION,
+            pendingMediaPlaybackOnlyPermissionRequest
+        )
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {

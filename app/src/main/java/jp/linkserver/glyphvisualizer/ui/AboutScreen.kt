@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.BuildConfig
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
@@ -485,7 +486,8 @@ fun AboutScreen(
                     stringResource(
                         R.string.about_version_details_message,
                         versionName,
-                        versionCode
+                        versionCode,
+                        BuildConfig.BUILD_NUMBER
                     )
                 )
             },

@@ -1,5 +1,6 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -34,20 +35,18 @@ fun openAppLanguageSettings(context: Context): Boolean {
 }
 
 fun openNotificationAccessSettings(context: Context): Boolean {
-    val intents = buildList {
-        add(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    if (context !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
-
-    for (intent in intents) {
-        try {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(intent)
-                return true
-            }
-        } catch (_: Exception) {
+    return try {
+        if (intent.resolveActivity(context.packageManager) == null) {
+            false
+        } else {
+            context.startActivity(intent)
+            true
         }
+    } catch (_: Throwable) {
+        false
     }
-    return false
 }

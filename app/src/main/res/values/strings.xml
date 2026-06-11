@@ -18,7 +18,7 @@
     <string name="about_dev_channel_desc_stable">Stable/Release is the stable channel, published after a reasonable level of testing has been completed.</string>
     <string name="about_dev_channel_desc_unknown">No description is available for this channel.</string>
     <string name="about_version_details_title">Version details</string>
-    <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d</string>
+    <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d\nBuild number: %3$s</string>
     <string name="about_updates_title">What\'s new</string>
     <string name="about_updates_body">• Fixed an issue where the UI mode could switch unexpectedly</string>
     <string name="about_update_check_button">Check for updates</string>

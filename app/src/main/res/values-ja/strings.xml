@@ -18,7 +18,7 @@
     <string name="about_dev_channel_desc_stable">Stable/Releaseは安定版で、ある程度検証が行われてから公開されます。</string>
     <string name="about_dev_channel_desc_unknown">このチャネルの説明は未登録です。</string>
     <string name="about_version_details_title">バージョン詳細</string>
-    <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d</string>
+    <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d\nビルド番号: %3$s</string>
     <string name="about_updates_title">アップデート情報</string>
     <string name="about_updates_body">・UIモードが勝手に切り替わる問題を修正</string>
     <string name="about_update_check_button">アップデートを確認</string>
