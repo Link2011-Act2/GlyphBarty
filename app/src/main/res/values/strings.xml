@@ -20,7 +20,7 @@
     <string name="about_version_details_title">Version details</string>
     <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d</string>
     <string name="about_updates_title">What\'s new</string>
-    <string name="about_updates_body">• Improved smoothing behavior\n• Improved the base indicator behavior\n• Added nine new patterns for Matrix devices\n• Added brightness control support for Glyph Matrix devices\n• Added Linear Peak patterns for Lights / Bar devices\n• Added two more UI meter styles\n• Improved excessive heat generation issues</string>
+    <string name="about_updates_body">• Fixed an issue where the UI mode could switch unexpectedly</string>
     <string name="about_update_check_button">Check for updates</string>
     <string name="about_update_checking">Checking GitHub Releases…</string>
     <string name="about_update_latest">You are using the latest version.</string>

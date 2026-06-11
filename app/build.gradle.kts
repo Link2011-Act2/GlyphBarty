@@ -16,8 +16,8 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.3.1-Release"
+        versionCode = 6
+        versionName = "1.3.1-IntDev_rev0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
