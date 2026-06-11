@@ -20,7 +20,7 @@
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d</string>
     <string name="about_updates_title">アップデート情報</string>
-    <string name="about_updates_body">・スムージング処理の改善\n・ベースインジケーター処理の改善\n・Matrix機向けにパターンを9個追加\n・Glyph Matrix機で、明るさ制御に対応\n・Lights/Bar機種向けに、Linear Peakパターンを追加\n・UIメータースタイルを2つ追加\n・異常に発熱する問題の改善</string>
+    <string name="about_updates_body">・UIモードが勝手に切り替わる問題を修正</string>
     <string name="about_update_check_button">アップデートを確認</string>
     <string name="about_update_checking">GitHub Releases を確認しています…</string>
     <string name="about_update_latest">最新バージョンを使用しています。</string>

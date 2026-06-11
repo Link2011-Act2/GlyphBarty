@@ -1015,8 +1015,19 @@ class MainActivity : ComponentActivity() {
         CaptureUiStore.update { current ->
             if (current.isCapturing) {
                 // A system theme change recreates the Activity while the service keeps running.
-                // Do not replace live capture state with saved idle settings during recreation.
-                current.copy(isBluetoothOutputActive = bluetoothOutputActive)
+                // Keep live capture state, but restore UI-only preferences because the service
+                // may have recreated CaptureUiStore from defaults before the Activity starts.
+                current.copy(
+                    isBluetoothOutputActive = bluetoothOutputActive,
+                    nothingStyleEnabled = resolvedLatencySettings.nothingStyleEnabled,
+                    glyphMeterPreviewEnabled = resolvedLatencySettings.glyphMeterPreviewEnabled,
+                    meterVisibleEnabled = resolvedLatencySettings.meterVisibleEnabled,
+                    lightweightMeterEnabled = resolvedLatencySettings.lightweightMeterEnabled,
+                    spectrumMeterEnabled = resolvedLatencySettings.spectrumMeterEnabled,
+                    nativeMeterViewEnabled = resolvedLatencySettings.nativeMeterViewEnabled,
+                    mainScreenUiIsolationEnabled = resolvedLatencySettings.mainScreenUiIsolationEnabled,
+                    automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled
+                )
             } else {
                 resolvedLatencySettings.copy(
                     statusText = getString(R.string.status_preparing_glyph_session),
