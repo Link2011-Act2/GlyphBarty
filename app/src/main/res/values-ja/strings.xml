@@ -20,7 +20,7 @@
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d\nビルド番号: %3$s</string>
     <string name="about_updates_title">アップデート情報</string>
-    <string name="about_updates_body">・UIモードが勝手に切り替わる問題を修正</string>
+    <string name="about_updates_body">・UIモードが勝手に切り替わる問題を修正\n・「メディア再生中のみ」のバグを修正</string>
     <string name="about_update_check_button">アップデートを確認</string>
     <string name="about_update_checking">GitHub Releases を確認しています…</string>
     <string name="about_update_latest">最新バージョンを使用しています。</string>
