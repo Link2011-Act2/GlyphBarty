@@ -8,6 +8,7 @@ interface GlyphOutputController {
     fun setFillOtherGlyphLightsEnabled(enabled: Boolean) {}
     fun setBinaryMode(binary: Boolean)
     fun setBaseIndicatorEnabled(enabled: Boolean) {}
+    fun setRecordingLightIncluded(enabled: Boolean) {}
     fun setLevelAutoScaleEnabled(enabled: Boolean) {}
     fun setOutputGamma(gamma: Float) {}
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}

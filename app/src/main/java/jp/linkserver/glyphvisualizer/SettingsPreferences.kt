@@ -28,6 +28,7 @@ object SettingsPreferences {
             fillOtherGlyphLights = state.fillOtherGlyphLights,
             binaryMode = state.binaryMode,
             baseIndicatorEnabled = state.baseIndicatorEnabled,
+            recordingLightIncluded = state.recordingLightIncluded,
             levelAutoScale = state.levelAutoScale,
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
@@ -86,6 +87,10 @@ object SettingsPreferences {
             fillOtherGlyphLights = prefs.getBoolean("fill_other_glyph_lights", defaults.fillOtherGlyphLights),
             binaryMode = prefs.getBoolean("binary_mode", defaults.binaryMode),
             baseIndicatorEnabled = prefs.getBoolean("base_indicator_enabled", defaults.baseIndicatorEnabled),
+            recordingLightIncluded = prefs.getBoolean(
+                "recording_light_included",
+                defaults.recordingLightIncluded
+            ),
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
@@ -134,6 +139,7 @@ object SettingsPreferences {
             .putBoolean("fill_other_glyph_lights", parameters.fillOtherGlyphLights)
             .putBoolean("binary_mode", parameters.binaryMode)
             .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
+            .putBoolean("recording_light_included", parameters.recordingLightIncluded)
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)

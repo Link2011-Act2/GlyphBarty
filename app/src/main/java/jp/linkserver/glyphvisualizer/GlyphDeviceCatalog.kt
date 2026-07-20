@@ -77,6 +77,22 @@ object GlyphDeviceCatalog {
             )
         ),
         Entry(
+            matches = { Common.is25131() },
+            definition = GlyphDeviceDefinition(
+                profile = GlyphDeviceProfile.PHONE4B,
+                modelCode = "25131",
+                presentation = GlyphDevicePresentation("Phone (4b)", "Glyph Bar"),
+                controllerFamily = GlyphControllerFamily.LIGHTS,
+                defaultGlyphMode = GlyphPatternRegistry.P4A_LINEAR,
+                lightSpec = GlyphLightDeviceSpec(
+                    sdkDeviceId = Glyph.DEVICE_25131,
+                    channelCount = 4,
+                    cRange = 0..3,
+                    centerSupported = true
+                )
+            )
+        ),
+        Entry(
             matches = { Common.is25111() },
             definition = GlyphDeviceDefinition(
                 profile = GlyphDeviceProfile.PHONE4A,

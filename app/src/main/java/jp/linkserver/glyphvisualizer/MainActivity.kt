@@ -161,7 +161,7 @@ import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
-import jp.linkserver.glyphvisualizer.glyph.Phone4aProGlyphChannelProbe
+import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
@@ -969,7 +969,8 @@ class MainActivity : ComponentActivity() {
 
         applyParameterState(
             importedState.copy(
-                baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled
+                baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled,
+                recordingLightIncluded = CaptureUiStore.state.recordingLightIncluded
             )
         )
         Toast.makeText(this, getString(R.string.settings_import_success), Toast.LENGTH_SHORT).show()
@@ -1015,7 +1016,8 @@ class MainActivity : ComponentActivity() {
             experimentalPerformanceOptimizationsEnabled = uiState.experimentalPerformanceOptimizationsEnabled,
             matrixSmoothMotionEnabled = uiState.matrixSmoothMotionEnabled,
             oscilloscopeAutoTimeAxisEnabled = uiState.oscilloscopeAutoTimeAxisEnabled,
-            turnOffWhenBackDown = uiState.turnOffWhenBackDown
+            turnOffWhenBackDown = uiState.turnOffWhenBackDown,
+            recordingLightIncluded = uiState.recordingLightIncluded
         )
     }
 
@@ -1105,6 +1107,7 @@ class MainActivity : ComponentActivity() {
                     isPhone1Device = isPhone1Device,
                     binaryMode = uiState.binaryMode,
                     baseIndicatorEnabled = uiState.baseIndicatorEnabled,
+                    recordingLightIncluded = uiState.recordingLightIncluded,
                     levelAutoScale = uiState.levelAutoScale,
                     spectrumAutoScale = uiState.spectrumAutoScale,
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
@@ -1358,6 +1361,10 @@ class MainActivity : ComponentActivity() {
                     },
                     onBaseIndicatorEnabledChanged = { enabled ->
                         CaptureUiStore.update { it.copy(baseIndicatorEnabled = enabled) }
+                        syncCurrentParameters()
+                    },
+                    onRecordingLightIncludedChanged = { enabled ->
+                        CaptureUiStore.update { it.copy(recordingLightIncluded = enabled) }
                         syncCurrentParameters()
                     },
                     onReverseDirectionChanged = { newValue ->
@@ -1741,7 +1748,8 @@ class MainActivity : ComponentActivity() {
             routeAware.matrixSmoothMotionEnabled,
             routeAware.turnOffWhenBackDown,
             routeAware.outputGamma,
-            routeAware.oscilloscopeAutoTimeAxisEnabled
+            routeAware.oscilloscopeAutoTimeAxisEnabled,
+            recordingLightIncluded = routeAware.recordingLightIncluded
         )
         SettingsPreferences.save(this, routeAware)
     }
@@ -1770,6 +1778,7 @@ class MainActivity : ComponentActivity() {
                 fillOtherGlyphLights = parameters.fillOtherGlyphLights,
                 binaryMode = parameters.binaryMode,
                 baseIndicatorEnabled = parameters.baseIndicatorEnabled,
+                recordingLightIncluded = parameters.recordingLightIncluded,
                 levelAutoScale = parameters.levelAutoScale,
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
@@ -1811,7 +1820,8 @@ class MainActivity : ComponentActivity() {
             updated.matrixSmoothMotionEnabled,
             updated.turnOffWhenBackDown,
             updated.outputGamma,
-            updated.oscilloscopeAutoTimeAxisEnabled
+            updated.oscilloscopeAutoTimeAxisEnabled,
+            recordingLightIncluded = updated.recordingLightIncluded
         )
         SettingsPreferences.save(this, updated)
     }
@@ -2115,7 +2125,8 @@ class MainActivity : ComponentActivity() {
                 uiState.matrixSmoothMotionEnabled,
                 uiState.turnOffWhenBackDown,
                 uiState.outputGamma,
-                uiState.oscilloscopeAutoTimeAxisEnabled
+                uiState.oscilloscopeAutoTimeAxisEnabled,
+                recordingLightIncluded = uiState.recordingLightIncluded
             )
             AppLogger.i(
                 "MainActivity",
@@ -2184,6 +2195,7 @@ private fun GlyphVisualizerApp(
     matrixSmoothMotionEnabled: Boolean,
     oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -2231,6 +2243,7 @@ private fun GlyphVisualizerApp(
     onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
+    onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
@@ -2410,6 +2423,7 @@ private fun GlyphVisualizerApp(
                         matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
                         oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         baseIndicatorEnabled = baseIndicatorEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
@@ -2446,6 +2460,7 @@ private fun GlyphVisualizerApp(
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
                         onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
+                        onRecordingLightIncludedChanged = onRecordingLightIncludedChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
                         onStartVisualizerClick = {
@@ -2520,7 +2535,7 @@ private fun GlyphVisualizerApp(
                     )
                     Screen.EXPERIMENTAL -> ExperimentalScreenContent(
                         containerBrush = containerBrush,
-                        isPhone4aProDevice = isPhone4aProDevice,
+                        isPhone4aDevice = isPhone4aDevice,
                         isCapturing = isCapturing,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onOpenMenu = { drawerOpen = true },
@@ -2889,6 +2904,7 @@ private fun MainScreenContent(
     matrixSmoothMotionEnabled: Boolean,
     oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -2925,6 +2941,7 @@ private fun MainScreenContent(
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
+    onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onStartVisualizerClick: () -> Unit,
@@ -3088,6 +3105,7 @@ private fun MainScreenContent(
                         matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
                         oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
                         baseIndicatorEnabled = baseIndicatorEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
@@ -3118,6 +3136,7 @@ private fun MainScreenContent(
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
                         onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
+                        onRecordingLightIncludedChanged = onRecordingLightIncludedChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
                         onStartVisualizerClick = onStartVisualizerClick,
@@ -3347,7 +3366,7 @@ private fun LatencyScreenContent(
 @Composable
 private fun ExperimentalScreenContent(
     containerBrush: Brush,
-    isPhone4aProDevice: Boolean,
+    isPhone4aDevice: Boolean,
     isCapturing: Boolean,
     nothingStyleEnabled: Boolean,
     onOpenMenu: () -> Unit,
@@ -3355,10 +3374,9 @@ private fun ExperimentalScreenContent(
 ) {
     val context = LocalContext.current
     var statusText by rememberSaveable { mutableStateOf("") }
-    var forceProbeOpen by rememberSaveable { mutableStateOf(false) }
-    val showProbeControls = isPhone4aProDevice || forceProbeOpen
+    val showProbeControls = isPhone4aDevice
     val probe = remember {
-        Phone4aProGlyphChannelProbe(context) { message ->
+        Phone4aAsPhone4bGlyphProbe(context) { message ->
             statusText = message
         }
     }
@@ -3407,7 +3425,7 @@ private fun ExperimentalScreenContent(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (!isPhone4aProDevice) {
+                if (!isPhone4aDevice) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(28.dp),
@@ -3422,22 +3440,9 @@ private fun ExperimentalScreenContent(
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(
-                                text = stringResource(R.string.experimental_force_open_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = { forceProbeOpen = true }
-                            ) {
-                                Text(stringResource(R.string.experimental_force_open_button))
-                            }
                         }
                     }
-                    if (!showProbeControls) {
-                        return@Column
-                    }
+                    return@Column
                 }
 
                 Surface(
@@ -3454,25 +3459,25 @@ private fun ExperimentalScreenContent(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.experimental_p4a_pro_probe_title),
+                            text = stringResource(R.string.experimental_p4a_as_p4b_probe_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = stringResource(R.string.experimental_p4a_pro_probe_desc),
+                            text = stringResource(R.string.experimental_p4a_as_p4b_probe_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (isCapturing) {
                             Text(
-                                text = stringResource(R.string.experimental_p4a_pro_probe_running_warning),
+                                text = stringResource(R.string.experimental_p4a_as_p4b_probe_running_warning),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
                         Text(
                             text = if (statusText.isBlank()) {
-                                stringResource(R.string.experimental_p4a_pro_probe_status_waiting)
+                                stringResource(R.string.experimental_p4a_as_p4b_probe_status_waiting)
                             } else {
                                 statusText
                             },
@@ -3492,41 +3497,50 @@ private fun ExperimentalScreenContent(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.experimental_p4a_pro_probe_channels),
+                            text = stringResource(R.string.experimental_p4a_as_p4b_probe_channels),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            itemsIndexed((0..3).toList()) { _, channel ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { probe.probe(channel) },
+                                    label = {
+                                        Text(stringResource(R.string.experimental_p4a_as_p4b_glyph_channel, channel + 1))
+                                    }
+                                )
+                            }
+                            item {
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { probe.probe(4) },
+                                    label = { Text(stringResource(R.string.experimental_p4a_as_p4b_recording_light)) }
+                                )
+                            }
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { probe.probe(6) }
+                                onClick = { probe.probeAll(includeRecordingLight = false) }
                             ) {
-                                Text(stringResource(R.string.experimental_probe_channel, 6))
+                                Text(stringResource(R.string.experimental_p4a_as_p4b_all_glyphs))
                             }
-                            OutlinedButton(
+                            Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { probe.probe(0) }
+                                onClick = { probe.probeAll(includeRecordingLight = true) }
                             ) {
-                                Text(stringResource(R.string.experimental_probe_channel, 0))
-                            }
-                        }
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            itemsIndexed((0..15).toList()) { _, channel ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = { probe.probe(channel) },
-                                    label = { Text(channel.toString()) }
-                                )
+                                Text(stringResource(R.string.experimental_p4a_as_p4b_all_with_recording))
                             }
                         }
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { probe.turnOff() }
                         ) {
-                            Text(stringResource(R.string.experimental_probe_turn_off))
+                            Text(stringResource(R.string.experimental_p4a_as_p4b_turn_off))
                         }
                     }
                 }
@@ -5965,6 +5979,7 @@ private fun ControlCard(
     matrixSmoothMotionEnabled: Boolean,
     oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -5992,6 +6007,7 @@ private fun ControlCard(
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
+    onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onResetParametersClick: () -> Unit,
@@ -6386,7 +6402,29 @@ private fun ControlCard(
                 }
             }
 
-            if (isPhone4aDevice) {
+            if (deviceProfile in setOf(GlyphDeviceProfile.PHONE4A, GlyphDeviceProfile.PHONE4B)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.recording_light_included_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            text = stringResource(R.string.recording_light_included_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Checkbox(
+                        checked = recordingLightIncluded,
+                        onCheckedChange = onRecordingLightIncludedChanged
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -6886,6 +6924,7 @@ private fun GlyphVisualizerPreview() {
             matrixSmoothMotionEnabled = false,
             oscilloscopeAutoTimeAxisEnabled = false,
             baseIndicatorEnabled = false,
+            recordingLightIncluded = false,
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
@@ -6933,6 +6972,7 @@ private fun GlyphVisualizerPreview() {
             onShowPhone1GlyphDebugControlsEverywhereChanged = {},
             onAutoEnablePhone1GlyphDebugOnStartChanged = {},
             onBaseIndicatorEnabledChanged = {},
+            onRecordingLightIncludedChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onFillOtherGlyphLightsChanged = {},

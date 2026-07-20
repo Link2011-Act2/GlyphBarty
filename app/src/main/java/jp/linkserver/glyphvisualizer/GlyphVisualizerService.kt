@@ -62,6 +62,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_FILL_OTHER_GLYPH_LIGHTS = "extra_fill_other_glyph_lights"
         private const val EXTRA_BINARY_MODE = "extra_binary_mode"
         private const val EXTRA_BASE_INDICATOR_ENABLED = "extra_base_indicator_enabled"
+        private const val EXTRA_RECORDING_LIGHT_INCLUDED = "extra_recording_light_included"
         private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
         private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
         private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
@@ -127,7 +128,8 @@ class GlyphVisualizerService : Service() {
             matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f,
-            oscilloscopeAutoTimeAxisEnabled: Boolean = false
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false,
+            recordingLightIncluded: Boolean = false
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_VISUALIZER
@@ -144,6 +146,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -203,7 +206,8 @@ class GlyphVisualizerService : Service() {
             matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f,
-            oscilloscopeAutoTimeAxisEnabled: Boolean = false
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false,
+            recordingLightIncluded: Boolean = false
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_MEDIA_PROJECTION
@@ -222,6 +226,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -279,7 +284,8 @@ class GlyphVisualizerService : Service() {
             matrixSmoothMotionEnabled: Boolean,
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = Float.NaN,
-            oscilloscopeAutoTimeAxisEnabled: Boolean = false
+            oscilloscopeAutoTimeAxisEnabled: Boolean = false,
+            recordingLightIncluded: Boolean? = null
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_UPDATE_SENSITIVITY
@@ -296,6 +302,9 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                recordingLightIncluded?.let {
+                    putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, it)
+                }
                 putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -355,6 +364,7 @@ class GlyphVisualizerService : Service() {
     private var fillOtherGlyphLights = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
+    private var recordingLightIncluded = false
     private var levelAutoScale = true
     private var spectrumAutoScale = true
     private var allBrightnessAutoScale = true
@@ -496,6 +506,10 @@ class GlyphVisualizerService : Service() {
                     fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                     binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                     baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                    recordingLightIncluded = intent.getBooleanExtra(
+                        EXTRA_RECORDING_LIGHT_INCLUDED,
+                        recordingLightIncluded
+                    )
                     levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                     spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                     allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -581,6 +595,10 @@ class GlyphVisualizerService : Service() {
                 fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                recordingLightIncluded = intent.getBooleanExtra(
+                    EXTRA_RECORDING_LIGHT_INCLUDED,
+                    recordingLightIncluded
+                )
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -641,6 +659,10 @@ class GlyphVisualizerService : Service() {
                 fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
+                recordingLightIncluded = intent.getBooleanExtra(
+                    EXTRA_RECORDING_LIGHT_INCLUDED,
+                    recordingLightIncluded
+                )
                 levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
                 spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
                 allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
@@ -690,6 +712,7 @@ class GlyphVisualizerService : Service() {
                         fillOtherGlyphLights = fillOtherGlyphLights,
                         binaryMode = binaryMode,
                         baseIndicatorEnabled = baseIndicatorEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         autoScaleWindowSeconds = autoScaleWindowSeconds,
@@ -1235,6 +1258,7 @@ class GlyphVisualizerService : Service() {
         glyphController.setFillOtherGlyphLightsEnabled(fillOtherGlyphLights)
         glyphController.setBinaryMode(binaryMode)
         glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
+        glyphController.setRecordingLightIncluded(recordingLightIncluded)
         glyphController.setOutputGamma(outputGamma)
         glyphController.setSmoothing(smoothing, smoothingBalance)
         glyphController.setLevelAutoScaleEnabled(levelAutoScale)

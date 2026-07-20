@@ -41,6 +41,8 @@ class GlyphLightController(
         private const val PHONE4A_BASE_INDICATOR_GAMMA = 2.0f
         private const val PHONE4A_BASE_INDICATOR_DECAY = 0.90f
         private const val PHONE4A_BASE_INDICATOR_PEAK_FALLOFF = 0.9995f
+        private const val PHONE4A_RECORDING_LIGHT_CHANNEL = 6
+        private const val PHONE4B_RECORDING_LIGHT_CHANNEL = 4
     }
 
     private data class TravelingPulse(
@@ -56,13 +58,14 @@ class GlyphLightController(
         fun apply(colors: IntArray, binaryMode: Boolean, outputGamma: Float)
     }
 
-    private class Phone4aBaseIndicatorRenderer : BaseIndicatorRenderer {
+    private class Phone4SeriesBaseIndicatorRenderer : BaseIndicatorRenderer {
         private var bandLevel = 0f
         private var decayedBandLevel = 0f
         private var zonePeak = PHONE4A_BASE_INDICATOR_EPSILON
 
         override fun accepts(profile: GlyphDeviceProfile): Boolean {
-            return profile == GlyphDeviceProfile.PHONE4A
+            return profile == GlyphDeviceProfile.PHONE4A ||
+                profile == GlyphDeviceProfile.PHONE4B
         }
 
         override fun setSmoothing(smoothing: Float, smoothingBalance: Float) = Unit
@@ -131,6 +134,7 @@ class GlyphLightController(
     private var fillOtherGlyphLightsEnabled = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
+    private var recordingLightIncluded = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
@@ -172,7 +176,7 @@ class GlyphLightController(
     private var d1Frame: GlyphFrame? = null
     private var fullGlyphBrightness = IntArray(0)
     private val baseIndicatorRenderers: List<BaseIndicatorRenderer> = listOf(
-        Phone4aBaseIndicatorRenderer()
+        Phone4SeriesBaseIndicatorRenderer()
     )
     // SDK 接続待ちの間に届いたレベルを保持し、接続後に再送する
     @Volatile private var pendingLevel: Float = -1f
@@ -293,6 +297,12 @@ class GlyphLightController(
 
     override fun setBaseIndicatorEnabled(enabled: Boolean) {
         baseIndicatorEnabled = enabled
+        clearPhone4bRecordingLightIfUnused()
+    }
+
+    override fun setRecordingLightIncluded(enabled: Boolean) {
+        recordingLightIncluded = enabled
+        clearPhone4bRecordingLightIfUnused()
     }
 
     override fun setOutputGamma(gamma: Float) {
@@ -564,8 +574,11 @@ class GlyphLightController(
         }
         val ranges = resolveLightRanges(spec, recipe.lightZones)
 
-        if (spec.profile == GlyphDeviceProfile.PHONE4A) {
-            updatePhone4aFrame(spec, level) { colors ->
+        if (
+            spec.profile == GlyphDeviceProfile.PHONE4A ||
+            spec.profile == GlyphDeviceProfile.PHONE4B
+        ) {
+            updatePhone4SeriesFrame(spec) { colors ->
                 applyRecipeToColors(
                     colors = colors,
                     ranges = ranges,
@@ -599,14 +612,14 @@ class GlyphLightController(
     private fun resolveLightRanges(spec: DeviceSpec, zones: List<GlyphLightZone>): List<IntRange> {
         val resolved = zones.mapNotNull { zone ->
             when (zone) {
-                GlyphLightZone.C -> spec.cRange
+                GlyphLightZone.C -> effectiveMainRange(spec)
                 GlyphLightZone.A -> spec.aRange
                 GlyphLightZone.B -> spec.bRange
                 GlyphLightZone.CAB -> spec.cabRange
                 GlyphLightZone.D1 -> spec.d1Range
             }
         }
-        return if (resolved.isEmpty()) listOf(spec.cRange) else resolved
+        return if (resolved.isEmpty()) listOf(effectiveMainRange(spec)) else resolved
     }
 
     private fun applyRecipeToColors(
@@ -958,7 +971,8 @@ class GlyphLightController(
 
     private fun shouldReverseLightOrder(): Boolean {
         return when (deviceSpec?.profile) {
-            GlyphDeviceProfile.PHONE4A -> !reverseDirection
+            GlyphDeviceProfile.PHONE4A,
+            GlyphDeviceProfile.PHONE4B -> !reverseDirection
             else -> reverseDirection
         }
     }
@@ -1199,12 +1213,11 @@ class GlyphLightController(
         releaseSessionForSilence()
     }
 
-    private fun updatePhone4aFrame(
+    private fun updatePhone4SeriesFrame(
         spec: DeviceSpec,
-        level: Float,
         populateMain: (IntArray) -> Unit
     ) {
-        val colors = IntArray(spec.channelCount)
+        val colors = IntArray(frameChannelCount(spec))
         populateMain(colors)
         if (baseIndicatorEnabled) {
             applyBaseIndicator(spec.profile, colors)
@@ -1213,6 +1226,43 @@ class GlyphLightController(
             turnOff()
         } else {
             glyphManager.setFrameColors(colors)
+        }
+    }
+
+    private fun effectiveMainRange(spec: DeviceSpec): IntRange {
+        if (!recordingLightIncluded) return spec.cRange
+        val recordingLightChannel = when (spec.profile) {
+            GlyphDeviceProfile.PHONE4A -> PHONE4A_RECORDING_LIGHT_CHANNEL
+            GlyphDeviceProfile.PHONE4B -> PHONE4B_RECORDING_LIGHT_CHANNEL
+            else -> return spec.cRange
+        }
+        return spec.cRange.first..recordingLightChannel
+    }
+
+    private fun frameChannelCount(spec: DeviceSpec): Int {
+        return if (
+            spec.profile == GlyphDeviceProfile.PHONE4B &&
+            (recordingLightIncluded || baseIndicatorEnabled)
+        ) {
+            PHONE4B_RECORDING_LIGHT_CHANNEL + 1
+        } else {
+            spec.channelCount
+        }
+    }
+
+    private fun clearPhone4bRecordingLightIfUnused() {
+        if (
+            deviceSpec?.profile != GlyphDeviceProfile.PHONE4B ||
+            recordingLightIncluded ||
+            baseIndicatorEnabled ||
+            !isSessionOpen
+        ) {
+            return
+        }
+        runCatching {
+            glyphManager.turnOff()
+        }.onFailure { error ->
+            AppLogger.w(TAG, "Failed to clear Phone (4b) recording light", error)
         }
     }
 

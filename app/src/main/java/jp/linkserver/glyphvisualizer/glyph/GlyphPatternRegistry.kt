@@ -8,6 +8,7 @@ enum class GlyphDeviceProfile {
     PHONE2A,
     PHONE3A,
     PHONE4A,
+    PHONE4B,
     PHONE3_MATRIX,
     PHONE4A_PRO_MATRIX
 }
@@ -136,6 +137,11 @@ object GlyphPatternRegistry {
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     )
 
+    private val phone4aStyleBarDevices = setOf(
+        GlyphDeviceProfile.PHONE4A,
+        GlyphDeviceProfile.PHONE4B
+    )
+
     private fun pattern(
         id: String,
         labelRes: Int,
@@ -180,11 +186,11 @@ object GlyphPatternRegistry {
         pattern(P3A_CLASSIC, R.string.mode_classic, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.CLASSIC)),
         pattern(P3A_ALL_BRIGHTNESS, R.string.mode_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE3A), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
-        pattern(P4A_LINEAR, R.string.mode_p4a_linear, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
-        pattern(P4A_LINEAR_PEAK, R.string.mode_p4a_linear_peak, GlyphPatternKind.LINEAR, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR_PEAK, listOf(GlyphLightZone.C))),
-        pattern(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
-        pattern(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
-        pattern(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, setOf(GlyphDeviceProfile.PHONE4A), GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
+        pattern(P4A_LINEAR, R.string.mode_p4a_linear, GlyphPatternKind.LINEAR, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR, listOf(GlyphLightZone.C))),
+        pattern(P4A_LINEAR_PEAK, R.string.mode_p4a_linear_peak, GlyphPatternKind.LINEAR, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR_PEAK, listOf(GlyphLightZone.C))),
+        pattern(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
+        pattern(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
         pattern(P3_MATRIX_SPECTRUM, R.string.mode_matrix_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM)),
         pattern(P3_MATRIX_SPECTRUM_CENTER, R.string.mode_matrix_spectrum_center, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER)),
@@ -259,7 +265,10 @@ object GlyphPatternRegistry {
             P3A_C_LINEAR, P3A_C_LINEAR_PEAK, P3A_C_CENTER, P3A_C_SPECTRUM -> 20
             P3A_CAB_LINEAR, P3A_CAB_LINEAR_PEAK, P3A_CAB_CENTER, P3A_CAB_SPECTRUM -> 20
             P3A_CLASSIC -> 3
-            P4A_LINEAR, P4A_LINEAR_PEAK, P4A_CENTER, P4A_SPECTRUM -> 6
+            P4A_LINEAR, P4A_LINEAR_PEAK, P4A_CENTER, P4A_SPECTRUM -> {
+                if (profile == GlyphDeviceProfile.PHONE4B) 4 else 6
+            }
+            P4A_ALL_BRIGHTNESS -> if (profile == GlyphDeviceProfile.PHONE4B) 4 else 16
             P3_MATRIX_SPECTRUM,
             P3_MATRIX_SPECTRUM_CENTER,
             P3_MATRIX_SPECTRUM_BOTTOM,
@@ -290,6 +299,7 @@ object GlyphPatternRegistry {
                     GlyphDeviceProfile.PHONE2A -> 24
                     GlyphDeviceProfile.PHONE3A -> 20
                     GlyphDeviceProfile.PHONE4A -> 6
+                    GlyphDeviceProfile.PHONE4B -> 4
                     GlyphDeviceProfile.PHONE3_MATRIX,
                     GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> 16
                 }

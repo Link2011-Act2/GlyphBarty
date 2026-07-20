@@ -27,6 +27,7 @@ data class CaptureUiState(
     val fillOtherGlyphLights: Boolean = false,
     val binaryMode: Boolean = false,
     val baseIndicatorEnabled: Boolean = false,
+    val recordingLightIncluded: Boolean = false,
     val levelAutoScale: Boolean = true,
     val spectrumAutoScale: Boolean = true,
     val allBrightnessAutoScale: Boolean = true,

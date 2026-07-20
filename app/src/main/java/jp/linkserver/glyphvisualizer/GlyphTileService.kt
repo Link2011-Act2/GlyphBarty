@@ -57,6 +57,7 @@ class GlyphTileService : TileService() {
                 fillOtherGlyphLights = resolved.fillOtherGlyphLights,
                 binaryMode = resolved.binaryMode,
                 baseIndicatorEnabled = resolved.baseIndicatorEnabled,
+                recordingLightIncluded = resolved.recordingLightIncluded,
                 levelAutoScale = resolved.levelAutoScale,
                 spectrumAutoScale = resolved.spectrumAutoScale,
                 allBrightnessAutoScale = resolved.allBrightnessAutoScale,
