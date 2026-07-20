@@ -161,6 +161,7 @@ import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
+import jp.linkserver.glyphvisualizer.glyph.Phone4aProGlyphChannelProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
@@ -169,6 +170,7 @@ import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
 import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
 import jp.linkserver.glyphvisualizer.update.shouldCheckForUpdates
@@ -836,6 +838,7 @@ private enum class Screen {
     MAIN,
     LATENCY,
     SETTINGS,
+    EXPERIMENTAL,
     ABOUT,
     UPDATE,
     OSS
@@ -852,6 +855,12 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val STATE_PENDING_MEDIA_PLAYBACK_PERMISSION =
             "pending_media_playback_permission"
+        private const val STATE_PENDING_OPEN_REEL_PERMISSION =
+            "pending_open_reel_permission"
+        private const val STATE_PENDING_OPEN_REEL_SETTINGS_LAUNCHED =
+            "pending_open_reel_settings_launched"
+        private const val STATE_PENDING_OPEN_REEL_MODE =
+            "pending_open_reel_mode"
     }
 
     private val parameterSyncHandler = Handler(Looper.getMainLooper())
@@ -877,8 +886,12 @@ class MainActivity : ComponentActivity() {
     private var pendingStartMode: CaptureMode? = null
     private var pendingExportContent: String? = null
     private var pendingMediaPlaybackOnlyPermissionRequest = false
+    private var pendingOpenReelPermissionRequest = false
+    private var pendingOpenReelPermissionSettingsLaunched = false
+    private var pendingOpenReelGlyphMode: String? = null
     private var pendingPhone1GlyphDebugPermissionRequestFromManual by mutableStateOf(false)
     private var showPhone1GlyphDebugPermissionDialog by mutableStateOf(false)
+    private var showOpenReelPermissionDialog by mutableStateOf(false)
 
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
@@ -1013,6 +1026,15 @@ class MainActivity : ComponentActivity() {
             STATE_PENDING_MEDIA_PLAYBACK_PERMISSION,
             false
         ) ?: false
+        pendingOpenReelPermissionRequest = savedInstanceState?.getBoolean(
+            STATE_PENDING_OPEN_REEL_PERMISSION,
+            false
+        ) ?: false
+        pendingOpenReelPermissionSettingsLaunched = savedInstanceState?.getBoolean(
+            STATE_PENDING_OPEN_REEL_SETTINGS_LAUNCHED,
+            pendingOpenReelPermissionRequest
+        ) ?: false
+        pendingOpenReelGlyphMode = savedInstanceState?.getString(STATE_PENDING_OPEN_REEL_MODE)
         CaptureUiStore.setUiVisible(true)
         enableEdgeToEdge()
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
@@ -1374,8 +1396,7 @@ class MainActivity : ComponentActivity() {
                         SettingsPreferences.save(this, updated)
                     },
                     onGlyphModeChanged = { newMode ->
-                        CaptureUiStore.update { it.copy(glyphMode = newMode) }
-                        syncCurrentParameters()
+                        requestGlyphModeChange(newMode)
                     },
                     onFillOtherGlyphLightsChanged = { enabled ->
                         CaptureUiStore.update { it.copy(fillOtherGlyphLights = enabled) }
@@ -1595,6 +1616,62 @@ class MainActivity : ComponentActivity() {
                         showPhone1GlyphDebugPermissionDialog = false
                     }
                 )
+                if (showOpenReelPermissionDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showOpenReelPermissionDialog = false
+                            pendingOpenReelGlyphMode = null
+                        },
+                        title = {
+                            Text(stringResource(R.string.open_reel_permission_title))
+                        },
+                        text = {
+                            Text(stringResource(R.string.open_reel_permission_message))
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    val requestedMode = pendingOpenReelGlyphMode
+                                    if (
+                                        requestedMode != null &&
+                                        MediaSessionPlaybackGate.hasNotificationAccess(this@MainActivity)
+                                    ) {
+                                        showOpenReelPermissionDialog = false
+                                        pendingOpenReelGlyphMode = null
+                                        applyGlyphMode(requestedMode)
+                                    } else {
+                                        pendingOpenReelPermissionRequest = true
+                                        pendingOpenReelPermissionSettingsLaunched = false
+                                        showOpenReelPermissionDialog = false
+                                        val opened = openNotificationAccessSettings(this@MainActivity)
+                                        if (!opened) {
+                                            pendingOpenReelPermissionRequest = false
+                                            pendingOpenReelPermissionSettingsLaunched = false
+                                            pendingOpenReelGlyphMode = null
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                getString(R.string.settings_media_playback_only_open_failed),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text(stringResource(R.string.open_reel_permission_confirm))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showOpenReelPermissionDialog = false
+                                    pendingOpenReelGlyphMode = null
+                                }
+                            ) {
+                                Text(stringResource(R.string.open_reel_permission_cancel))
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -1786,12 +1863,30 @@ class MainActivity : ComponentActivity() {
             } else if (CaptureUiStore.state.mediaPlaybackOnlyEnabled) {
                 applyMediaPlaybackOnlyEnabled(false)
             }
-        } else if (
+        }
+        if (pendingOpenReelPermissionRequest) {
+            finishPendingOpenReelPermissionRequest()
+        }
+        if (
             CaptureUiStore.state.mediaPlaybackOnlyEnabled &&
             !MediaSessionPlaybackGate.hasNotificationAccess(this)
         ) {
             applyMediaPlaybackOnlyEnabled(false)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pendingOpenReelPermissionRequest) {
+            finishPendingOpenReelPermissionRequest()
+        }
+    }
+
+    override fun onPause() {
+        if (pendingOpenReelPermissionRequest) {
+            pendingOpenReelPermissionSettingsLaunched = true
+        }
+        super.onPause()
     }
 
     override fun onStop() {
@@ -1804,6 +1899,17 @@ class MainActivity : ComponentActivity() {
             STATE_PENDING_MEDIA_PLAYBACK_PERMISSION,
             pendingMediaPlaybackOnlyPermissionRequest
         )
+        outState.putBoolean(
+            STATE_PENDING_OPEN_REEL_PERMISSION,
+            pendingOpenReelPermissionRequest
+        )
+        outState.putBoolean(
+            STATE_PENDING_OPEN_REEL_SETTINGS_LAUNCHED,
+            pendingOpenReelPermissionSettingsLaunched
+        )
+        pendingOpenReelGlyphMode?.let {
+            outState.putString(STATE_PENDING_OPEN_REEL_MODE, it)
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -1849,6 +1955,42 @@ class MainActivity : ComponentActivity() {
             updated.oscilloscopeAutoTimeAxisEnabled
         )
         SettingsPreferences.save(this, updated)
+    }
+
+    private fun requestGlyphModeChange(newMode: String) {
+        if (newMode == CaptureUiStore.state.glyphMode) return
+        if (GlyphPatternRegistry.requiresNotificationAccess(newMode)) {
+            if (MediaSessionPlaybackGate.hasNotificationAccess(this)) {
+                applyGlyphMode(newMode)
+                return
+            }
+            pendingOpenReelGlyphMode = newMode
+            showOpenReelPermissionDialog = true
+            return
+        }
+        applyGlyphMode(newMode)
+    }
+
+    private fun applyGlyphMode(newMode: String) {
+        CaptureUiStore.update { it.copy(glyphMode = newMode) }
+        syncCurrentParameters()
+    }
+
+    private fun finishPendingOpenReelPermissionRequest() {
+        if (!pendingOpenReelPermissionSettingsLaunched) return
+        pendingOpenReelPermissionRequest = false
+        pendingOpenReelPermissionSettingsLaunched = false
+        val requestedMode = pendingOpenReelGlyphMode
+        if (requestedMode != null && MediaSessionPlaybackGate.hasNotificationAccess(this)) {
+            applyGlyphMode(requestedMode)
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.open_reel_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        pendingOpenReelGlyphMode = null
     }
 
     private fun silentlyEnablePhone1GlyphDebugIfPossible() {
@@ -2114,6 +2256,7 @@ private fun GlyphVisualizerApp(
     val context = LocalContext.current
     val repositoryUrl = stringResource(R.string.about_support_site_url)
     val showPhone1GlyphDebugControls = isPhone1Device || showPhone1GlyphDebugControlsEverywhere
+    val intDevBuild = rememberSaveable { isIntDevBuild() }
     var screen by rememberSaveable {
         mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
     }
@@ -2375,6 +2518,14 @@ private fun GlyphVisualizerApp(
                         nothingStyleEnabled = nothingStyleEnabled,
                         onNothingStyleEnabledChanged = onNothingStyleEnabledChanged
                     )
+                    Screen.EXPERIMENTAL -> ExperimentalScreenContent(
+                        containerBrush = containerBrush,
+                        isPhone4aProDevice = isPhone4aProDevice,
+                        isCapturing = isCapturing,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onOpenMenu = { drawerOpen = true },
+                        onOpenSettings = { screen = Screen.SETTINGS }
+                    )
                     Screen.ABOUT -> AboutScreen(
                         onBack = { screen = Screen.SETTINGS },
                         onOssLicenses = { screen = Screen.OSS },
@@ -2412,6 +2563,7 @@ private fun GlyphVisualizerApp(
                 visible = drawerOpen,
                 currentScreen = screen,
                 nothingStyleEnabled = nothingStyleEnabled,
+                showExperimental = intDevBuild,
                 onDismiss = { drawerOpen = false },
                 onNavigate = { destination ->
                     screen = destination
@@ -3191,11 +3343,204 @@ private fun LatencyScreenContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExperimentalScreenContent(
+    containerBrush: Brush,
+    isPhone4aProDevice: Boolean,
+    isCapturing: Boolean,
+    nothingStyleEnabled: Boolean,
+    onOpenMenu: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val context = LocalContext.current
+    var statusText by rememberSaveable { mutableStateOf("") }
+    var forceProbeOpen by rememberSaveable { mutableStateOf(false) }
+    val showProbeControls = isPhone4aProDevice || forceProbeOpen
+    val probe = remember {
+        Phone4aProGlyphChannelProbe(context) { message ->
+            statusText = message
+        }
+    }
+
+    DisposableEffect(probe, showProbeControls) {
+        if (showProbeControls) {
+            probe.bind()
+        }
+        onDispose {
+            probe.release()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.experimental_screen_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.cd_menu))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.menu_settings))
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
+            )
+        },
+        containerColor = Color.Transparent
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(containerBrush)
+                .padding(padding)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (!isPhone4aProDevice) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.experimental_unsupported_device),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.experimental_force_open_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { forceProbeOpen = true }
+                            ) {
+                                Text(stringResource(R.string.experimental_force_open_button))
+                            }
+                        }
+                    }
+                    if (!showProbeControls) {
+                        return@Column
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    color = if (nothingStyleEnabled) {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    }
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.experimental_p4a_pro_probe_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.experimental_p4a_pro_probe_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (isCapturing) {
+                            Text(
+                                text = stringResource(R.string.experimental_p4a_pro_probe_running_warning),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Text(
+                            text = if (statusText.isBlank()) {
+                                stringResource(R.string.experimental_p4a_pro_probe_status_waiting)
+                            } else {
+                                statusText
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.experimental_p4a_pro_probe_channels),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = { probe.probe(6) }
+                            ) {
+                                Text(stringResource(R.string.experimental_probe_channel, 6))
+                            }
+                            OutlinedButton(
+                                modifier = Modifier.weight(1f),
+                                onClick = { probe.probe(0) }
+                            ) {
+                                Text(stringResource(R.string.experimental_probe_channel, 0))
+                            }
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            itemsIndexed((0..15).toList()) { _, channel ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { probe.probe(channel) },
+                                    label = { Text(channel.toString()) }
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { probe.turnOff() }
+                        ) {
+                            Text(stringResource(R.string.experimental_probe_turn_off))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeDrawerOverlay(
     visible: Boolean,
     currentScreen: Screen,
     nothingStyleEnabled: Boolean,
+    showExperimental: Boolean,
     onDismiss: () -> Unit,
     onNavigate: (Screen) -> Unit
 ) {
@@ -3266,6 +3611,16 @@ private fun HomeDrawerOverlay(
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.LATENCY) }
                 )
+                if (showExperimental) {
+                    HomeDrawerItem(
+                        title = stringResource(R.string.menu_experimental),
+                        icon = Icons.Default.Warning,
+                        selected = currentScreen == Screen.EXPERIMENTAL,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        selectedColor = selectedColor,
+                        onClick = { onNavigate(Screen.EXPERIMENTAL) }
+                    )
+                }
             }
             }
         }
@@ -5572,6 +5927,8 @@ private fun glyphPatternDescriptionText(glyphMode: String): String? {
         GlyphPatternRenderMode.MATRIX_SPECTROGRAM -> R.string.glyph_pattern_desc_matrix_spectrogram
         GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER -> R.string.glyph_pattern_desc_matrix_spectrum_analyzer
         GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE -> R.string.glyph_pattern_desc_matrix_oscilloscope
+        GlyphPatternRenderMode.MATRIX_RADIAL_SPECTRUM -> R.string.glyph_pattern_desc_matrix_radial_spectrum
+        GlyphPatternRenderMode.MATRIX_OPEN_REEL -> R.string.glyph_pattern_desc_matrix_open_reel
         GlyphPatternRenderMode.MATRIX_RAIN -> R.string.glyph_pattern_desc_matrix_rain
         GlyphPatternRenderMode.MATRIX_WAVE_FIELD -> R.string.glyph_pattern_desc_matrix_wave_field
         GlyphPatternRenderMode.MATRIX_SKYLINE -> R.string.glyph_pattern_desc_matrix_skyline

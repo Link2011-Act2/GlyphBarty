@@ -19,8 +19,8 @@ val buildNumberFiles = (
     ).filter { it.isFile }
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
-val appCodeName = "Renewa" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
-val appVersionName = "1.3.1-Release"
+val appCodeName = "Naia" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
+val appVersionName = "1.4.0-IntDev_rev1"
 val buildContentHash = MessageDigest.getInstance("SHA-256").run {
     buildNumberFiles.forEach { file ->
         update(file.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
@@ -49,7 +49,7 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 6
+        versionCode = 7
         versionName = appVersionName
         buildConfigField("String", "BUILD_NUMBER", "\"$generatedBuildNumber\"")
 

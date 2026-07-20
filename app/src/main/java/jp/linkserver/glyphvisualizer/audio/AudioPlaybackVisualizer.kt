@@ -51,7 +51,9 @@ class AudioPlaybackVisualizer(
             rightLevel: Float,
             spectrumBands: FloatArray,
             phone4aBaseBandLevel: Float,
-            waveformSamples: FloatArray
+            waveformSamples: FloatArray,
+            leftWaveformSamples: FloatArray,
+            rightWaveformSamples: FloatArray
         ) -> Unit
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -157,6 +159,8 @@ class AudioPlaybackVisualizer(
                 val limit = if (channelCount == 2) read - (read % 2) else read
                 val expectedFrames = if (channelCount == 2) (limit / 2) else limit
                 val monoSamples = FloatArray(expectedFrames.coerceAtLeast(1))
+                val leftSamples = FloatArray(expectedFrames.coerceAtLeast(1))
+                val rightSamples = FloatArray(expectedFrames.coerceAtLeast(1))
                 var index = 0
                 while (index < limit) {
                     val leftSample = sampleBuffer[index].toInt() / Short.MAX_VALUE.toFloat()
@@ -167,6 +171,8 @@ class AudioPlaybackVisualizer(
                     }
                     val sample = (leftSample + rightSample) * 0.5f
                     monoSamples[frames] = sample
+                    leftSamples[frames] = leftSample
+                    rightSamples[frames] = rightSample
                     val amplitude = abs(sample)
                     squareSum += amplitude * amplitude
                     if (amplitude > maxAmplitude) {
@@ -262,7 +268,9 @@ class AudioPlaybackVisualizer(
                         displayedRight,
                         spectrumAnalysis.bands,
                         spectrumAnalysis.rangePeak,
-                        WaveformSampler.downsample(monoSamples)
+                        WaveformSampler.downsample(monoSamples),
+                        WaveformSampler.downsample(leftSamples),
+                        WaveformSampler.downsample(rightSamples)
                     )
                 }
             }

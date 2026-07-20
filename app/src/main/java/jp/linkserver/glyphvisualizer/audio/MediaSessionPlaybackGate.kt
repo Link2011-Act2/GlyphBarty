@@ -2,6 +2,7 @@ package jp.linkserver.glyphvisualizer.audio
 
 import android.content.ComponentName
 import android.content.Context
+import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -14,8 +15,24 @@ internal object MediaSessionPlaybackGate {
     private const val TAG = "MediaSessionPlaybackGate"
     private const val DEBUG_MEDIA_SESSION_LOGS = true
     private const val PERIODIC_LOG_INTERVAL_MS = 5_000L
+    private const val SNAPSHOT_CACHE_MS = 250L
     private var lastLogAtMs = 0L
     private var lastLogSummary = ""
+    private var cachedSnapshotAtMs = 0L
+    private var cachedSnapshot = PlaybackSnapshot(PlaybackStatus.NONE, null)
+
+    enum class PlaybackStatus {
+        NONE,
+        PLAYING,
+        PAUSED,
+        STOPPED
+    }
+
+    data class PlaybackSnapshot(
+        val status: PlaybackStatus,
+        val progress: Float?,
+        val packageName: String? = null
+    )
 
     fun hasNotificationAccess(context: Context): Boolean {
         val enabledListeners = Settings.Secure.getString(
@@ -55,9 +72,69 @@ internal object MediaSessionPlaybackGate {
         return result
     }
 
+    fun currentPlaybackProgress(context: Context): Float? {
+        return currentPlaybackSnapshot(context).progress
+    }
+
+    fun currentPlaybackSnapshot(context: Context): PlaybackSnapshot {
+        val now = SystemClock.elapsedRealtime()
+        if (now - cachedSnapshotAtMs < SNAPSHOT_CACHE_MS) {
+            return cachedSnapshot
+        }
+        cachedSnapshotAtMs = now
+        cachedSnapshot = readPlaybackSnapshot(context, now)
+        return cachedSnapshot
+    }
+
     private fun isSessionPlaying(controller: MediaController): Boolean {
         val state = controller.playbackState ?: return false
         return state.state == PlaybackState.STATE_PLAYING
+    }
+
+    private fun readPlaybackSnapshot(context: Context, now: Long): PlaybackSnapshot {
+        if (!hasNotificationAccess(context)) return PlaybackSnapshot(PlaybackStatus.NONE, null)
+        val manager = context.getSystemService(MediaSessionManager::class.java)
+            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+        val listener = ComponentName(context, MediaSessionNotificationListenerService::class.java)
+        val sessions = runCatching { manager.getActiveSessions(listener) }.getOrNull()
+            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+        val controller = sessions.firstOrNull(::isSessionPlaying)
+            ?: sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PAUSED }
+            ?: sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_STOPPED }
+            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+        val state = controller.playbackState
+            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null, controller.packageName)
+        val status = when (state.state) {
+            PlaybackState.STATE_PLAYING,
+            PlaybackState.STATE_FAST_FORWARDING,
+            PlaybackState.STATE_REWINDING,
+            PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
+            PlaybackState.STATE_SKIPPING_TO_NEXT,
+            PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> PlaybackStatus.PLAYING
+            PlaybackState.STATE_PAUSED,
+            PlaybackState.STATE_BUFFERING,
+            PlaybackState.STATE_CONNECTING -> PlaybackStatus.PAUSED
+            PlaybackState.STATE_STOPPED,
+            PlaybackState.STATE_NONE,
+            PlaybackState.STATE_ERROR -> PlaybackStatus.STOPPED
+            else -> PlaybackStatus.NONE
+        }
+        val duration = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)
+        if (duration == null || duration <= 0L) {
+            return PlaybackSnapshot(status, null, controller.packageName)
+        }
+
+        val projectedPosition = if (status == PlaybackStatus.PLAYING && state.lastPositionUpdateTime > 0L) {
+            val elapsed = (now - state.lastPositionUpdateTime).coerceAtLeast(0L)
+            state.position + (elapsed * state.playbackSpeed).toLong()
+        } else {
+            state.position
+        }
+        return PlaybackSnapshot(
+            status = status,
+            progress = (projectedPosition / duration.toFloat()).coerceIn(0f, 1f),
+            packageName = controller.packageName
+        )
     }
 
     private fun logStatus(summary: String) {

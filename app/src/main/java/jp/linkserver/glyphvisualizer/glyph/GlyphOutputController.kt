@@ -24,7 +24,9 @@ interface GlyphOutputController {
         rightLevel: Float,
         spectrumBands: FloatArray?,
         phone4aBaseBandLevel: Float = 0f,
-        waveformSamples: FloatArray? = null
+        waveformSamples: FloatArray? = null,
+        leftWaveformSamples: FloatArray? = null,
+        rightWaveformSamples: FloatArray? = null
     ) {}
     fun previewLevel(): Float = 0f
     fun previewSpectrumBands(): FloatArray = FloatArray(0)

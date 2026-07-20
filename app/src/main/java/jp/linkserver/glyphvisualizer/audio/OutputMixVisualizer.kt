@@ -58,7 +58,9 @@ class OutputMixVisualizer(
             rightLevel: Float,
             spectrumBands: FloatArray,
             phone4aBaseBandLevel: Float,
-            waveformSamples: FloatArray
+            waveformSamples: FloatArray,
+            leftWaveformSamples: FloatArray,
+            rightWaveformSamples: FloatArray
         ) -> Unit,
         onStartFailed: () -> Unit = {},
         onSignalStalled: () -> Unit = {},
@@ -327,6 +329,7 @@ class OutputMixVisualizer(
                         } else {
                             lastSpectrumAnalysis
                         }
+                        val downsampledWaveform = WaveformSampler.downsample(monoSamples)
                         mainHandler.post {
                             onLevelChanged(
                                 displayedLevel,
@@ -337,7 +340,9 @@ class OutputMixVisualizer(
                                 displayedLevel,
                                 spectrumAnalysis.bands,
                                 spectrumAnalysis.rangePeak,
-                                WaveformSampler.downsample(monoSamples)
+                                downsampledWaveform,
+                                downsampledWaveform,
+                                downsampledWaveform
                             )
                         }
 

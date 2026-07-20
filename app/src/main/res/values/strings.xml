@@ -257,6 +257,8 @@
     <string name="glyph_pattern_desc_matrix_spectrogram">Shows the current spectrum as vertical brightness and scrolls its recent history sideways across the Matrix.</string>
     <string name="glyph_pattern_desc_matrix_spectrum_analyzer">Draws a spectrum-analyzer style contour line across the Matrix instead of bar columns.</string>
     <string name="glyph_pattern_desc_matrix_oscilloscope">An oscilloscope-like pattern that displays the current audio waveform\nIt might be fun to play test tones or chiptunes?</string>
+    <string name="glyph_pattern_desc_matrix_radial_spectrum">Maps the spectrum symmetrically around a dark center circle and extends each band outward like radial bars.</string>
+    <string name="glyph_pattern_desc_matrix_open_reel">Shows a single open-reel tape animation. When MediaSession progress is available, the tape moves inward and the reel speed increases with the current song.</string>
     <string name="glyph_pattern_desc_matrix_rain">Drops bright particles through the Matrix with audio-driven intensity.</string>
     <string name="glyph_pattern_desc_matrix_wave_field">A flowing Matrix wave whose shape is driven mainly by the spectrum.</string>
     <string name="glyph_pattern_desc_matrix_skyline">A skyline-like bottom spectrum silhouette with smoothed band motion.</string>
@@ -274,6 +276,8 @@
     <string name="mode_matrix_spectrogram" translatable="false">Matrix Spectrogram</string>
     <string name="mode_matrix_spectrum_analyzer" translatable="false">Matrix Spectrum Analyzer</string>
     <string name="mode_matrix_oscilloscope" translatable="false">Matrix Oscilloscope</string>
+    <string name="mode_matrix_radial_spectrum" translatable="false">Matrix Radial Spectrum</string>
+    <string name="mode_matrix_open_reel" translatable="false">Matrix Open Reel</string>
     <string name="mode_matrix_rain" translatable="false">Matrix Rain</string>
     <string name="mode_matrix_wave_field" translatable="false">Matrix Wave</string>
     <string name="mode_matrix_skyline" translatable="false">Matrix Skyline</string>
@@ -350,7 +354,24 @@
     <string name="latency_active_preset">Active preset: %1$s</string>
     <string name="menu_main">Main</string>
     <string name="menu_latency">Latency</string>
+    <string name="menu_experimental">Experimental</string>
     <string name="menu_settings">Settings</string>
+    <string name="experimental_screen_title">Experimental</string>
+    <string name="experimental_unsupported_device">This experiment is only available on Phone (4a) Pro.</string>
+    <string name="experimental_force_open_desc">You can force-open the probe UI for layout checks or manual debugging. Glyph control may fail on unsupported devices.</string>
+    <string name="experimental_force_open_button">Force open probe</string>
+    <string name="experimental_p4a_pro_probe_title">Phone (4a) Pro channel probe</string>
+    <string name="experimental_p4a_pro_probe_desc">Tests whether hidden GlyphManager channels such as 6 or 0 can light the recording indicator. Stop the visualizer first if the Glyph session behaves unexpectedly.</string>
+    <string name="experimental_p4a_pro_probe_running_warning">The visualizer is currently running. The probe may conflict with the active Glyph session.</string>
+    <string name="experimental_p4a_pro_probe_status_waiting">Waiting for GlyphManager connection…</string>
+    <string name="experimental_p4a_pro_probe_channels">Probe channels</string>
+    <string name="experimental_probe_channel">Channel %1$d</string>
+    <string name="experimental_probe_turn_off">Turn off</string>
+    <string name="open_reel_permission_title">Notification access required</string>
+    <string name="open_reel_permission_message">Matrix Open Reel uses MediaSession playback position to move the tape with the current song. Please allow notification access. If permission is not granted, the previous Glyph pattern will stay selected.</string>
+    <string name="open_reel_permission_confirm">Open settings</string>
+    <string name="open_reel_permission_cancel">Cancel</string>
+    <string name="open_reel_permission_denied">Notification access was not granted. Keeping the previous Glyph pattern.</string>
     <string name="latency_saved_presets_title">Saved presets</string>
     <string name="latency_load_button">Load</string>
     <string name="latency_save_button">Save current</string>

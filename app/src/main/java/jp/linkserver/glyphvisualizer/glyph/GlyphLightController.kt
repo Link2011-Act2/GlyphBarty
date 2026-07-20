@@ -357,7 +357,9 @@ class GlyphLightController(
         rightLevel: Float,
         spectrumBands: FloatArray?,
         phone4aBaseBandLevel: Float,
-        waveformSamples: FloatArray?
+        waveformSamples: FloatArray?,
+        leftWaveformSamples: FloatArray?,
+        rightWaveformSamples: FloatArray?
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
         updateBaseIndicatorAnalysis(phone4aBaseBandLevel)

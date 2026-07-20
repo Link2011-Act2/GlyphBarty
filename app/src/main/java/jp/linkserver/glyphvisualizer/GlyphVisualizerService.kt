@@ -29,6 +29,7 @@ import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
@@ -397,7 +398,9 @@ class GlyphVisualizerService : Service() {
         val rightLevel: Float,
         val spectrumBands: FloatArray,
         val phone4aBaseBandLevel: Float,
-        val waveformSamples: FloatArray
+        val waveformSamples: FloatArray,
+        val leftWaveformSamples: FloatArray,
+        val rightWaveformSamples: FloatArray
     )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
@@ -809,7 +812,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -820,7 +823,9 @@ class GlyphVisualizerService : Service() {
                     rightLevel,
                     spectrumBands,
                     phone4aBaseBandLevel,
-                    waveformSamples
+                    waveformSamples,
+                    leftWaveformSamples,
+                    rightWaveformSamples
                 )
             },
             onStartFailed = {
@@ -975,7 +980,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -986,7 +991,9 @@ class GlyphVisualizerService : Service() {
                     rightLevel,
                     spectrumBands,
                     phone4aBaseBandLevel,
-                    waveformSamples
+                    waveformSamples,
+                    leftWaveformSamples,
+                    rightWaveformSamples
                 )
             }
         )
@@ -1007,7 +1014,9 @@ class GlyphVisualizerService : Service() {
         rightLevel: Float,
         spectrumBands: FloatArray,
         phone4aBaseBandLevel: Float,
-        waveformSamples: FloatArray
+        waveformSamples: FloatArray,
+        leftWaveformSamples: FloatArray,
+        rightWaveformSamples: FloatArray
     ) {
         enqueueDelayedLevelFrame(
             level = level,
@@ -1019,7 +1028,9 @@ class GlyphVisualizerService : Service() {
             rightLevel = rightLevel,
             spectrumBands = spectrumBands,
             phone4aBaseBandLevel = phone4aBaseBandLevel,
-            waveformSamples = waveformSamples
+            waveformSamples = waveformSamples,
+            leftWaveformSamples = leftWaveformSamples,
+            rightWaveformSamples = rightWaveformSamples
         )
     }
 
@@ -1033,7 +1044,9 @@ class GlyphVisualizerService : Service() {
         rightLevel: Float,
         spectrumBands: FloatArray,
         phone4aBaseBandLevel: Float,
-        waveformSamples: FloatArray
+        waveformSamples: FloatArray,
+        leftWaveformSamples: FloatArray,
+        rightWaveformSamples: FloatArray
     ) {
         val dueAtMs = SystemClock.uptimeMillis() + latencyMs.coerceIn(0f, 500f).roundToLong()
         val frame = DelayedLevelFrame(
@@ -1047,7 +1060,9 @@ class GlyphVisualizerService : Service() {
             rightLevel = rightLevel,
             spectrumBands = spectrumBands.copyOf(),
             phone4aBaseBandLevel = phone4aBaseBandLevel,
-            waveformSamples = waveformSamples.copyOf()
+            waveformSamples = waveformSamples.copyOf(),
+            leftWaveformSamples = leftWaveformSamples.copyOf(),
+            rightWaveformSamples = rightWaveformSamples.copyOf()
         )
         latestLevelFrame = frame
         pendingLevelFrames.addLast(frame)
@@ -1070,7 +1085,9 @@ class GlyphVisualizerService : Service() {
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
         val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
-        val mediaPlaybackActive = isMediaPlaybackAllowed()
+        val allowPausedMediaSession =
+            GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
+        val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
         if (!mediaPlaybackActive) {
             val enteringMediaPlaybackSuppression = !mediaPlaybackSuppressed
             mediaPlaybackSuppressed = true
@@ -1102,7 +1119,9 @@ class GlyphVisualizerService : Service() {
                 frame.rightLevel,
                 frame.spectrumBands,
                 frame.phone4aBaseBandLevel,
-                frame.waveformSamples
+                frame.waveformSamples,
+                frame.leftWaveformSamples,
+                frame.rightWaveformSamples
             )
             glyphController.updateLevel(frame.level)
         } else if (isBackDownSuppressed) {
@@ -1285,14 +1304,30 @@ class GlyphVisualizerService : Service() {
         }
     }
 
-    private fun isMediaPlaybackAllowed(): Boolean {
+    private fun isMediaPlaybackAllowed(allowPaused: Boolean = false): Boolean {
         if (!mediaPlaybackOnlyEnabled) return true
         val now = SystemClock.uptimeMillis()
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
-            val rawMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
+            val playbackSnapshot = if (allowPaused) {
+                MediaSessionPlaybackGate.currentPlaybackSnapshot(this)
+            } else {
+                null
+            }
+            val rawMediaPlaybackActive = if (allowPaused) {
+                playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PLAYING ||
+                    playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            } else {
+                MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
+            }
             if (!rawMediaPlaybackActive) {
                 lastMediaPlaybackActive = false
+                mediaPlaybackResumeCandidateAtMs = 0L
+            } else if (
+                allowPaused &&
+                playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            ) {
+                lastMediaPlaybackActive = true
                 mediaPlaybackResumeCandidateAtMs = 0L
             } else if (!lastMediaPlaybackActive) {
                 if (mediaPlaybackResumeCandidateAtMs <= 0L) {

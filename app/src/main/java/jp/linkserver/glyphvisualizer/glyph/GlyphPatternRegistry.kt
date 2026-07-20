@@ -40,6 +40,8 @@ enum class GlyphPatternRenderMode {
     MATRIX_SPECTROGRAM,
     MATRIX_SPECTRUM_ANALYZER,
     MATRIX_OSCILLOSCOPE,
+    MATRIX_RADIAL_SPECTRUM,
+    MATRIX_OPEN_REEL,
     MATRIX_RAIN,
     MATRIX_WAVE_FIELD,
     MATRIX_SKYLINE,
@@ -121,6 +123,8 @@ object GlyphPatternRegistry {
     const val P3_MATRIX_SPECTROGRAM = "P3_MATRIX_SPECTROGRAM"
     const val P3_MATRIX_SPECTRUM_ANALYZER = "P3_MATRIX_SPECTRUM_ANALYZER"
     const val P3_MATRIX_OSCILLOSCOPE = "P3_MATRIX_OSCILLOSCOPE"
+    const val P3_MATRIX_RADIAL_SPECTRUM = "P3_MATRIX_RADIAL_SPECTRUM"
+    const val P3_MATRIX_OPEN_REEL = "P3_MATRIX_OPEN_REEL"
     const val P3_MATRIX_RAIN = "P3_MATRIX_RAIN"
     const val P3_MATRIX_WAVE_FIELD = "P3_MATRIX_WAVE_FIELD"
     const val P3_MATRIX_SKYLINE = "P3_MATRIX_SKYLINE"
@@ -188,6 +192,8 @@ object GlyphPatternRegistry {
         pattern(P3_MATRIX_SKYLINE, R.string.mode_matrix_skyline, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SKYLINE)),
         pattern(P3_MATRIX_SPECTRUM_ANALYZER, R.string.mode_matrix_spectrum_analyzer, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER)),
         pattern(P3_MATRIX_OSCILLOSCOPE, R.string.mode_matrix_oscilloscope, GlyphPatternKind.MATRIX_FIELD, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE)),
+        pattern(P3_MATRIX_RADIAL_SPECTRUM, R.string.mode_matrix_radial_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_RADIAL_SPECTRUM)),
+        pattern(P3_MATRIX_OPEN_REEL, R.string.mode_matrix_open_reel, GlyphPatternKind.MATRIX_FIELD, setOf(GlyphDeviceProfile.PHONE3_MATRIX), GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_OPEN_REEL)),
         pattern(P3_MATRIX_SPECTROGRAM, R.string.mode_matrix_spectrogram, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTROGRAM)),
         pattern(P3_MATRIX_WAVE_FIELD, R.string.mode_matrix_wave_field, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_WAVE_FIELD)),
         pattern(P3_MATRIX_RAIN, R.string.mode_matrix_rain, GlyphPatternKind.MATRIX_FIELD, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_RAIN)),
@@ -225,6 +231,10 @@ object GlyphPatternRegistry {
         return byId[id]?.kind
     }
 
+    fun requiresNotificationAccess(id: String): Boolean {
+        return id == P3_MATRIX_OPEN_REEL
+    }
+
     fun isLevelAutoScale(id: String): Boolean {
         return when (byId[id]?.kind) {
             GlyphPatternKind.LINEAR,
@@ -255,6 +265,7 @@ object GlyphPatternRegistry {
             P3_MATRIX_SPECTRUM_BOTTOM,
             P3_MATRIX_SPECTROGRAM,
             P3_MATRIX_SPECTRUM_ANALYZER,
+            P3_MATRIX_RADIAL_SPECTRUM,
             P3_MATRIX_SKYLINE,
             P3_MATRIX_WAVE_FIELD,
             P3_MATRIX_PULSE_GRID -> when (profile) {

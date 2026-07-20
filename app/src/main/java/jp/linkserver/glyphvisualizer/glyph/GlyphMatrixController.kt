@@ -11,7 +11,10 @@ import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -88,6 +91,8 @@ class GlyphMatrixController(
     private var rightLevel = 0f
     private var spectrumBands = FloatArray(0)
     private var waveformSamples = FloatArray(0)
+    private var leftWaveformSamples = FloatArray(0)
+    private var rightWaveformSamples = FloatArray(0)
     private var smoothedSpectrumBands = FloatArray(0)
     private var spectrumBandMins = FloatArray(0)
     private var spectrumBandMaxs = FloatArray(0)
@@ -130,6 +135,10 @@ class GlyphMatrixController(
     private var wavePhase = 0f
     private var pulsePhase = 0f
     private var ripplePhase = 0f
+    private var openReelStartMs = 0L
+    private var openReelPhase = 0f
+    private var lastOpenReelUpdateMs = 0L
+    private var openReelDisplayedProgress = Float.NaN
     private var pulseGridSeed = 0
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
@@ -305,7 +314,9 @@ class GlyphMatrixController(
         rightLevel: Float,
         spectrumBands: FloatArray?,
         phone4aBaseBandLevel: Float,
-        waveformSamples: FloatArray?
+        waveformSamples: FloatArray?,
+        leftWaveformSamples: FloatArray?,
+        rightWaveformSamples: FloatArray?
     ) {
         this.lowEnergy = lowEnergy.coerceIn(0f, 1f)
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
@@ -319,6 +330,8 @@ class GlyphMatrixController(
         }
         this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(resampled))
         this.waveformSamples = waveformSamples?.copyOf() ?: FloatArray(0)
+        this.leftWaveformSamples = leftWaveformSamples?.copyOf() ?: FloatArray(0)
+        this.rightWaveformSamples = rightWaveformSamples?.copyOf() ?: FloatArray(0)
     }
 
     private fun applySpectrumSmoothing(input: FloatArray): FloatArray {
@@ -457,10 +470,17 @@ class GlyphMatrixController(
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
             ?: GlyphPatternRenderMode.MATRIX_BAR
+        val openReelPlayback = if (renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
+            MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
+        } else {
+            null
+        }
+        val holdOpenReelFrameForPause =
+            openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
         val silenceDrainsBeforeRelease = renderMode == GlyphPatternRenderMode.MATRIX_RAIN ||
             renderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
             renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
-        val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD
+        val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD && !holdOpenReelFrameForPause
         val silenceElapsedMs = if (isSilent) {
             if (silenceStartedAt <= 0L) silenceStartedAt = now
             now - silenceStartedAt
@@ -1046,6 +1066,169 @@ class GlyphMatrixController(
             }
         }
 
+        fun drawRadialSpectrum() {
+            val center = (matrixLength - 1f) / 2f
+            val innerRadius = (matrixLength * 0.22f).coerceAtLeast(2f)
+            val outerRadius = (matrixLength * 0.69f).coerceAtMost(center * 1.42f)
+            val availableLength = if (reverseDirection) outerRadius else (outerRadius - innerRadius).coerceAtLeast(1f)
+            for (y in 0 until matrixLength) {
+                for (x in 0 until matrixLength) {
+                    val dx = x - center
+                    val dy = y - center
+                    val radius = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                    if ((!reverseDirection && radius < innerRadius) || radius > outerRadius) continue
+                    val angleRatio = ((atan2(dy, dx) + Math.PI).toFloat() / (Math.PI.toFloat() * 2f))
+                        .coerceIn(0f, 1f)
+                    val rotatedRatio = (angleRatio + 0.75f) % 1f
+                    val symmetricRatio = (abs(rotatedRatio - 0.5f) * 2f).coerceIn(0f, 1f)
+                    val band = sampleBandForRatio(symmetricRatio)
+                    val virtualLength = availableLength * (band * renderLevel).coerceIn(0f, 1f)
+                    val radialPosition = if (reverseDirection) outerRadius - radius else radius - innerRadius
+                    val distanceFromTip = virtualLength - radialPosition
+                    val brightness = when {
+                        radialPosition < virtualLength.toInt() -> COLOR_ON
+                        binaryMode -> COLOR_OFF
+                        distanceFromTip in -1f..0f ->
+                            ((distanceFromTip + 1f) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+                        else -> COLOR_OFF
+                    }
+                    if (brightness > COLOR_OFF) {
+                        frameBuffer[y * matrixLength + x] = max(frameBuffer[y * matrixLength + x], brightness)
+                    }
+                }
+            }
+        }
+
+        fun drawOpenReel() {
+            if (openReelStartMs <= 0L) {
+                openReelStartMs = now
+            }
+            val fallbackProgress = (((now - openReelStartMs).coerceAtLeast(0L) % 180_000L) / 180_000f)
+                .coerceIn(0f, 1f)
+            val targetProgress = openReelPlayback?.progress ?: fallbackProgress
+            if (openReelDisplayedProgress.isNaN()) {
+                openReelDisplayedProgress = targetProgress
+            }
+            val openReelDeltaMs = if (lastOpenReelUpdateMs <= 0L) {
+                frameIntervalMs
+            } else {
+                (now - lastOpenReelUpdateMs).coerceIn(1L, 120L)
+            }
+            lastOpenReelUpdateMs = now
+            val openReelDeltaSeconds = openReelDeltaMs / 1000f
+            val progressDelta = targetProgress - openReelDisplayedProgress
+            val catchingUp = abs(progressDelta) > 0.012f
+            if (catchingUp) {
+                val catchUpStep = (openReelDeltaSeconds * 0.72f).coerceAtLeast(0.002f)
+                openReelDisplayedProgress += progressDelta.coerceIn(-catchUpStep, catchUpStep)
+            } else {
+                openReelDisplayedProgress = targetProgress
+            }
+            val progress = openReelDisplayedProgress.coerceIn(0f, 1f)
+            val centerX = (matrixLength - 1f) / 2f
+            val centerY = (matrixLength - 1f) / 2f
+            val reelRadius = (matrixLength * 0.36f).coerceAtMost(centerX + 0.8f)
+                .coerceAtLeast(3f)
+            val hubRadius = (matrixLength * 0.07f).coerceAtLeast(0.75f)
+            val tapeProgress = progress.coerceIn(0f, 1f)
+            val tapeExitAngle = 0.92f - tapeProgress * 0.82f
+            val baseRotationSpeed = 2.094f + progress * 4.189f
+            val rotationDirection = if (catchingUp && progressDelta < 0f) {
+                1f
+            } else {
+                -1f
+            }
+            val playbackPaused = openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            val catchUpBoost = if (catchingUp) {
+                (baseRotationSpeed * 1.7f + abs(progressDelta) * 18f).coerceAtMost(18f)
+            } else {
+                0f
+            }
+            val rotationSpeed = when {
+                catchingUp -> baseRotationSpeed + catchUpBoost
+                playbackPaused -> 0f
+                else -> baseRotationSpeed
+            }
+            openReelPhase += rotationDirection * rotationSpeed * openReelDeltaSeconds
+            val phase = openReelPhase
+
+            fun putPixel(x: Int, y: Int, brightness: Float) {
+                if (x !in 0 until matrixLength || y !in 0 until matrixLength) return
+                val value = if (binaryMode) {
+                    if (brightness > 0f) COLOR_ON else COLOR_OFF
+                } else {
+                    brightnessToMatrixColor(brightness.coerceIn(0f, 1f))
+                }
+                val index = y * matrixLength + x
+                frameBuffer[index] = max(frameBuffer[index], value)
+            }
+
+            fun plotPoint(x: Float, y: Float, brightness: Float) {
+                val xi = x.roundToInt()
+                val yi = y.roundToInt()
+                putPixel(xi, yi, brightness)
+            }
+
+            fun drawDottedCircle(radius: Float, brightness: Float) {
+                val steps = max(40, (radius * 12f).roundToInt())
+                for (step in 0 until steps) {
+                    val angle = step / steps.toFloat() * Math.PI.toFloat() * 2f
+                    plotPoint(
+                        centerX + cos(angle) * radius,
+                        centerY + sin(angle) * radius,
+                        brightness
+                    )
+                }
+            }
+
+            fun drawLine(
+                x0: Float,
+                y0: Float,
+                x1: Float,
+                y1: Float,
+                brightness: Float,
+                endBrightness: Float = brightness
+            ) {
+                val steps = max(1, max(abs(x1 - x0), abs(y1 - y0)).roundToInt() * 2)
+                for (step in 0..steps) {
+                    val t = step / steps.toFloat()
+                    val lineBrightness = brightness + (endBrightness - brightness) * t
+                    plotPoint(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, lineBrightness)
+                }
+            }
+
+            drawDottedCircle(reelRadius, 1f)
+            for (y in 0 until matrixLength) {
+                for (x in 0 until matrixLength) {
+                    val dx = x - centerX
+                    val dy = y - centerY
+                    val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                    if (distance <= hubRadius) {
+                        putPixel(x, y, 1f)
+                    }
+                }
+            }
+
+            for (slot in 0 until 2) {
+                val angle = phase + slot * Math.PI.toFloat()
+                val slotInner = hubRadius + 0.9f
+                val slotOuter = (reelRadius * 0.70f).coerceAtLeast(slotInner + 1.2f)
+                drawLine(
+                    centerX + cos(angle) * slotInner,
+                    centerY + sin(angle) * slotInner,
+                    centerX + cos(angle) * slotOuter,
+                    centerY + sin(angle) * slotOuter,
+                    1f
+                )
+            }
+
+            val tapeStartX = centerX + cos(tapeExitAngle) * reelRadius
+            val tapeStartY = centerY + sin(tapeExitAngle) * reelRadius
+            val tapeEndX = (matrixLength - 1f).coerceAtLeast(tapeStartX)
+            val tapeEndY = centerY + reelRadius * (0.46f - tapeProgress * 0.38f)
+            drawLine(tapeStartX, tapeStartY, tapeEndX, tapeEndY, 0.78f, 0.66f)
+        }
+
         fun drawPulseGrid() {
             val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
             val centerX = (matrixLength - 1f) / 2f
@@ -1250,6 +1433,8 @@ class GlyphMatrixController(
             GlyphPatternRenderMode.MATRIX_SPECTROGRAM -> drawSpectrogram()
             GlyphPatternRenderMode.MATRIX_SPECTRUM_ANALYZER -> drawSpectrumAnalyzer()
             GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE -> drawOscilloscope()
+            GlyphPatternRenderMode.MATRIX_RADIAL_SPECTRUM -> drawRadialSpectrum()
+            GlyphPatternRenderMode.MATRIX_OPEN_REEL -> drawOpenReel()
             GlyphPatternRenderMode.MATRIX_RAIN -> drawRain()
             GlyphPatternRenderMode.MATRIX_WAVE_FIELD -> drawWaveField()
             GlyphPatternRenderMode.MATRIX_SKYLINE -> drawSkyline()
@@ -1561,6 +1746,10 @@ class GlyphMatrixController(
         wavePhase = 0f
         pulsePhase = 0f
         ripplePhase = 0f
+        openReelStartMs = 0L
+        openReelPhase = 0f
+        lastOpenReelUpdateMs = 0L
+        openReelDisplayedProgress = Float.NaN
     }
 
     private fun quantizeForSignature(value: Int, step: Int): Int {
