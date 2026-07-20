@@ -224,14 +224,42 @@ object GlyphDeviceCatalog {
 
     fun currentProfile(): GlyphDeviceProfile = currentOrFallback().profile
 
+    fun effectiveProfile(
+        actualProfile: GlyphDeviceProfile,
+        phone4bEmulationEnabled: Boolean
+    ): GlyphDeviceProfile {
+        return if (actualProfile == GlyphDeviceProfile.PHONE4A && phone4bEmulationEnabled) {
+            GlyphDeviceProfile.PHONE4B
+        } else {
+            actualProfile
+        }
+    }
+
+    fun presentationForProfile(profile: GlyphDeviceProfile): GlyphDevicePresentation {
+        return entries.firstOrNull { it.definition.profile == profile }
+            ?.definition
+            ?.presentation
+            ?: fallback.presentation
+    }
+
+    fun defaultGlyphModeForProfile(profile: GlyphDeviceProfile): String {
+        return entries.firstOrNull { it.definition.profile == profile }
+            ?.definition
+            ?.defaultGlyphMode
+            ?: fallback.defaultGlyphMode
+    }
+
     fun defaultGlyphModeForCurrentDevice(): String = currentOrFallback().defaultGlyphMode
 
     fun normalizeGlyphModeForCurrentDevice(glyphMode: String): String {
-        val current = currentOrFallback()
-        return if (GlyphPatternRegistry.isSupported(current.profile, glyphMode)) {
+        return normalizeGlyphMode(currentProfile(), glyphMode)
+    }
+
+    fun normalizeGlyphMode(profile: GlyphDeviceProfile, glyphMode: String): String {
+        return if (GlyphPatternRegistry.isSupported(profile, glyphMode)) {
             glyphMode
         } else {
-            current.defaultGlyphMode
+            defaultGlyphModeForProfile(profile)
         }
     }
 }

@@ -252,7 +252,16 @@ object GlyphPatternRegistry {
         }
     }
 
-    fun uiMeterSegmentCount(profile: GlyphDeviceProfile, id: String): Int {
+    fun uiMeterSegmentCount(
+        profile: GlyphDeviceProfile,
+        id: String,
+        recordingLightIncluded: Boolean = false
+    ): Int {
+        val phone4SegmentCount = when (profile) {
+            GlyphDeviceProfile.PHONE4A -> if (recordingLightIncluded) 7 else 6
+            GlyphDeviceProfile.PHONE4B -> if (recordingLightIncluded) 5 else 4
+            else -> null
+        }
         return when (id) {
             P2_C1_LINEAR, P2_C1_LINEAR_PEAK, P2_C1_CENTER -> 16
             P2_D1_LINEAR, P2_D1_LINEAR_PEAK, P2_D1_CENTER -> 8
@@ -266,9 +275,9 @@ object GlyphPatternRegistry {
             P3A_CAB_LINEAR, P3A_CAB_LINEAR_PEAK, P3A_CAB_CENTER, P3A_CAB_SPECTRUM -> 20
             P3A_CLASSIC -> 3
             P4A_LINEAR, P4A_LINEAR_PEAK, P4A_CENTER, P4A_SPECTRUM -> {
-                if (profile == GlyphDeviceProfile.PHONE4B) 4 else 6
+                phone4SegmentCount ?: 6
             }
-            P4A_ALL_BRIGHTNESS -> if (profile == GlyphDeviceProfile.PHONE4B) 4 else 16
+            P4A_ALL_BRIGHTNESS -> phone4SegmentCount ?: 16
             P3_MATRIX_SPECTRUM,
             P3_MATRIX_SPECTRUM_CENTER,
             P3_MATRIX_SPECTRUM_BOTTOM,
@@ -298,8 +307,8 @@ object GlyphPatternRegistry {
                     GlyphDeviceProfile.PHONE2 -> 16
                     GlyphDeviceProfile.PHONE2A -> 24
                     GlyphDeviceProfile.PHONE3A -> 20
-                    GlyphDeviceProfile.PHONE4A -> 6
-                    GlyphDeviceProfile.PHONE4B -> 4
+                    GlyphDeviceProfile.PHONE4A,
+                    GlyphDeviceProfile.PHONE4B -> phone4SegmentCount ?: 16
                     GlyphDeviceProfile.PHONE3_MATRIX,
                     GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> 16
                 }

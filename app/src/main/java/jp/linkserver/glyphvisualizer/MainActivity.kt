@@ -254,6 +254,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
     private var deviceProfile = GlyphDeviceCatalog.currentProfile()
     private var binaryMode = false
     private var glyphMeterPreviewEnabled = false
+    private var recordingLightIncluded = false
     private var reverseDirection = false
     private var compactMode = false
     private var animationScheduled = false
@@ -268,6 +269,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
         deviceProfile: GlyphDeviceProfile,
         binaryMode: Boolean,
         glyphMeterPreviewEnabled: Boolean,
+        recordingLightIncluded: Boolean,
         reverseDirection: Boolean,
         compactMode: Boolean,
         inactiveColor: Int,
@@ -280,6 +282,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
                 this.deviceProfile != deviceProfile ||
                 this.binaryMode != binaryMode ||
                 this.glyphMeterPreviewEnabled != glyphMeterPreviewEnabled ||
+                this.recordingLightIncluded != recordingLightIncluded ||
                 this.reverseDirection != reverseDirection ||
                 this.compactMode != compactMode ||
                 this.inactiveColor != inactiveColor ||
@@ -290,6 +293,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
         this.deviceProfile = deviceProfile
         this.binaryMode = binaryMode
         this.glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+        this.recordingLightIncluded = recordingLightIncluded
         this.reverseDirection = reverseDirection
         this.compactMode = compactMode
         this.inactiveColor = inactiveColor
@@ -310,6 +314,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection
             ),
             inactiveColor = inactiveColor,
@@ -362,6 +367,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = false,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection
             )
         } else {
@@ -559,6 +565,7 @@ private class NativeSpectrumMeterView @JvmOverloads constructor(
     private val rect = RectF()
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var deviceProfile = GlyphDeviceCatalog.currentProfile()
+    private var recordingLightIncluded = false
     private var inactiveColor = 0x14000000
     private var activeColor = android.graphics.Color.BLACK
     private var targetLevel = 0f
@@ -575,27 +582,45 @@ private class NativeSpectrumMeterView @JvmOverloads constructor(
     fun configure(
         glyphMode: String,
         deviceProfile: GlyphDeviceProfile,
+        recordingLightIncluded: Boolean,
         inactiveColor: Int,
         activeColor: Int
     ) {
         val changed =
             this.glyphMode != glyphMode ||
                 this.deviceProfile != deviceProfile ||
+                this.recordingLightIncluded != recordingLightIncluded ||
                 this.inactiveColor != inactiveColor ||
                 this.activeColor != activeColor
         this.glyphMode = glyphMode
         this.deviceProfile = deviceProfile
+        this.recordingLightIncluded = recordingLightIncluded
         this.inactiveColor = inactiveColor
         this.activeColor = activeColor
         if (changed) {
-            targetBands = normalizedSpectrumMeterBands(targetBands, glyphMode, deviceProfile)
-            displayedBands = normalizedSpectrumMeterBands(displayedBands, glyphMode, deviceProfile)
+            targetBands = normalizedSpectrumMeterBands(
+                targetBands,
+                glyphMode,
+                deviceProfile,
+                recordingLightIncluded
+            )
+            displayedBands = normalizedSpectrumMeterBands(
+                displayedBands,
+                glyphMode,
+                deviceProfile,
+                recordingLightIncluded
+            )
             invalidate()
         }
     }
 
     fun setLiveFrame(frame: CaptureLiveFrame) {
-        val nextBands = normalizedSpectrumMeterBands(frame.spectrumBands, glyphMode, deviceProfile)
+        val nextBands = normalizedSpectrumMeterBands(
+            frame.spectrumBands,
+            glyphMode,
+            deviceProfile,
+            recordingLightIncluded
+        )
         targetLevel = frame.level.coerceIn(0f, 1f)
         if (!targetBands.contentEquals(nextBands)) {
             targetBands = nextBands
@@ -696,6 +721,7 @@ private class NativeMeterStatsView @JvmOverloads constructor(
     private var deviceProfile = GlyphDeviceCatalog.currentProfile()
     private var binaryMode = false
     private var glyphMeterPreviewEnabled = false
+    private var recordingLightIncluded = false
     private var reverseDirection = false
     private var lightweightMode = false
     private var spectrumMode = false
@@ -718,6 +744,7 @@ private class NativeMeterStatsView @JvmOverloads constructor(
         deviceProfile: GlyphDeviceProfile,
         binaryMode: Boolean,
         glyphMeterPreviewEnabled: Boolean,
+        recordingLightIncluded: Boolean,
         reverseDirection: Boolean,
         lightweightMode: Boolean,
         spectrumMode: Boolean = false,
@@ -732,6 +759,7 @@ private class NativeMeterStatsView @JvmOverloads constructor(
         this.deviceProfile = deviceProfile
         this.binaryMode = binaryMode
         this.glyphMeterPreviewEnabled = glyphMeterPreviewEnabled
+        this.recordingLightIncluded = recordingLightIncluded
         this.reverseDirection = reverseDirection
         this.lightweightMode = lightweightMode
         this.spectrumMode = spectrumMode
@@ -753,7 +781,12 @@ private class NativeMeterStatsView @JvmOverloads constructor(
         val activeSegments: Int
         val segmentCount: Int
         if (spectrumMode) {
-            val bands = normalizedSpectrumMeterBands(frame.spectrumBands, glyphMode, deviceProfile)
+            val bands = normalizedSpectrumMeterBands(
+                frame.spectrumBands,
+                glyphMode,
+                deviceProfile,
+                recordingLightIncluded
+            )
             segmentCount = bands.size
             activeSegments = bands.count { it * frame.level.coerceIn(0f, 1f) > 0.001f }
         } else if (lightweightMode) {
@@ -767,6 +800,7 @@ private class NativeMeterStatsView @JvmOverloads constructor(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection
             )
             activeSegments = model.activeSegments
@@ -970,7 +1004,8 @@ class MainActivity : ComponentActivity() {
         applyParameterState(
             importedState.copy(
                 baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled,
-                recordingLightIncluded = CaptureUiStore.state.recordingLightIncluded
+                recordingLightIncluded = CaptureUiStore.state.recordingLightIncluded,
+                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled
             )
         )
         Toast.makeText(this, getString(R.string.settings_import_success), Toast.LENGTH_SHORT).show()
@@ -1042,7 +1077,11 @@ class MainActivity : ComponentActivity() {
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)
         val initialSetupPending = !SettingsPreferences.hasCompletedInitialSetup(this)
-        val normalizedMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(savedSettings.glyphMode)
+        val savedDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
+            actualProfile = deviceProfile,
+            phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled
+        )
+        val normalizedMode = GlyphDeviceCatalog.normalizeGlyphMode(savedDeviceProfile, savedSettings.glyphMode)
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolvedLatencySettings = savedSettings.withResolvedLatency(bluetoothOutputActive)
         CaptureUiStore.update { current ->
@@ -1070,12 +1109,21 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val uiState = CaptureUiStore.state
+            val effectiveDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
+                actualProfile = deviceProfile,
+                phone4bEmulationEnabled = uiState.phone4bEmulationEnabled
+            )
+            val effectivePresentation = if (effectiveDeviceProfile == deviceProfile) {
+                currentDevice.presentation
+            } else {
+                GlyphDeviceCatalog.presentationForProfile(effectiveDeviceProfile)
+            }
             GlyphBartyTheme(nothingStyle = uiState.nothingStyleEnabled) {
                 GlyphVisualizerApp(
                     initialSetupPending = initialSetupPending,
                     statusText = uiState.statusText,
                     isCapturing = uiState.isCapturing,
-                    heroTitle = currentDevice.presentation.heroTitle,
+                    heroTitle = effectivePresentation.heroTitle,
                     level = uiState.level,
                     peak = uiState.peak,
                     spectrumBands = uiState.spectrumBands,
@@ -1098,16 +1146,18 @@ class MainActivity : ComponentActivity() {
                     activeMode = uiState.activeMode,
                     glyphMode = uiState.glyphMode,
                     fillOtherGlyphLights = uiState.fillOtherGlyphLights,
-                    deviceProfile = deviceProfile,
-                    isPhone3Device = isPhone3Device,
-                    isPhone4aProDevice = isPhone4aProDevice,
-                    isPhone2aDevice = isPhone2aDevice,
-                    isPhone3aDevice = isPhone3aDevice,
-                    isPhone4aDevice = isPhone4aDevice,
-                    isPhone1Device = isPhone1Device,
+                    deviceProfile = effectiveDeviceProfile,
+                    actualDeviceProfile = deviceProfile,
+                    isPhone3Device = effectiveDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX,
+                    isPhone4aProDevice = effectiveDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
+                    isPhone2aDevice = effectiveDeviceProfile == GlyphDeviceProfile.PHONE2A,
+                    isPhone3aDevice = effectiveDeviceProfile == GlyphDeviceProfile.PHONE3A,
+                    isPhone4aDevice = effectiveDeviceProfile == GlyphDeviceProfile.PHONE4A,
+                    isPhone1Device = Phone1GlyphDebugHelper.supports(effectiveDeviceProfile),
                     binaryMode = uiState.binaryMode,
                     baseIndicatorEnabled = uiState.baseIndicatorEnabled,
                     recordingLightIncluded = uiState.recordingLightIncluded,
+                    phone4bEmulationEnabled = uiState.phone4bEmulationEnabled,
                     levelAutoScale = uiState.levelAutoScale,
                     spectrumAutoScale = uiState.spectrumAutoScale,
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
@@ -1366,6 +1416,20 @@ class MainActivity : ComponentActivity() {
                     onRecordingLightIncludedChanged = { enabled ->
                         CaptureUiStore.update { it.copy(recordingLightIncluded = enabled) }
                         syncCurrentParameters()
+                    },
+                    onPhone4bEmulationEnabledChanged = { enabled ->
+                        if (deviceProfile == GlyphDeviceProfile.PHONE4A && !CaptureUiStore.state.isCapturing) {
+                            val effectiveProfile = GlyphDeviceCatalog.effectiveProfile(deviceProfile, enabled)
+                            val updated = CaptureUiStore.state.copy(
+                                phone4bEmulationEnabled = enabled,
+                                glyphMode = GlyphDeviceCatalog.normalizeGlyphMode(
+                                    effectiveProfile,
+                                    CaptureUiStore.state.glyphMode
+                                )
+                            )
+                            CaptureUiStore.update { updated }
+                            SettingsPreferences.save(this, updated)
+                        }
                     },
                     onReverseDirectionChanged = { newValue ->
                         CaptureUiStore.update { it.copy(reverseDirection = newValue) }
@@ -1686,7 +1750,13 @@ class MainActivity : ComponentActivity() {
     private fun defaultParameterState(): CaptureUiState {
         return applyRouteAwareLatency(
             SettingsPreferences.defaultParameters().copy(
-                glyphMode = currentDevice.defaultGlyphMode
+                glyphMode = GlyphDeviceCatalog.defaultGlyphModeForProfile(
+                    GlyphDeviceCatalog.effectiveProfile(
+                        deviceProfile,
+                        CaptureUiStore.state.phone4bEmulationEnabled
+                    )
+                ),
+                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled
             )
         )
     }
@@ -1710,7 +1780,10 @@ class MainActivity : ComponentActivity() {
             latencyMs = parameters.latencyMs.coerceIn(0f, 500f),
             defaultOutputLatencyMs = parameters.defaultOutputLatencyMs.coerceIn(0f, 500f),
             bluetoothLatencyMs = parameters.bluetoothLatencyMs.coerceIn(0f, 500f),
-            glyphMode = GlyphDeviceCatalog.normalizeGlyphModeForCurrentDevice(parameters.glyphMode)
+            glyphMode = GlyphDeviceCatalog.normalizeGlyphMode(
+                GlyphDeviceCatalog.effectiveProfile(deviceProfile, parameters.phone4bEmulationEnabled),
+                parameters.glyphMode
+            )
         ))
     }
 
@@ -2185,6 +2258,7 @@ private fun GlyphVisualizerApp(
     glyphMode: String,
     fillOtherGlyphLights: Boolean,
     deviceProfile: GlyphDeviceProfile,
+    actualDeviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
     isPhone2aDevice: Boolean,
@@ -2196,6 +2270,7 @@ private fun GlyphVisualizerApp(
     oscilloscopeAutoTimeAxisEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
+    phone4bEmulationEnabled: Boolean,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -2244,6 +2319,7 @@ private fun GlyphVisualizerApp(
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onRecordingLightIncludedChanged: (Boolean) -> Unit,
+    onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
@@ -2535,9 +2611,11 @@ private fun GlyphVisualizerApp(
                     )
                     Screen.EXPERIMENTAL -> ExperimentalScreenContent(
                         containerBrush = containerBrush,
-                        isPhone4aDevice = isPhone4aDevice,
+                        actualDeviceProfile = actualDeviceProfile,
+                        phone4bEmulationEnabled = phone4bEmulationEnabled,
                         isCapturing = isCapturing,
                         nothingStyleEnabled = nothingStyleEnabled,
+                        onPhone4bEmulationEnabledChanged = onPhone4bEmulationEnabledChanged,
                         onOpenMenu = { drawerOpen = true },
                         onOpenSettings = { screen = Screen.SETTINGS }
                     )
@@ -2959,7 +3037,15 @@ private fun MainScreenContent(
     val meterModel = if (!meterVisibleEnabled || lightweightMeterEnabled || spectrumMeterEnabled || nativeMeterViewEnabled) {
         null
     } else {
-        remember(level, glyphMode, deviceProfile, binaryMode, glyphMeterPreviewEnabled, reverseDirection) {
+        remember(
+            level,
+            glyphMode,
+            deviceProfile,
+            binaryMode,
+            glyphMeterPreviewEnabled,
+            recordingLightIncluded,
+            reverseDirection
+        ) {
             buildUiMeterModel(
                 level = level,
                 meterSegments = meterSegments,
@@ -2967,6 +3053,7 @@ private fun MainScreenContent(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection
             )
         }
@@ -3042,6 +3129,7 @@ private fun MainScreenContent(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
                             meterVisibleEnabled = meterVisibleEnabled,
                             lightweightMeterEnabled = lightweightMeterEnabled,
@@ -3069,6 +3157,7 @@ private fun MainScreenContent(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
                             meterVisibleEnabled = meterVisibleEnabled,
                             lightweightMeterEnabled = lightweightMeterEnabled,
@@ -3170,6 +3259,7 @@ private fun MainScreenContent(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
                             lightweightMeterEnabled = lightweightMeterEnabled,
                             spectrumMeterEnabled = spectrumMeterEnabled,
@@ -3190,6 +3280,7 @@ private fun MainScreenContent(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
                             nothingStyleEnabled = nothingStyleEnabled,
                             onDismissUpward = { compactMeterDismissed = true }
@@ -3366,25 +3457,39 @@ private fun LatencyScreenContent(
 @Composable
 private fun ExperimentalScreenContent(
     containerBrush: Brush,
-    isPhone4aDevice: Boolean,
+    actualDeviceProfile: GlyphDeviceProfile,
+    phone4bEmulationEnabled: Boolean,
     isCapturing: Boolean,
     nothingStyleEnabled: Boolean,
+    onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     var statusText by rememberSaveable { mutableStateOf("") }
-    val showProbeControls = isPhone4aDevice
-    val probe = remember {
-        Phone4aAsPhone4bGlyphProbe(context) { message ->
+    val isActualPhone4a = actualDeviceProfile == GlyphDeviceProfile.PHONE4A
+    val isActualPhone4b = actualDeviceProfile == GlyphDeviceProfile.PHONE4B
+    val emulatedOnPhone4a = isActualPhone4a && phone4bEmulationEnabled
+    val showProbeControls = isActualPhone4b || emulatedOnPhone4a
+    val probe = remember(actualDeviceProfile, emulatedOnPhone4a) {
+        Phone4aAsPhone4bGlyphProbe(
+            context = context,
+            emulatedOnPhone4a = emulatedOnPhone4a
+        ) { message ->
             statusText = message
         }
     }
 
-    DisposableEffect(probe, showProbeControls) {
-        if (showProbeControls) {
+    LaunchedEffect(probe, showProbeControls, isCapturing) {
+        if (showProbeControls && !isCapturing) {
+            if (GlyphVisualizerService.isRunning(context)) {
+                GlyphVisualizerService.stop(context)
+                delay(200L)
+            }
             probe.bind()
         }
+    }
+    DisposableEffect(probe, showProbeControls, isCapturing) {
         onDispose {
             probe.release()
         }
@@ -3425,7 +3530,7 @@ private fun ExperimentalScreenContent(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (!isPhone4aDevice) {
+                if (!isActualPhone4a && !isActualPhone4b) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(28.dp),
@@ -3445,6 +3550,64 @@ private fun ExperimentalScreenContent(
                     return@Column
                 }
 
+                if (isActualPhone4a) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.experimental_phone4b_emulation_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = stringResource(R.string.experimental_phone4b_emulation_desc),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (isCapturing) {
+                                    Text(
+                                        text = stringResource(R.string.experimental_phone4b_emulation_stop_first),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = phone4bEmulationEnabled,
+                                onCheckedChange = onPhone4bEmulationEnabledChanged,
+                                enabled = !isCapturing
+                            )
+                        }
+                    }
+                }
+
+                if (!showProbeControls) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Text(
+                            text = stringResource(R.string.experimental_phone4b_probe_requires_emulation),
+                            modifier = Modifier.padding(20.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    return@Column
+                }
+
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(28.dp),
@@ -3459,13 +3622,29 @@ private fun ExperimentalScreenContent(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.experimental_p4a_as_p4b_probe_title),
+                            text = stringResource(R.string.experimental_phone4b_probe_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = stringResource(R.string.experimental_p4a_as_p4b_probe_desc),
+                            text = stringResource(
+                                if (emulatedOnPhone4a) {
+                                    R.string.experimental_p4a_as_p4b_probe_desc
+                                } else {
+                                    R.string.experimental_phone4b_native_probe_desc
+                                }
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.experimental_phone4b_probe_how_to),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.experimental_phone4b_probe_steps),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (isCapturing) {
@@ -3506,8 +3685,15 @@ private fun ExperimentalScreenContent(
                                 FilterChip(
                                     selected = false,
                                     onClick = { probe.probe(channel) },
+                                    enabled = !isCapturing,
                                     label = {
-                                        Text(stringResource(R.string.experimental_p4a_as_p4b_glyph_channel, channel + 1))
+                                        Text(
+                                            stringResource(
+                                                R.string.experimental_p4a_as_p4b_glyph_channel,
+                                                channel + 1,
+                                                if (emulatedOnPhone4a) channel + 2 else channel
+                                            )
+                                        )
                                     }
                                 )
                             }
@@ -3515,7 +3701,15 @@ private fun ExperimentalScreenContent(
                                 FilterChip(
                                     selected = false,
                                     onClick = { probe.probe(4) },
-                                    label = { Text(stringResource(R.string.experimental_p4a_as_p4b_recording_light)) }
+                                    enabled = !isCapturing,
+                                    label = {
+                                        Text(
+                                            stringResource(
+                                                R.string.experimental_p4a_as_p4b_recording_light,
+                                                if (emulatedOnPhone4a) 6 else 4
+                                            )
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -3525,20 +3719,23 @@ private fun ExperimentalScreenContent(
                         ) {
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { probe.probeAll(includeRecordingLight = false) }
+                                onClick = { probe.probeAll(includeRecordingLight = false) },
+                                enabled = !isCapturing
                             ) {
                                 Text(stringResource(R.string.experimental_p4a_as_p4b_all_glyphs))
                             }
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { probe.probeAll(includeRecordingLight = true) }
+                                onClick = { probe.probeAll(includeRecordingLight = true) },
+                                enabled = !isCapturing
                             ) {
                                 Text(stringResource(R.string.experimental_p4a_as_p4b_all_with_recording))
                             }
                         }
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { probe.turnOff() }
+                            onClick = { probe.turnOff() },
+                            enabled = !isCapturing
                         ) {
                             Text(stringResource(R.string.experimental_p4a_as_p4b_turn_off))
                         }
@@ -3904,6 +4101,7 @@ private fun HeroCard(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     meterVisibleEnabled: Boolean,
     lightweightMeterEnabled: Boolean,
@@ -4021,6 +4219,7 @@ private fun HeroCard(
                     DirectNativeSpectrumMeterCanvas(
                         glyphMode = glyphMode,
                         deviceProfile = deviceProfile,
+                        recordingLightIncluded = recordingLightIncluded,
                         nothingStyleEnabled = nothingStyleEnabled
                     )
                 } else if (spectrumMeterEnabled) {
@@ -4029,6 +4228,7 @@ private fun HeroCard(
                         spectrumBands = spectrumBands,
                         glyphMode = glyphMode,
                         deviceProfile = deviceProfile,
+                        recordingLightIncluded = recordingLightIncluded,
                         nothingStyleEnabled = nothingStyleEnabled
                     )
                 } else if (nativeMeterViewEnabled && lightweightMeterEnabled) {
@@ -4047,6 +4247,7 @@ private fun HeroCard(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
                             nothingStyleEnabled = nothingStyleEnabled
                         )
@@ -4085,6 +4286,7 @@ private fun IsolatedHeroCard(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     meterVisibleEnabled: Boolean,
     lightweightMeterEnabled: Boolean,
@@ -4110,6 +4312,7 @@ private fun IsolatedHeroCard(
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
             reverseDirection = reverseDirection,
             meterVisibleEnabled = meterVisibleEnabled,
             lightweightMeterEnabled = lightweightMeterEnabled,
@@ -4130,6 +4333,7 @@ private fun IsolatedHeroCard(
                 deviceProfile,
                 binaryMode,
                 glyphMeterPreviewEnabled,
+                recordingLightIncluded,
                 reverseDirection
             ) {
                 buildUiMeterModel(
@@ -4139,6 +4343,7 @@ private fun IsolatedHeroCard(
                     deviceProfile = deviceProfile,
                     binaryMode = binaryMode,
                     glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
                     reverseDirection = reverseDirection
                 )
             }
@@ -4159,6 +4364,7 @@ private fun IsolatedHeroCard(
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
             reverseDirection = reverseDirection,
             meterVisibleEnabled = meterVisibleEnabled,
             lightweightMeterEnabled = lightweightMeterEnabled,
@@ -4183,6 +4389,7 @@ private fun CompactMeterOverlay(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     nothingStyleEnabled: Boolean,
     onDismissUpward: () -> Unit
@@ -4238,6 +4445,7 @@ private fun CompactMeterOverlay(
                 DirectNativeSpectrumMeterBar(
                     glyphMode = glyphMode,
                     deviceProfile = deviceProfile,
+                    recordingLightIncluded = recordingLightIncluded,
                     modifier = Modifier
                         .weight(1f)
                         .height(28.dp)
@@ -4248,6 +4456,7 @@ private fun CompactMeterOverlay(
                     spectrumBands = spectrumBands,
                     glyphMode = glyphMode,
                     deviceProfile = deviceProfile,
+                    recordingLightIncluded = recordingLightIncluded,
                     modifier = Modifier
                         .weight(1f)
                         .height(28.dp)
@@ -4272,6 +4481,7 @@ private fun CompactMeterOverlay(
                     deviceProfile = deviceProfile,
                     binaryMode = binaryMode,
                     glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
                     reverseDirection = reverseDirection,
                     compact = true,
                     modifier = Modifier
@@ -4412,6 +4622,7 @@ private fun CompactMeterOverlay(
                         deviceProfile = deviceProfile,
                         binaryMode = binaryMode,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
                         reverseDirection = reverseDirection,
                         lightweightMode = lightweightMeterEnabled,
                         spectrumMode = spectrumMeterEnabled,
@@ -4421,7 +4632,12 @@ private fun CompactMeterOverlay(
                     )
                 } else {
                     val spectrumBandsForStats = if (spectrumMeterEnabled) {
-                        normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+                        normalizedSpectrumMeterBands(
+                            spectrumBands,
+                            glyphMode,
+                            deviceProfile,
+                            recordingLightIncluded
+                        )
                     } else {
                         FloatArray(0)
                     }
@@ -4457,6 +4673,7 @@ private fun IsolatedCompactMeterOverlay(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     lightweightMeterEnabled: Boolean,
     spectrumMeterEnabled: Boolean,
@@ -4477,6 +4694,7 @@ private fun IsolatedCompactMeterOverlay(
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
             reverseDirection = reverseDirection,
             nothingStyleEnabled = nothingStyleEnabled,
             onDismissUpward = onDismissUpward
@@ -4493,6 +4711,7 @@ private fun IsolatedCompactMeterOverlay(
                 deviceProfile,
                 binaryMode,
                 glyphMeterPreviewEnabled,
+                recordingLightIncluded,
                 reverseDirection
             ) {
                 buildUiMeterModel(
@@ -4502,6 +4721,7 @@ private fun IsolatedCompactMeterOverlay(
                     deviceProfile = deviceProfile,
                     binaryMode = binaryMode,
                     glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
                     reverseDirection = reverseDirection
                 )
             }
@@ -4518,6 +4738,7 @@ private fun IsolatedCompactMeterOverlay(
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
             reverseDirection = reverseDirection,
             nothingStyleEnabled = nothingStyleEnabled,
             onDismissUpward = onDismissUpward
@@ -4669,10 +4890,15 @@ private const val DEFAULT_SPECTRUM_METER_BANDS = 25
 
 private fun spectrumMeterBandCount(
     glyphMode: String,
-    deviceProfile: GlyphDeviceProfile
+    deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean
 ): Int {
     return if (GlyphPatternRegistry.isSpectrum(glyphMode)) {
-        GlyphPatternRegistry.uiMeterSegmentCount(deviceProfile, glyphMode).coerceAtLeast(1)
+        GlyphPatternRegistry.uiMeterSegmentCount(
+            deviceProfile,
+            glyphMode,
+            recordingLightIncluded
+        ).coerceAtLeast(1)
     } else {
         DEFAULT_SPECTRUM_METER_BANDS
     }
@@ -4681,9 +4907,10 @@ private fun spectrumMeterBandCount(
 private fun normalizedSpectrumMeterBands(
     source: FloatArray,
     glyphMode: String,
-    deviceProfile: GlyphDeviceProfile
+    deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean
 ): FloatArray {
-    val targetCount = spectrumMeterBandCount(glyphMode, deviceProfile)
+    val targetCount = spectrumMeterBandCount(glyphMode, deviceProfile, recordingLightIncluded)
     if (source.isEmpty()) return FloatArray(targetCount)
     if (source.size == targetCount) {
         return FloatArray(targetCount) { index -> source[index].coerceIn(0f, 1f) }
@@ -4712,6 +4939,7 @@ private fun buildUiMeterModel(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean
 ): UiMeterModel {
     if (!glyphMeterPreviewEnabled) {
@@ -4724,7 +4952,11 @@ private fun buildUiMeterModel(
         )
     }
 
-    val segmentCount = GlyphPatternRegistry.uiMeterSegmentCount(deviceProfile, glyphMode).coerceAtLeast(1)
+    val segmentCount = GlyphPatternRegistry.uiMeterSegmentCount(
+        deviceProfile,
+        glyphMode,
+        recordingLightIncluded
+    ).coerceAtLeast(1)
     val patternKind = GlyphPatternRegistry.kindOf(glyphMode)
     val normalizedLevel = level.coerceIn(0f, 1f)
     val matrixOnOffOnly = false
@@ -5120,6 +5352,7 @@ private fun DirectNativeDetailedMeterCanvas(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     nothingStyleEnabled: Boolean
 ) {
@@ -5137,6 +5370,7 @@ private fun DirectNativeDetailedMeterCanvas(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection,
                 modifier = Modifier.fillMaxSize()
             )
@@ -5152,6 +5386,7 @@ private fun DirectNativeDetailedMeterCanvas(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection,
                 lightweightMode = false,
                 spectrumMode = false,
@@ -5169,6 +5404,7 @@ private fun SpectrumMeterCanvas(
     spectrumBands: FloatArray,
     glyphMode: String,
     deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean,
     nothingStyleEnabled: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -5185,6 +5421,7 @@ private fun SpectrumMeterCanvas(
                 spectrumBands = spectrumBands,
                 glyphMode = glyphMode,
                 deviceProfile = deviceProfile,
+                recordingLightIncluded = recordingLightIncluded,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -5194,7 +5431,12 @@ private fun SpectrumMeterCanvas(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val bands = normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+            val bands = normalizedSpectrumMeterBands(
+                spectrumBands,
+                glyphMode,
+                deviceProfile,
+                recordingLightIncluded
+            )
             val activeBands = bands.count { it * level.coerceIn(0f, 1f) > 0.001f }
             MeterStat(
                 label = stringResource(R.string.meter_label_level),
@@ -5216,6 +5458,7 @@ private fun SpectrumMeterBar(
     spectrumBands: FloatArray,
     glyphMode: String,
     deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean,
     modifier: Modifier = Modifier
 ) {
     val darkTheme = isSystemInDarkTheme()
@@ -5226,7 +5469,12 @@ private fun SpectrumMeterBar(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "spectrum-meter-level"
     )
-    val bands = normalizedSpectrumMeterBands(spectrumBands, glyphMode, deviceProfile)
+    val bands = normalizedSpectrumMeterBands(
+        spectrumBands,
+        glyphMode,
+        deviceProfile,
+        recordingLightIncluded
+    )
     Canvas(modifier = modifier) {
         val bandCount = bands.size.coerceAtLeast(1)
         val gap = 3.dp.toPx()
@@ -5258,6 +5506,7 @@ private fun SpectrumMeterBar(
 private fun DirectNativeSpectrumMeterCanvas(
     glyphMode: String,
     deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean,
     nothingStyleEnabled: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -5272,6 +5521,7 @@ private fun DirectNativeSpectrumMeterCanvas(
             DirectNativeSpectrumMeterBar(
                 glyphMode = glyphMode,
                 deviceProfile = deviceProfile,
+                recordingLightIncluded = recordingLightIncluded,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -5286,6 +5536,7 @@ private fun DirectNativeSpectrumMeterCanvas(
                 deviceProfile = deviceProfile,
                 binaryMode = false,
                 glyphMeterPreviewEnabled = true,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = false,
                 lightweightMode = false,
                 nothingStyleEnabled = nothingStyleEnabled,
@@ -5300,6 +5551,7 @@ private fun DirectNativeSpectrumMeterCanvas(
 private fun DirectNativeSpectrumMeterBar(
     glyphMode: String,
     deviceProfile: GlyphDeviceProfile,
+    recordingLightIncluded: Boolean,
     modifier: Modifier = Modifier
 ) {
     val darkTheme = isSystemInDarkTheme()
@@ -5325,6 +5577,7 @@ private fun DirectNativeSpectrumMeterBar(
             it.configure(
                 glyphMode = glyphMode,
                 deviceProfile = deviceProfile,
+                recordingLightIncluded = recordingLightIncluded,
                 inactiveColor = inactiveColor,
                 activeColor = activeColor
             )
@@ -5338,6 +5591,7 @@ private fun DirectNativeDetailedMeterBar(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     compact: Boolean = false,
     modifier: Modifier = Modifier
@@ -5369,6 +5623,7 @@ private fun DirectNativeDetailedMeterBar(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection,
                 compactMode = compact,
                 inactiveColor = inactiveColor,
@@ -5386,6 +5641,7 @@ private fun DirectNativeMeterStats(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
     lightweightMode: Boolean,
     spectrumMode: Boolean = false,
@@ -5421,6 +5677,7 @@ private fun DirectNativeMeterStats(
                 deviceProfile = deviceProfile,
                 binaryMode = binaryMode,
                 glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
                 reverseDirection = reverseDirection,
                 lightweightMode = lightweightMode,
                 spectrumMode = spectrumMode,
@@ -5538,6 +5795,7 @@ private fun DirectNativeMeterCanvas(
                 deviceProfile = GlyphDeviceCatalog.currentProfile(),
                 binaryMode = false,
                 glyphMeterPreviewEnabled = false,
+                recordingLightIncluded = false,
                 reverseDirection = false,
                 lightweightMode = true,
                 nothingStyleEnabled = nothingStyleEnabled,
@@ -6914,6 +7172,7 @@ private fun GlyphVisualizerPreview() {
             glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
             fillOtherGlyphLights = false,
             deviceProfile = GlyphDeviceCatalog.currentProfile(),
+            actualDeviceProfile = GlyphDeviceCatalog.currentProfile(),
             isPhone3Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3_MATRIX,
             isPhone4aProDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
             isPhone2aDevice = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE2A,
@@ -6925,6 +7184,7 @@ private fun GlyphVisualizerPreview() {
             oscilloscopeAutoTimeAxisEnabled = false,
             baseIndicatorEnabled = false,
             recordingLightIncluded = false,
+            phone4bEmulationEnabled = false,
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
@@ -6973,6 +7233,7 @@ private fun GlyphVisualizerPreview() {
             onAutoEnablePhone1GlyphDebugOnStartChanged = {},
             onBaseIndicatorEnabledChanged = {},
             onRecordingLightIncludedChanged = {},
+            onPhone4bEmulationEnabledChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onFillOtherGlyphLightsChanged = {},

@@ -10,6 +10,7 @@ import jp.linkserver.glyphvisualizer.R
 
 class Phone4aAsPhone4bGlyphProbe(
     context: Context,
+    private val emulatedOnPhone4a: Boolean,
     private val onStatusChanged: (String) -> Unit
 ) {
     private val appContext = context.applicationContext
@@ -21,7 +22,9 @@ class Phone4aAsPhone4bGlyphProbe(
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
             runCatching {
-                val registered = glyphManager.register(Glyph.DEVICE_25111)
+                val registered = glyphManager.register(
+                    if (emulatedOnPhone4a) Glyph.DEVICE_25111 else Glyph.DEVICE_25131
+                )
                 if (!registered) {
                     ready = false
                     onStatusChanged(appContext.getString(R.string.experimental_p4a_as_p4b_register_failed))
@@ -59,7 +62,7 @@ class Phone4aAsPhone4bGlyphProbe(
 
     fun probe(logicalChannel: Int, brightness: Int = MAX_LIGHT) {
         if (!ensureReady()) return
-        val physicalChannel = PHONE4A_CHANNELS_BY_PHONE4B_LOGICAL.getOrNull(logicalChannel)
+        val physicalChannel = physicalChannelFor(logicalChannel)
         if (physicalChannel == null) {
             onStatusChanged(
                 appContext.getString(R.string.experimental_p4a_as_p4b_invalid_channel, logicalChannel)
@@ -67,7 +70,7 @@ class Phone4aAsPhone4bGlyphProbe(
             return
         }
 
-        sendColors(IntArray(PHONE4A_CHANNEL_COUNT).apply {
+        sendColors(IntArray(frameChannelCount(includeRecordingLight = logicalChannel == 4)).apply {
             this[physicalChannel] = brightness.coerceIn(0, MAX_LIGHT)
         }) {
             appContext.getString(
@@ -80,12 +83,13 @@ class Phone4aAsPhone4bGlyphProbe(
 
     fun probeAll(includeRecordingLight: Boolean) {
         if (!ensureReady()) return
-        sendColors(IntArray(PHONE4A_CHANNEL_COUNT).apply {
-            PHONE4A_CHANNELS_BY_PHONE4B_LOGICAL
-                .take(PHONE4B_OFFICIAL_CHANNEL_COUNT)
+        sendColors(IntArray(frameChannelCount(includeRecordingLight)).apply {
+            (0 until PHONE4B_OFFICIAL_CHANNEL_COUNT)
+                .map(::physicalChannelFor)
+                .filterNotNull()
                 .forEach { this[it] = MAX_LIGHT }
             if (includeRecordingLight) {
-                this[PHONE4A_RECORDING_LIGHT_CHANNEL] = MAX_LIGHT
+                physicalChannelFor(4)?.let { this[it] = MAX_LIGHT }
             }
         }) {
             appContext.getString(R.string.experimental_p4a_as_p4b_sent_all)
@@ -108,6 +112,10 @@ class Phone4aAsPhone4bGlyphProbe(
     }
 
     fun release() {
+        if (!initialized && !sessionOpen) {
+            ready = false
+            return
+        }
         runCatching { glyphManager.turnOff() }
         if (sessionOpen) {
             runCatching { glyphManager.closeSession() }
@@ -124,6 +132,21 @@ class Phone4aAsPhone4bGlyphProbe(
         if (ready && sessionOpen) return true
         onStatusChanged(appContext.getString(R.string.experimental_p4a_as_p4b_not_ready))
         return false
+    }
+
+    private fun physicalChannelFor(logicalChannel: Int): Int? {
+        if (logicalChannel !in 0..PHONE4B_RECORDING_LIGHT_CHANNEL) return null
+        return if (emulatedOnPhone4a) logicalChannel + PHONE4A_CHANNEL_OFFSET else logicalChannel
+    }
+
+    private fun frameChannelCount(includeRecordingLight: Boolean): Int {
+        return if (emulatedOnPhone4a) {
+            PHONE4A_CHANNEL_COUNT
+        } else if (includeRecordingLight) {
+            PHONE4B_RECORDING_LIGHT_CHANNEL + 1
+        } else {
+            PHONE4B_OFFICIAL_CHANNEL_COUNT
+        }
     }
 
     private inline fun sendColors(colors: IntArray, successMessage: () -> String) {
@@ -145,9 +168,7 @@ class Phone4aAsPhone4bGlyphProbe(
         private const val MAX_LIGHT = 4095
         private const val PHONE4A_CHANNEL_COUNT = 7
         private const val PHONE4B_OFFICIAL_CHANNEL_COUNT = 4
-        private const val PHONE4A_RECORDING_LIGHT_CHANNEL = 6
-
-        // Phone (4a) channels 2..5 are the lower four bar segments. Channel 6 is its recording light.
-        private val PHONE4A_CHANNELS_BY_PHONE4B_LOGICAL = intArrayOf(2, 3, 4, 5, 6)
+        private const val PHONE4B_RECORDING_LIGHT_CHANNEL = 4
+        private const val PHONE4A_CHANNEL_OFFSET = 2
     }
 }

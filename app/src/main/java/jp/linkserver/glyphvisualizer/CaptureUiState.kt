@@ -28,6 +28,7 @@ data class CaptureUiState(
     val binaryMode: Boolean = false,
     val baseIndicatorEnabled: Boolean = false,
     val recordingLightIncluded: Boolean = false,
+    val phone4bEmulationEnabled: Boolean = false,
     val levelAutoScale: Boolean = true,
     val spectrumAutoScale: Boolean = true,
     val allBrightnessAutoScale: Boolean = true,

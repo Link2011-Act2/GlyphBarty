@@ -468,18 +468,26 @@ class GlyphVisualizerService : Service() {
         super.onCreate()
         AppLogger.init(this)
         createNotificationChannel()
+        val savedSettings = SettingsPreferences.load(this)
         glyphController = if (GlyphDeviceCatalog.currentOrFallback().controllerFamily == GlyphControllerFamily.MATRIX) {
             GlyphMatrixController(this) { status ->
                 CaptureUiStore.update { it.copy(statusText = status) }
             }
         } else {
-            GlyphLightController(this) { status ->
-                CaptureUiStore.update { it.copy(statusText = status) }
-            }
+            GlyphLightController(
+                context = this,
+                onStatusChanged = { status ->
+                    CaptureUiStore.update { it.copy(statusText = status) }
+                },
+                initialPhone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled
+            )
         }
         audioPlaybackVisualizer = AudioPlaybackVisualizer(this)
         outputMixVisualizer = OutputMixVisualizer(this)
         glyphController.bind()
+        CaptureUiStore.update {
+            it.copy(phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled)
+        }
         gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
         lastAudioRouteSignature = AudioRouteDiagnostics.outputSignature(this)
         applyLatencyPresetForCurrentRoute("service created")
@@ -1253,6 +1261,9 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun applyGlyphControllerSettings() {
+        glyphController.setPhone4bEmulationEnabled(
+            SettingsPreferences.loadPhone4bEmulationEnabled(this)
+        )
         glyphController.setReverseDirection(reverseDirection)
         glyphController.setGlyphMode(glyphMode)
         glyphController.setFillOtherGlyphLightsEnabled(fillOtherGlyphLights)

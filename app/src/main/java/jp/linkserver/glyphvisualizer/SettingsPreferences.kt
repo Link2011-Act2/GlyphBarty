@@ -9,6 +9,7 @@ object SettingsPreferences {
     private const val EXPORT_FORMAT = "glyph_barty_parameters"
     private const val EXPORT_VERSION = 2
     private const val KEY_INITIAL_SETUP_COMPLETED = "initial_setup_completed"
+    private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
 
     fun defaultParameters(): CaptureUiState = CaptureUiState()
 
@@ -29,6 +30,7 @@ object SettingsPreferences {
             binaryMode = state.binaryMode,
             baseIndicatorEnabled = state.baseIndicatorEnabled,
             recordingLightIncluded = state.recordingLightIncluded,
+            phone4bEmulationEnabled = state.phone4bEmulationEnabled,
             levelAutoScale = state.levelAutoScale,
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
@@ -91,6 +93,10 @@ object SettingsPreferences {
                 "recording_light_included",
                 defaults.recordingLightIncluded
             ),
+            phone4bEmulationEnabled = prefs.getBoolean(
+                KEY_PHONE4B_EMULATION_ENABLED,
+                defaults.phone4bEmulationEnabled
+            ),
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
@@ -140,6 +146,7 @@ object SettingsPreferences {
             .putBoolean("binary_mode", parameters.binaryMode)
             .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
             .putBoolean("recording_light_included", parameters.recordingLightIncluded)
+            .putBoolean(KEY_PHONE4B_EMULATION_ENABLED, parameters.phone4bEmulationEnabled)
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)
@@ -169,6 +176,13 @@ object SettingsPreferences {
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
             .putBoolean("turn_off_when_back_down", parameters.turnOffWhenBackDown)
             .apply()
+    }
+
+    fun loadPhone4bEmulationEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(
+            KEY_PHONE4B_EMULATION_ENABLED,
+            defaultParameters().phone4bEmulationEnabled
+        )
     }
 
     fun hasCompletedInitialSetup(context: Context): Boolean {

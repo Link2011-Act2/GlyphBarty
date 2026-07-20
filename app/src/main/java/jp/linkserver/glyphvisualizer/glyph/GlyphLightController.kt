@@ -17,7 +17,8 @@ import kotlin.math.roundToInt
 
 class GlyphLightController(
     private val context: Context,
-    private val onStatusChanged: (String) -> Unit
+    private val onStatusChanged: (String) -> Unit,
+    initialPhone4bEmulationEnabled: Boolean = false
 ) : GlyphOutputController {
     companion object {
         private const val TAG = "GlyphLightController"
@@ -118,6 +119,7 @@ class GlyphLightController(
         val deviceId: String,
         val channelCount: Int,
         val cRange: IntRange,
+        val recordingLightChannel: Int? = null,
         val aRange: IntRange? = null,
         val bRange: IntRange? = null,
         val cabRange: IntRange? = null,
@@ -135,6 +137,8 @@ class GlyphLightController(
     private var binaryMode = false
     private var baseIndicatorEnabled = false
     private var recordingLightIncluded = false
+    private var phone4bEmulationEnabled = initialPhone4bEmulationEnabled &&
+        GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
@@ -303,6 +307,29 @@ class GlyphLightController(
     override fun setRecordingLightIncluded(enabled: Boolean) {
         recordingLightIncluded = enabled
         clearPhone4bRecordingLightIfUnused()
+    }
+
+    override fun setPhone4bEmulationEnabled(enabled: Boolean) {
+        val nextEnabled = enabled &&
+            GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE4A
+        if (phone4bEmulationEnabled == nextEnabled) return
+
+        val shouldRebind = isBound
+        if (shouldRebind) {
+            turnOff()
+            closeSession()
+            runCatching { glyphManager.unInit() }
+            isBound = false
+        }
+        phone4bEmulationEnabled = nextEnabled
+        deviceSpec = null
+        cLinearFrame = null
+        cabLinearFrame = null
+        aLinearFrame = null
+        bLinearFrame = null
+        d1Frame = null
+        fullGlyphBrightness = IntArray(0)
+        if (shouldRebind) bind()
     }
 
     override fun setOutputGamma(gamma: Float) {
@@ -1231,23 +1258,15 @@ class GlyphLightController(
 
     private fun effectiveMainRange(spec: DeviceSpec): IntRange {
         if (!recordingLightIncluded) return spec.cRange
-        val recordingLightChannel = when (spec.profile) {
-            GlyphDeviceProfile.PHONE4A -> PHONE4A_RECORDING_LIGHT_CHANNEL
-            GlyphDeviceProfile.PHONE4B -> PHONE4B_RECORDING_LIGHT_CHANNEL
-            else -> return spec.cRange
-        }
+        val recordingLightChannel = spec.recordingLightChannel ?: return spec.cRange
         return spec.cRange.first..recordingLightChannel
     }
 
     private fun frameChannelCount(spec: DeviceSpec): Int {
-        return if (
-            spec.profile == GlyphDeviceProfile.PHONE4B &&
-            (recordingLightIncluded || baseIndicatorEnabled)
-        ) {
-            PHONE4B_RECORDING_LIGHT_CHANNEL + 1
-        } else {
-            spec.channelCount
-        }
+        val recordingLightChannel = spec.recordingLightChannel
+        return if ((recordingLightIncluded || baseIndicatorEnabled) && recordingLightChannel != null) {
+            maxOf(spec.channelCount, recordingLightChannel + 1)
+        } else spec.channelCount
     }
 
     private fun clearPhone4bRecordingLightIfUnused() {
@@ -1374,11 +1393,26 @@ class GlyphLightController(
     private fun resolveDeviceSpec(): DeviceSpec? {
         val currentDevice = GlyphDeviceCatalog.currentOrNull() ?: return null
         val lightSpec = currentDevice.lightSpec ?: return null
+        val emulatePhone4b = phone4bEmulationEnabled &&
+            currentDevice.profile == GlyphDeviceProfile.PHONE4A
+        val effectiveProfile = if (emulatePhone4b) {
+            GlyphDeviceProfile.PHONE4B
+        } else {
+            currentDevice.profile
+        }
+        val cRange = if (emulatePhone4b) 2..5 else lightSpec.cRange
+        val recordingLightChannel = when {
+            emulatePhone4b -> PHONE4A_RECORDING_LIGHT_CHANNEL
+            currentDevice.profile == GlyphDeviceProfile.PHONE4A -> PHONE4A_RECORDING_LIGHT_CHANNEL
+            currentDevice.profile == GlyphDeviceProfile.PHONE4B -> PHONE4B_RECORDING_LIGHT_CHANNEL
+            else -> null
+        }
         return DeviceSpec(
-            profile = currentDevice.profile,
+            profile = effectiveProfile,
             deviceId = lightSpec.sdkDeviceId,
             channelCount = lightSpec.channelCount,
-            cRange = lightSpec.cRange,
+            cRange = cRange,
+            recordingLightChannel = recordingLightChannel,
             aRange = lightSpec.aRange,
             bRange = lightSpec.bRange,
             cabRange = lightSpec.cabRange,
