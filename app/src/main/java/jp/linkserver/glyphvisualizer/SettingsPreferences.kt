@@ -252,8 +252,14 @@ object SettingsPreferences {
     }
 
     private fun normalizeDormantFlags(state: CaptureUiState): CaptureUiState {
+        val normalizedRecordingLight = state.withRecordingLightBehavior(
+            resolveRecordingLightBehavior(
+                baseIndicatorEnabled = state.baseIndicatorEnabled,
+                recordingLightIncluded = state.recordingLightIncluded
+            )
+        )
         // Hidden for now because some devices already enforce a similar OS-level behavior.
-        return state.copy(
+        return normalizedRecordingLight.copy(
             turnOffWhenBackDown = false,
             mainScreenUiIsolationEnabled = true,
             showPhone1GlyphDebugControlsEverywhere = if (isIntDevBuild()) {

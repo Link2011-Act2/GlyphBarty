@@ -1409,13 +1409,10 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         SettingsPreferences.save(this, updated)
                     },
-                    onBaseIndicatorEnabledChanged = { enabled ->
-                        CaptureUiStore.update { it.copy(baseIndicatorEnabled = enabled) }
-                        syncCurrentParameters()
-                    },
-                    onRecordingLightIncludedChanged = { enabled ->
-                        CaptureUiStore.update { it.copy(recordingLightIncluded = enabled) }
-                        syncCurrentParameters()
+                    onRecordingLightBehaviorChanged = { behavior ->
+                        val updated = CaptureUiStore.state.withRecordingLightBehavior(behavior)
+                        CaptureUiStore.update { updated }
+                        syncCurrentParameters(updated)
                     },
                     onPhone4bEmulationEnabledChanged = { enabled ->
                         if (deviceProfile == GlyphDeviceProfile.PHONE4A && !CaptureUiStore.state.isCapturing) {
@@ -2317,8 +2314,7 @@ private fun GlyphVisualizerApp(
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
-    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
-    onRecordingLightIncludedChanged: (Boolean) -> Unit,
+    onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
@@ -2535,8 +2531,7 @@ private fun GlyphVisualizerApp(
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                        onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
-                        onRecordingLightIncludedChanged = onRecordingLightIncludedChanged,
+                        onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
                         onStartVisualizerClick = {
@@ -3018,8 +3013,7 @@ private fun MainScreenContent(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
-    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
-    onRecordingLightIncludedChanged: (Boolean) -> Unit,
+    onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onStartVisualizerClick: () -> Unit,
@@ -3224,8 +3218,7 @@ private fun MainScreenContent(
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                        onBaseIndicatorEnabledChanged = onBaseIndicatorEnabledChanged,
-                        onRecordingLightIncludedChanged = onRecordingLightIncludedChanged,
+                        onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
                         onStartVisualizerClick = onStartVisualizerClick,
@@ -6187,6 +6180,7 @@ private fun glyphPatternDescriptionText(glyphMode: String): String? {
         GlyphPatternRenderMode.LINEAR_PEAK -> R.string.glyph_pattern_desc_linear_peak
         GlyphPatternRenderMode.CENTER -> R.string.glyph_pattern_desc_center
         GlyphPatternRenderMode.SPECTRUM -> R.string.glyph_pattern_desc_spectrum
+        GlyphPatternRenderMode.SPECTRUM_MARKER -> R.string.glyph_pattern_desc_spectrum_marker
         GlyphPatternRenderMode.CLASSIC -> R.string.glyph_pattern_desc_classic
         GlyphPatternRenderMode.ALL_BRIGHTNESS -> R.string.glyph_pattern_desc_all_brightness
         GlyphPatternRenderMode.MATRIX_BAR -> R.string.glyph_pattern_desc_matrix_bar
@@ -6264,8 +6258,7 @@ private fun ControlCard(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
-    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
-    onRecordingLightIncludedChanged: (Boolean) -> Unit,
+    onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
     onResetParametersClick: () -> Unit,
@@ -6280,6 +6273,7 @@ private fun ControlCard(
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
     var showPhone1GlyphDebugInfoDialog by rememberSaveable { mutableStateOf(false) }
+    var showRecordingLightBehaviorDialog by rememberSaveable { mutableStateOf(false) }
     val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
     val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
     val clipboardManager = LocalClipboardManager.current
@@ -6303,6 +6297,15 @@ private fun ControlCard(
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
         !isClassicGlyphMode
     val glyphPatternDescription = glyphPatternDescriptionText(glyphMode)
+    val recordingLightBehavior = resolveRecordingLightBehavior(
+        baseIndicatorEnabled = baseIndicatorEnabled,
+        recordingLightIncluded = recordingLightIncluded
+    )
+    val recordingLightBehaviorLabel = when (recordingLightBehavior) {
+        RecordingLightBehavior.NONE -> stringResource(R.string.recording_light_behavior_none)
+        RecordingLightBehavior.INCLUDED_IN_METER -> stringResource(R.string.recording_light_behavior_meter)
+        RecordingLightBehavior.BASS_INDICATOR -> stringResource(R.string.recording_light_behavior_bass)
+    }
     LaunchedEffect(glyphRenderMode, oscilloscopeAutoTimeAxisEnabled) {
         if (glyphRenderMode != GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE || !oscilloscopeAutoTimeAxisEnabled) {
             oscilloscopeTimeAxisMultiplier = 1f
@@ -6423,6 +6426,74 @@ private fun ControlCard(
                 }
             },
             dismissButton = {}
+        )
+    }
+
+    if (showRecordingLightBehaviorDialog) {
+        val options = listOf(
+            Triple(
+                RecordingLightBehavior.NONE,
+                stringResource(R.string.recording_light_behavior_none),
+                stringResource(R.string.recording_light_behavior_none_desc)
+            ),
+            Triple(
+                RecordingLightBehavior.INCLUDED_IN_METER,
+                stringResource(R.string.recording_light_behavior_meter),
+                stringResource(R.string.recording_light_behavior_meter_desc)
+            ),
+            Triple(
+                RecordingLightBehavior.BASS_INDICATOR,
+                stringResource(R.string.recording_light_behavior_bass),
+                stringResource(R.string.recording_light_behavior_bass_desc)
+            )
+        )
+        AlertDialog(
+            onDismissRequest = { showRecordingLightBehaviorDialog = false },
+            title = { Text(stringResource(R.string.recording_light_behavior_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    options.forEach { (behavior, label, description) ->
+                        val selectBehavior = {
+                            showRecordingLightBehaviorDialog = false
+                            onRecordingLightBehaviorChanged(behavior)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(onClick = selectBehavior)
+                                .padding(horizontal = 4.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = recordingLightBehavior == behavior,
+                                onClick = selectBehavior
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showRecordingLightBehaviorDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
         )
     }
 
@@ -6661,47 +6732,28 @@ private fun ControlCard(
             }
 
             if (deviceProfile in setOf(GlyphDeviceProfile.PHONE4A, GlyphDeviceProfile.PHONE4B)) {
-                Row(
+                OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    onClick = { showRecordingLightBehaviorDialog = true },
+                    shape = RoundedCornerShape(18.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.recording_light_included_title),
-                            style = MaterialTheme.typography.titleSmall
+                            text = stringResource(R.string.recording_light_behavior_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = stringResource(R.string.recording_light_included_desc),
+                            text = recordingLightBehaviorLabel,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Checkbox(
-                        checked = recordingLightIncluded,
-                        onCheckedChange = onRecordingLightIncludedChanged
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.base_indicator_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = stringResource(R.string.base_indicator_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Checkbox(
-                        checked = baseIndicatorEnabled,
-                        onCheckedChange = onBaseIndicatorEnabledChanged
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = null
                     )
                 }
             }
@@ -7231,8 +7283,7 @@ private fun GlyphVisualizerPreview() {
             onOscilloscopeAutoTimeAxisEnabledChanged = {},
             onShowPhone1GlyphDebugControlsEverywhereChanged = {},
             onAutoEnablePhone1GlyphDebugOnStartChanged = {},
-            onBaseIndicatorEnabledChanged = {},
-            onRecordingLightIncludedChanged = {},
+            onRecordingLightBehaviorChanged = {},
             onPhone4bEmulationEnabledChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},

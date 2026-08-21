@@ -85,10 +85,17 @@
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
     <string name="settings_ui_mode_material">Material 3</string>
-    <string name="base_indicator_title">調整中: ベースインジケーター</string>
-    <string name="base_indicator_desc">赤いLEDを低音に応じて点灯させます。現在挙動を調整中です。</string>
+    <string name="base_indicator_title">ベースインジケーター</string>
+    <string name="base_indicator_desc">赤いLEDを低音に応じて点灯させます</string>
     <string name="recording_light_included_title">録画ライトをGlyphに含める</string>
-    <string name="recording_light_included_desc">Phone (4a)/(4b)のパターンに赤い録画ライトを追加します。非公開チャンネルを使用し、ベースインジケーターと同時に有効な場合はベースインジケーターを優先します。</string>
+    <string name="recording_light_included_desc">メーターの一部に赤い録画ライトを追加します</string>
+    <string name="recording_light_behavior_title">録画ライトの挙動</string>
+    <string name="recording_light_behavior_none">なし</string>
+    <string name="recording_light_behavior_none_desc">録画ライトを点灯させません</string>
+    <string name="recording_light_behavior_meter">メーターに含める</string>
+    <string name="recording_light_behavior_meter_desc">録画ライトをメーターの一部として使用します</string>
+    <string name="recording_light_behavior_bass">低音インジケーター</string>
+    <string name="recording_light_behavior_bass_desc">録画ライトを低音に応じて点灯させます</string>
     <string name="settings_media_projection_title">MediaProjection を表示</string>
     <string name="settings_media_projection_desc">画面キャプチャで音声を取得するモードを使えるようにします\n通常は不要ですが、不具合が出た場合はこれを使用してみてください</string>
     <string name="settings_glyph_meter_preview_title">より忠実なプレビュー</string>
@@ -247,6 +254,7 @@
     <string name="glyph_pattern_desc_linear_peak">少し暗めのLinearにピークホールドがついています\n現在調整中です、若干挙動が不安定だと思います</string>
     <string name="glyph_pattern_desc_center">双方向へ伸びていくタイプのレベルメーター</string>
     <string name="glyph_pattern_desc_spectrum">セグメントごとに周波数帯を割り当て、音域ごとに明るさが変動するメーター</string>
+    <string name="glyph_pattern_desc_spectrum_marker">最も強い音程の場所に滑らかに点が移動するメーター</string>
     <string name="glyph_pattern_desc_classic">純正機能に近い、ライトごとに周波数帯を割り当て、音域ごとに明るさが変動するメーター</string>
     <string name="glyph_pattern_desc_all_brightness">Glyph全体をひとまとまりとして扱い、全体の明るさだけを変化させるレベルメーター</string>
     <string name="glyph_pattern_desc_matrix_bar">Matrix上に細い縦バーとして出るシンプルなレベルメーター</string>
@@ -259,8 +267,8 @@
     <string name="glyph_pattern_desc_matrix_spectrogram">その瞬間のスペクトラムを縦方向の明るさで表し、履歴が横へスクロールするパターン</string>
     <string name="glyph_pattern_desc_matrix_spectrum_analyzer">スペクトラムのグラフを線で表示</string>
     <string name="glyph_pattern_desc_matrix_oscilloscope">現在の音声波形を表示するオシロスコープっぽいパターン\nテストトーンとかチップチューン流すと面白いかも?</string>
-    <string name="glyph_pattern_desc_matrix_radial_spectrum">暗い中心円の周囲へスペクトラムを左右対称に割り当て、帯域ごとのバーが外側へ伸びる円形スペクトラム</string>
-    <string name="glyph_pattern_desc_matrix_open_reel">左側のオープンリールが回転するパターン。MediaSessionから再生位置を取得できる場合、曲の進行に合わせてテープが内側へ移動し、回転速度も上がります</string>
+    <string name="glyph_pattern_desc_matrix_radial_spectrum">円形のスペクトラムメーター。なんか皆既日食みたい</string>
+    <string name="glyph_pattern_desc_matrix_open_reel">オープンリールテープのリールが回るパターン。通知アクセスが許可されていれば、再生位置に応じて回転速度が変動するぞ</string>
     <string name="glyph_pattern_desc_matrix_rain">音のレベルに応じて粒が落ちていくパターン。</string>
     <string name="glyph_pattern_desc_matrix_wave_field">主にスペクトラムで形が決まる波っぽいパターン</string>
     <string name="glyph_pattern_desc_matrix_skyline">より滑らかな見た目のスペクトラムメーター</string>
@@ -306,6 +314,7 @@
     <string name="mode_p4a_linear_peak">Linear Peak</string>
     <string name="mode_p4a_center">Center</string>
     <string name="mode_p4a_spectrum">Spectrum</string>
+    <string name="mode_p4a_spectrum_marker">Spectrum Marker</string>
     <string name="mode_p4a_all_brightness">All Brightness</string>
     <string name="mode_visualizer">通常モード</string>
     <string name="mode_media_projection">MediaProjection モード</string>

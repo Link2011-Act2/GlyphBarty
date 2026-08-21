@@ -15,7 +15,7 @@ data class CaptureUiState(
     val dynamics: Float = 1.45f,
     val outputGamma: Float = 1.8f,
     val toneFocus: Float = -0.2f,
-    val smoothing: Float = 0.45f,
+    val smoothing: Float = 0.30f,
     val smoothingBalance: Float = 0f,
     val reverseDirection: Boolean = false,
     val peakHoldEnabled: Boolean = true,
@@ -32,7 +32,7 @@ data class CaptureUiState(
     val levelAutoScale: Boolean = true,
     val spectrumAutoScale: Boolean = true,
     val allBrightnessAutoScale: Boolean = true,
-    val autoScaleWindowSeconds: Float = 30f,
+    val autoScaleWindowSeconds: Float = 20f,
     val autoScaleOffset: Float = 0f,
     val latencyMs: Float = 0f,
     val defaultOutputLatencyMs: Float = 0f,
@@ -59,6 +59,34 @@ data class CaptureUiState(
     val nothingStyleEnabled: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null
+)
+
+enum class RecordingLightBehavior {
+    NONE,
+    INCLUDED_IN_METER,
+    BASS_INDICATOR
+}
+
+val RecordingLightBehavior.baseIndicatorEnabled: Boolean
+    get() = this == RecordingLightBehavior.BASS_INDICATOR
+
+val RecordingLightBehavior.recordingLightIncluded: Boolean
+    get() = this == RecordingLightBehavior.INCLUDED_IN_METER
+
+fun resolveRecordingLightBehavior(
+    baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean
+): RecordingLightBehavior = when {
+    baseIndicatorEnabled -> RecordingLightBehavior.BASS_INDICATOR
+    recordingLightIncluded -> RecordingLightBehavior.INCLUDED_IN_METER
+    else -> RecordingLightBehavior.NONE
+}
+
+fun CaptureUiState.withRecordingLightBehavior(
+    behavior: RecordingLightBehavior
+): CaptureUiState = copy(
+    baseIndicatorEnabled = behavior.baseIndicatorEnabled,
+    recordingLightIncluded = behavior.recordingLightIncluded
 )
 
 data class CaptureLiveFrame(

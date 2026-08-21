@@ -29,6 +29,7 @@ enum class GlyphPatternRenderMode {
     PULSE_TRAIN,
     CENTER,
     SPECTRUM,
+    SPECTRUM_MARKER,
     CLASSIC,
     ALL_BRIGHTNESS,
     MATRIX_BAR,
@@ -112,6 +113,7 @@ object GlyphPatternRegistry {
     const val P4A_LINEAR_PEAK = "P4A_LINEAR_PEAK"
     const val P4A_CENTER = "P4A_CENTER"
     const val P4A_SPECTRUM = "P4A_SPECTRUM"
+    const val P4A_SPECTRUM_MARKER = "P4A_SPECTRUM_MARKER"
     const val P4A_ALL_BRIGHTNESS = "P4A_ALL_BRIGHTNESS"
 
     const val P3_MATRIX_BAR = "P3_MATRIX_BAR"
@@ -190,6 +192,7 @@ object GlyphPatternRegistry {
         pattern(P4A_LINEAR_PEAK, R.string.mode_p4a_linear_peak, GlyphPatternKind.LINEAR, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.LINEAR_PEAK, listOf(GlyphLightZone.C))),
         pattern(P4A_CENTER, R.string.mode_p4a_center, GlyphPatternKind.CENTER, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.CENTER, listOf(GlyphLightZone.C))),
         pattern(P4A_SPECTRUM, R.string.mode_p4a_spectrum, GlyphPatternKind.SPECTRUM, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM, listOf(GlyphLightZone.C))),
+        pattern(P4A_SPECTRUM_MARKER, R.string.mode_p4a_spectrum_marker, GlyphPatternKind.SPECTRUM, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.SPECTRUM_MARKER, listOf(GlyphLightZone.C))),
         pattern(P4A_ALL_BRIGHTNESS, R.string.mode_p4a_all_brightness, GlyphPatternKind.ALL_BRIGHTNESS, phone4aStyleBarDevices, GlyphPatternRecipe(GlyphPatternRenderMode.ALL_BRIGHTNESS)),
 
         pattern(P3_MATRIX_SPECTRUM, R.string.mode_matrix_spectrum, GlyphPatternKind.SPECTRUM, matrixDevices, GlyphPatternRecipe(GlyphPatternRenderMode.MATRIX_SPECTRUM)),
@@ -274,7 +277,7 @@ object GlyphPatternRegistry {
             P3A_C_LINEAR, P3A_C_LINEAR_PEAK, P3A_C_CENTER, P3A_C_SPECTRUM -> 20
             P3A_CAB_LINEAR, P3A_CAB_LINEAR_PEAK, P3A_CAB_CENTER, P3A_CAB_SPECTRUM -> 20
             P3A_CLASSIC -> 3
-            P4A_LINEAR, P4A_LINEAR_PEAK, P4A_CENTER, P4A_SPECTRUM -> {
+            P4A_LINEAR, P4A_LINEAR_PEAK, P4A_CENTER, P4A_SPECTRUM, P4A_SPECTRUM_MARKER -> {
                 phone4SegmentCount ?: 6
             }
             P4A_ALL_BRIGHTNESS -> phone4SegmentCount ?: 16

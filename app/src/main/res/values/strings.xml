@@ -85,10 +85,17 @@
     <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
     <string name="settings_ui_mode_nothing">Nothing-like</string>
     <string name="settings_ui_mode_material">Material 3</string>
-    <string name="base_indicator_title">Experimental: Base indicator</string>
-    <string name="base_indicator_desc">Drive the red LED from low-frequency energy. This feature is still being tuned.</string>
+    <string name="base_indicator_title">Base indicator</string>
+    <string name="base_indicator_desc">Lights the red LED in response to bass.</string>
     <string name="recording_light_included_title">Include recording light as a Glyph</string>
-    <string name="recording_light_included_desc">Adds the red recording light to Phone (4a)/(4b) patterns. This uses an undocumented channel; the base indicator takes priority when both are enabled.</string>
+    <string name="recording_light_included_desc">Adds the red recording light to part of the meter.</string>
+    <string name="recording_light_behavior_title">Recording light behavior</string>
+    <string name="recording_light_behavior_none">None</string>
+    <string name="recording_light_behavior_none_desc">Leaves the recording light off.</string>
+    <string name="recording_light_behavior_meter">Include in meter</string>
+    <string name="recording_light_behavior_meter_desc">Uses the recording light as part of the meter.</string>
+    <string name="recording_light_behavior_bass">Bass indicator</string>
+    <string name="recording_light_behavior_bass_desc">Lights the recording light in response to bass.</string>
     <string name="settings_media_projection_title">Show MediaProjection</string>
     <string name="settings_media_projection_desc">Enables a mode that captures audio through screen capture.\nYou usually do not need this, but if you run into issues, try using it.</string>
     <string name="settings_glyph_meter_preview_title">More faithful preview</string>
@@ -247,6 +254,7 @@
     <string name="glyph_pattern_desc_linear_peak">A darker linear meter with a bright peak point layered on top.</string>
     <string name="glyph_pattern_desc_center">A level meter that spreads outward from the center.</string>
     <string name="glyph_pattern_desc_spectrum">Maps the spectrum across the available segments so different frequency bands light different positions.</string>
+    <string name="glyph_pattern_desc_spectrum_marker">A meter with a marker that smoothly follows the strongest frequency.</string>
     <string name="glyph_pattern_desc_classic">A classic multi-zone spectrum-style pattern inspired by the original app behavior.</string>
     <string name="glyph_pattern_desc_all_brightness">Drives the whole Glyph area together and changes only the overall brightness.</string>
     <string name="glyph_pattern_desc_matrix_bar">A narrow vertical level bar placed in the Matrix.</string>
@@ -259,8 +267,8 @@
     <string name="glyph_pattern_desc_matrix_spectrogram">Shows the current spectrum as vertical brightness and scrolls its recent history sideways across the Matrix.</string>
     <string name="glyph_pattern_desc_matrix_spectrum_analyzer">Draws a spectrum-analyzer style contour line across the Matrix instead of bar columns.</string>
     <string name="glyph_pattern_desc_matrix_oscilloscope">An oscilloscope-like pattern that displays the current audio waveform\nIt might be fun to play test tones or chiptunes?</string>
-    <string name="glyph_pattern_desc_matrix_radial_spectrum">Maps the spectrum symmetrically around a dark center circle and extends each band outward like radial bars.</string>
-    <string name="glyph_pattern_desc_matrix_open_reel">Shows a single open-reel tape animation. When MediaSession progress is available, the tape moves inward and the reel speed increases with the current song.</string>
+    <string name="glyph_pattern_desc_matrix_radial_spectrum">A circular spectrum meter. It kind of looks like a total solar eclipse.</string>
+    <string name="glyph_pattern_desc_matrix_open_reel">A pattern with spinning open-reel tape reels. With notification access enabled, the rotation speed changes based on the playback position.</string>
     <string name="glyph_pattern_desc_matrix_rain">Drops bright particles through the Matrix with audio-driven intensity.</string>
     <string name="glyph_pattern_desc_matrix_wave_field">A flowing Matrix wave whose shape is driven mainly by the spectrum.</string>
     <string name="glyph_pattern_desc_matrix_skyline">A skyline-like bottom spectrum silhouette with smoothed band motion.</string>
@@ -306,6 +314,7 @@
     <string name="mode_p4a_linear_peak" translatable="false">Linear Peak</string>
     <string name="mode_p4a_center" translatable="false">Center</string>
     <string name="mode_p4a_spectrum" translatable="false">Spectrum</string>
+    <string name="mode_p4a_spectrum_marker" translatable="false">Spectrum Marker</string>
     <string name="mode_p4a_all_brightness" translatable="false">All Brightness</string>
     <string name="mode_visualizer">Normal mode</string>
     <string name="mode_media_projection">MediaProjection mode</string>
