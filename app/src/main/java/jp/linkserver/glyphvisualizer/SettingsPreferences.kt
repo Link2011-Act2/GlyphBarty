@@ -58,6 +58,7 @@ object SettingsPreferences {
             showPhone1GlyphDebugControlsEverywhere = state.showPhone1GlyphDebugControlsEverywhere,
             autoEnablePhone1GlyphDebugOnStart = state.autoEnablePhone1GlyphDebugOnStart,
             nothingStyleEnabled = state.nothingStyleEnabled,
+            experimentalMainUiEnabled = state.experimentalMainUiEnabled,
             turnOffWhenBackDown = state.turnOffWhenBackDown
         ))
     }
@@ -124,6 +125,10 @@ object SettingsPreferences {
             showPhone1GlyphDebugControlsEverywhere = prefs.getBoolean("show_phone1_glyph_debug_controls_everywhere", defaults.showPhone1GlyphDebugControlsEverywhere),
             autoEnablePhone1GlyphDebugOnStart = prefs.getBoolean("auto_enable_phone1_glyph_debug_on_start", defaults.autoEnablePhone1GlyphDebugOnStart),
             nothingStyleEnabled = prefs.getBoolean("nothing_style_enabled", defaults.nothingStyleEnabled),
+            experimentalMainUiEnabled = prefs.getBoolean(
+                "experimental_main_ui_enabled",
+                defaults.experimentalMainUiEnabled
+            ),
             turnOffWhenBackDown = prefs.getBoolean("turn_off_when_back_down", defaults.turnOffWhenBackDown),
         ))
     }
@@ -174,6 +179,7 @@ object SettingsPreferences {
             .putBoolean("show_phone1_glyph_debug_controls_everywhere", parameters.showPhone1GlyphDebugControlsEverywhere)
             .putBoolean("auto_enable_phone1_glyph_debug_on_start", parameters.autoEnablePhone1GlyphDebugOnStart)
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
+            .putBoolean("experimental_main_ui_enabled", parameters.experimentalMainUiEnabled)
             .putBoolean("turn_off_when_back_down", parameters.turnOffWhenBackDown)
             .apply()
     }

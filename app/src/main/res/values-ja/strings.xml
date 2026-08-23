@@ -81,6 +81,8 @@
     <string name="settings_about_desc">バージョン、サポート、ログ、ライセンスを確認できます。</string>
     <string name="settings_nothing_style_title">実験的: Nothing ライクなUI</string>
     <string name="settings_nothing_style_desc">白黒基調に赤のアクセントを使った Nothing 風の見た目に切り替えます。実験的機能のため、今後デザインが変わる場合があります。</string>
+    <string name="settings_experimental_main_ui_title">実験的ホーム画面</string>
+    <string name="settings_experimental_main_ui_desc">ビジュアライザー中心のホーム画面を使用します。OFFにすると、いつでも以前のホーム画面へ戻せます。</string>
     <string name="settings_ui_mode_title">UIスタイル</string>
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
@@ -238,6 +240,21 @@
     <string name="hero_tone_focus_balanced">音域バランス</string>
     <string name="capture_state_live">動作中</string>
     <string name="capture_state_idle">停止中</string>
+    <string name="experimental_home_state_waiting">待機中</string>
+    <string name="experimental_home_details">詳細</string>
+    <string name="experimental_home_select_pattern">パターンを選択</string>
+    <string name="experimental_home_pattern_settings">パターン設定</string>
+    <string name="experimental_details_tab_live">ライブ</string>
+    <string name="experimental_details_tab_tune">調整</string>
+    <string name="experimental_details_tab_system">システム</string>
+    <string name="experimental_details_capture_section">キャプチャ</string>
+    <string name="experimental_details_live_meter_section">ライブメーター</string>
+    <string name="experimental_details_system_section">キャプチャシステム</string>
+    <string name="experimental_details_glyph_section">Glyphの挙動</string>
+    <string name="experimental_details_data_section">設定データ</string>
+    <string name="experimental_details_footer_live">調整：感度・応答・音域　システム：レイテンシ・Glyph動作</string>
+    <string name="experimental_details_footer_tune">ライブ：キャプチャ・メーター　システム：レイテンシ・Glyph動作</string>
+    <string name="experimental_details_footer_system">ライブ：キャプチャ・メーター　調整：感度・応答・音域</string>
 
     <string name="meter_label_level">レベル</string>
     <string name="meter_label_peak">ピーク</string>
@@ -353,8 +370,7 @@
     <string name="latency_assign_bluetooth">Bluetooth出力に割り当て</string>
     <string name="latency_delete_preset">プリセットを削除</string>
     <string name="latency_auto_switch_title">プリセット自動切り替え</string>
-    <string name="latency_auto_switch_on">Bluetooth出力時とそれ以外で、値を自動切り替えします</string>
-    <string name="latency_auto_switch_off">出力先に関係なく現在のレイテンシ値を使います</string>
+    <string name="latency_auto_switch_desc">Bluetooth出力時とそれ以外で、レイテンシを自動切り替えします</string>
     <string name="latency_route_bluetooth">Bluetooth出力時</string>
     <string name="latency_route_default">通常出力時</string>
     <string name="latency_active_route_bluetooth">現在の出力: Bluetooth</string>
@@ -419,31 +435,24 @@
     <string name="param_tone_focus_balanced">バランス</string>
 
     <string name="glyph_direction_title">メーターの向きを反転</string>
-    <string name="glyph_direction_top_to_bottom">反転あり</string>
-    <string name="glyph_direction_bottom_to_top">通常方向</string>
+    <string name="glyph_direction_desc">メーターの向きを反転させます</string>
 
     <string name="binary_mode_title">バイナリモード</string>
-    <string name="binary_mode_on">各セグメントを完全な点灯/消灯のみで表現</string>
-    <string name="binary_mode_off">明るさをなめらかに変化</string>
+    <string name="binary_mode_desc">Glyphライトを点灯/消灯のみで制御します</string>
     <string name="matrix_smooth_motion_title">動きを滑らかにする</string>
-    <string name="matrix_smooth_motion_on">60 FPS</string>
-    <string name="matrix_smooth_motion_off">24 FPS</string>
+    <string name="matrix_smooth_motion_desc">60fpsで描画しますが、動作が重くなる場合があります</string>
     <string name="oscilloscope_auto_time_axis_title">自動時間軸調整</string>
     <string name="oscilloscope_auto_time_axis_title_with_value">自動時間軸調整 (%1$+.1f)</string>
-    <string name="oscilloscope_auto_time_axis_on">その時の波形が読みやすいように表示窓を自動調整します</string>
-    <string name="oscilloscope_auto_time_axis_off">固定の表示窓を使用します</string>
+    <string name="oscilloscope_auto_time_axis_desc">波形が読みやすいように表示窓を自動調整します</string>
 
     <string name="level_auto_scale_title">レベル自動スケール</string>
-    <string name="level_auto_scale_on">レベルの最大/最小値が自動で変化します</string>
-    <string name="level_auto_scale_off">固定スケール</string>
+    <string name="level_auto_scale_desc">メーターの最大/最小値を自動で変化させます</string>
 
     <string name="spectrum_auto_scale_title">自動スケール調整</string>
-    <string name="spectrum_auto_scale_on">バンドごとにレベルの最大/最小値が自動で変化します</string>
-    <string name="spectrum_auto_scale_off">固定スケール</string>
+    <string name="spectrum_auto_scale_desc">バンドごとにメーターの最大/最小値を自動で変化させます</string>
 
     <string name="all_brightness_auto_scale_title">自動スケール調整</string>
-    <string name="all_brightness_auto_scale_on">レベルの最大/最小値が自動で変化します</string>
-    <string name="all_brightness_auto_scale_off">固定スケール</string>
+    <string name="all_brightness_auto_scale_desc">レベルの最大/最小値を自動で変化させます</string>
 
     <string name="turn_off_when_back_down_title">背面を下にすると消灯</string>
     <string name="turn_off_when_back_down_on">端末の背面が下向きの間は Glyphが消灯します</string>

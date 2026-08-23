@@ -25,6 +25,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.res.ResourcesCompat
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
@@ -36,6 +38,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,12 +49,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +79,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -98,6 +106,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
@@ -105,8 +115,10 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -124,6 +136,11 @@ import androidx.compose.ui.res.stringResource
 import jp.linkserver.glyphvisualizer.ui.AboutScreen
 import jp.linkserver.glyphvisualizer.ui.OssLicensesScreen
 import jp.linkserver.glyphvisualizer.ui.SettingsScreen
+import jp.linkserver.glyphvisualizer.ui.SettingsDividerGap
+import jp.linkserver.glyphvisualizer.ui.SettingsEntry
+import jp.linkserver.glyphvisualizer.ui.SettingsGroupPosition
+import jp.linkserver.glyphvisualizer.ui.SettingsItemSurface
+import jp.linkserver.glyphvisualizer.ui.SettingsToggleEntry
 import jp.linkserver.glyphvisualizer.ui.UpdateOverviewScreen
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
@@ -149,6 +166,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -870,6 +888,7 @@ private class NativeMeterStatsView @JvmOverloads constructor(
 private enum class Screen {
     WELCOME,
     MAIN,
+    DETAILS,
     LATENCY,
     SETTINGS,
     EXPERIMENTAL,
@@ -1178,6 +1197,7 @@ class MainActivity : ComponentActivity() {
                     showPhone1GlyphDebugControlsEverywhere = uiState.showPhone1GlyphDebugControlsEverywhere,
                     autoEnablePhone1GlyphDebugOnStart = uiState.autoEnablePhone1GlyphDebugOnStart,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
+                    experimentalMainUiEnabled = uiState.experimentalMainUiEnabled,
                     turnOffWhenBackDown = uiState.turnOffWhenBackDown,
                     onSensitivityChanged = { newValue ->
                         CaptureUiStore.update { it.copy(sensitivity = newValue) }
@@ -1651,6 +1671,10 @@ class MainActivity : ComponentActivity() {
                     },
                     onNothingStyleEnabledChanged = { newValue ->
                         CaptureUiStore.update { it.copy(nothingStyleEnabled = newValue) }
+                        SettingsPreferences.save(this, CaptureUiStore.state)
+                    },
+                    onExperimentalMainUiEnabledChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(experimentalMainUiEnabled = newValue) }
                         SettingsPreferences.save(this, CaptureUiStore.state)
                     },
                     onResetParametersClick = {
@@ -2286,6 +2310,7 @@ private fun GlyphVisualizerApp(
     showPhone1GlyphDebugControlsEverywhere: Boolean,
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     nothingStyleEnabled: Boolean,
+    experimentalMainUiEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
     onNoiseGateChanged: (Float) -> Unit,
@@ -2325,6 +2350,7 @@ private fun GlyphVisualizerApp(
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     onNothingStyleEnabledChanged: (Boolean) -> Unit,
+    onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     onResetParametersClick: () -> Unit,
     onExportParametersClick: () -> Unit,
@@ -2355,6 +2381,7 @@ private fun GlyphVisualizerApp(
             screen == Screen.UPDATE -> screen = Screen.ABOUT
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
+            screen == Screen.LATENCY && experimentalMainUiEnabled -> screen = Screen.DETAILS
             else -> screen = Screen.MAIN
         }
     }
@@ -2462,7 +2489,34 @@ private fun GlyphVisualizerApp(
                             screen = Screen.MAIN
                         }
                     )
-                    Screen.MAIN -> MainScreenContent(
+                    Screen.MAIN, Screen.DETAILS -> if (
+                        targetScreen == Screen.MAIN && experimentalMainUiEnabled
+                    ) {
+                        ExperimentalMainScreenContent(
+                            heroTitle = heroTitle,
+                            isCapturing = isCapturing,
+                            startPending = startPending,
+                            glyphMode = glyphMode,
+                            deviceProfile = deviceProfile,
+                            binaryMode = binaryMode,
+                            fillOtherGlyphLights = fillOtherGlyphLights,
+                            baseIndicatorEnabled = baseIndicatorEnabled,
+                            recordingLightIncluded = recordingLightIncluded,
+                            reverseDirection = reverseDirection,
+                            nothingStyleEnabled = nothingStyleEnabled,
+                            onStartClick = {
+                                startPending = true
+                                onStartVisualizerClick()
+                            },
+                            onStopClick = onStopClick,
+                            onGlyphModeChanged = onGlyphModeChanged,
+                            onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                            onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
+                            onOpenDetails = { screen = Screen.DETAILS },
+                            onOpenSettings = { screen = Screen.SETTINGS }
+                        )
+                    } else {
+                        MainScreenContent(
                         containerBrush = containerBrush,
                         statusText = statusText,
                         isCapturing = isCapturing,
@@ -2470,6 +2524,7 @@ private fun GlyphVisualizerApp(
                         level = level,
                         peak = peak,
                         spectrumBands = spectrumBands,
+                        latencyMs = latencyMs,
                         sensitivity = sensitivity,
                         noiseGate = noiseGate,
                         dynamics = dynamics,
@@ -2547,8 +2602,23 @@ private fun GlyphVisualizerApp(
                         logMessage = logMessage,
                         onDismissLog = onDismissLog,
                         onOpenMenu = { drawerOpen = true },
-                        onOpenSettings = { screen = Screen.SETTINGS }
+                        onOpenSettings = { screen = Screen.SETTINGS },
+                        onOpenLatency = if (
+                            targetScreen == Screen.DETAILS && experimentalMainUiEnabled
+                        ) {
+                            { screen = Screen.LATENCY }
+                        } else {
+                            null
+                        },
+                        onBackToExperimental = if (
+                            targetScreen == Screen.DETAILS && experimentalMainUiEnabled
+                        ) {
+                            { screen = Screen.MAIN }
+                        } else {
+                            null
+                        }
                     )
+                    }
                     Screen.LATENCY -> LatencyScreenContent(
                         containerBrush = containerBrush,
                         latencyMs = latencyMs,
@@ -2561,7 +2631,13 @@ private fun GlyphVisualizerApp(
                         onLatencyMsChangeFinished = onLatencyMsChangeFinished,
                         onLatencyAutoSwitchChanged = onLatencyAutoSwitchChanged,
                         onOpenMenu = { drawerOpen = true },
-                        onOpenSettings = { screen = Screen.SETTINGS }
+                        onOpenSettings = { screen = Screen.SETTINGS },
+                        experimentalStyle = experimentalMainUiEnabled,
+                        onBack = if (experimentalMainUiEnabled) {
+                            { screen = Screen.DETAILS }
+                        } else {
+                            null
+                        }
                     )
                     Screen.SETTINGS -> SettingsScreen(
                         onBack = { screen = Screen.MAIN },
@@ -2601,6 +2677,8 @@ private fun GlyphVisualizerApp(
                         showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device || showPhone1GlyphDebugControlsEverywhere,
                         autoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart,
                         onAutoEnablePhone1GlyphDebugOnStartChanged = onAutoEnablePhone1GlyphDebugOnStartChanged,
+                        experimentalMainUiEnabled = experimentalMainUiEnabled,
+                        onExperimentalMainUiEnabledChanged = onExperimentalMainUiEnabledChanged,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onNothingStyleEnabledChanged = onNothingStyleEnabledChanged
                     )
@@ -2944,6 +3022,1668 @@ private fun WelcomeRadioOption(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun ExperimentalMainScreenContent(
+    heroTitle: String,
+    isCapturing: Boolean,
+    startPending: Boolean,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    fillOtherGlyphLights: Boolean,
+    baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean,
+    reverseDirection: Boolean,
+    nothingStyleEnabled: Boolean,
+    onStartClick: () -> Unit,
+    onStopClick: () -> Unit,
+    onGlyphModeChanged: (String) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
+    onOpenDetails: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
+    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
+    val liveFrame = CaptureUiStore.liveFrame
+    val deviceName = remember(heroTitle) {
+        heroTitle.lineSequence().firstOrNull { it.isNotBlank() } ?: heroTitle
+    }
+    val patternDefinition = GlyphPatternRegistry.definition(glyphMode)
+    val patternLabel = patternDefinition?.let { stringResource(it.labelRes) } ?: glyphMode
+    val meterModel = remember(
+        liveFrame.level,
+        liveFrame.meterSegments,
+        glyphMode,
+        deviceProfile,
+        binaryMode,
+        recordingLightIncluded,
+        reverseDirection
+    ) {
+        buildUiMeterModel(
+            level = liveFrame.level,
+            meterSegments = liveFrame.meterSegments,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = true,
+            recordingLightIncluded = recordingLightIncluded,
+            reverseDirection = reverseDirection
+        )
+    }
+    var showPatternSheet by rememberSaveable { mutableStateOf(false) }
+    var showDevicePatternSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
+    val supportsFillOtherGlyphLights = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE1,
+        GlyphDeviceProfile.PHONE2,
+        GlyphDeviceProfile.PHONE2A
+    )
+    val supportsRecordingLightBehavior = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE4A,
+        GlyphDeviceProfile.PHONE4B
+    )
+    val hasDevicePatternSettings =
+        supportsFillOtherGlyphLights || supportsRecordingLightBehavior
+    val recordingLightBehavior = resolveRecordingLightBehavior(
+        baseIndicatorEnabled = baseIndicatorEnabled,
+        recordingLightIncluded = recordingLightIncluded
+    )
+    val recordingLightBehaviorLabel = when (recordingLightBehavior) {
+        RecordingLightBehavior.NONE -> stringResource(R.string.recording_light_behavior_none)
+        RecordingLightBehavior.INCLUDED_IN_METER ->
+            stringResource(R.string.recording_light_behavior_meter)
+        RecordingLightBehavior.BASS_INDICATOR ->
+            stringResource(R.string.recording_light_behavior_bass)
+    }
+    val dividerColor = Color(0xFF3A3A3A)
+    val startButtonContainerColor by animateColorAsState(
+        targetValue = if (isCapturing) NothingRed else Color.White,
+        animationSpec = tween(durationMillis = 180),
+        label = "experimental_home_start_button_container"
+    )
+    val startButtonContentColor by animateColorAsState(
+        targetValue = if (isCapturing) Color.White else Color.Black,
+        animationSpec = tween(durationMillis = 180),
+        label = "experimental_home_start_button_content"
+    )
+
+    if (showPatternSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPatternSheet = false },
+            containerColor = Color(0xFF0A0A0A),
+            contentColor = Color.White,
+            dragHandle = null
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(top = 22.dp, bottom = 12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.experimental_home_select_pattern),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 22.sp
+                )
+                LazyColumn(modifier = Modifier.heightIn(max = 520.dp)) {
+                    items(
+                        items = GlyphPatternRegistry.patternsFor(deviceProfile),
+                        key = { it.id }
+                    ) { pattern ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onGlyphModeChanged(pattern.id)
+                                    showPatternSheet = false
+                                }
+                                .padding(horizontal = 24.dp, vertical = 17.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(pattern.labelRes),
+                                modifier = Modifier.weight(1f),
+                                color = Color.White,
+                                fontFamily = displayFont,
+                                fontSize = 17.sp
+                            )
+                            if (pattern.id == glyphMode) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = NothingRed
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDevicePatternSettingsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showDevicePatternSettingsSheet = false },
+            containerColor = Color(0xFF0A0A0A),
+            contentColor = Color.White,
+            dragHandle = null
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.experimental_home_pattern_settings),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 22.sp
+                )
+                if (supportsFillOtherGlyphLights) {
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.fill_other_glyph_lights_title),
+                        description = stringResource(R.string.fill_other_glyph_lights_desc),
+                        checked = fillOtherGlyphLights,
+                        onCheckedChange = onFillOtherGlyphLightsChanged,
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Single
+                    )
+                }
+                if (supportsRecordingLightBehavior) {
+                    SettingsEntry(
+                        title = stringResource(R.string.recording_light_behavior_title),
+                        description = recordingLightBehaviorLabel,
+                        onClick = {
+                            showDevicePatternSettingsSheet = false
+                            showRecordingLightDialog = true
+                        },
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Single
+                    )
+                }
+            }
+        }
+    }
+
+    if (showRecordingLightDialog) {
+        ExperimentalRecordingLightDialog(
+            selected = recordingLightBehavior,
+            onDismiss = { showRecordingLightDialog = false },
+            onSelected = { behavior ->
+                showRecordingLightDialog = false
+                onRecordingLightBehaviorChanged(behavior)
+            }
+        )
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Black,
+        contentColor = Color.White
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 18.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 25.sp
+                )
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = stringResource(R.string.cd_settings),
+                        tint = Color.White,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                shape = RoundedCornerShape(28.dp),
+                color = Color(0xFF101010),
+                border = BorderStroke(1.dp, dividerColor)
+            ) {
+                Text(
+                    text = "$deviceName  •  ${stringResource(
+                        if (isCapturing) R.string.capture_state_live else R.string.experimental_home_state_waiting
+                    )}",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 16.sp,
+                    maxLines = 1
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 30.dp, vertical = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                MeterCanvas(
+                    level = liveFrame.level,
+                    peak = liveFrame.peak,
+                    meterModel = meterModel,
+                    nothingStyleEnabled = nothingStyleEnabled
+                )
+            }
+
+            HorizontalDivider(color = dividerColor)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .navigationBarsPadding(),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(104.dp)
+                        .fillMaxHeight()
+                        .clickable(enabled = !startPending) {
+                            if (isCapturing) onStopClick() else onStartClick()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(startButtonContainerColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when {
+                            startPending -> CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                                color = startButtonContentColor
+                            )
+                            isCapturing -> Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = stringResource(R.string.button_stop),
+                                tint = startButtonContentColor,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            else -> Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = stringResource(R.string.button_no_capture),
+                                tint = startButtonContentColor,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(dividerColor)
+                )
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clickable { showPatternSheet = true }
+                            .padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = patternLabel,
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            fontFamily = displayFont,
+                            fontSize = 17.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+
+                    HorizontalDivider(color = dividerColor)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        if (hasDevicePatternSettings) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clickable { showDevicePatternSettingsSheet = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreHoriz,
+                                    contentDescription = stringResource(
+                                        R.string.experimental_home_pattern_settings
+                                    ),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .fillMaxHeight()
+                                    .background(dividerColor)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(onClick = onOpenDetails)
+                                .padding(horizontal = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.experimental_home_details),
+                                modifier = Modifier.weight(1f),
+                                color = Color.White,
+                                fontFamily = displayFont,
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.End
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalDetailsSummary(
+    heroTitle: String,
+    isCapturing: Boolean,
+    glyphMode: String,
+    latencyMs: Float,
+    onOpenLatency: (() -> Unit)?,
+    displayFont: FontFamily,
+    nothingStyleEnabled: Boolean
+) {
+    val deviceName = remember(heroTitle) {
+        heroTitle.lineSequence().firstOrNull { it.isNotBlank() } ?: heroTitle
+    }
+    val deviceDetail = remember(heroTitle) {
+        heroTitle.lineSequence().drop(1).firstOrNull { it.isNotBlank() }
+    }
+    val patternDefinition = GlyphPatternRegistry.definition(glyphMode)
+    val patternLabel = patternDefinition?.let { stringResource(it.labelRes) } ?: glyphMode
+    val dividerColor = Color(0xFF3A3A3A)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = dividerColor)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(if (isCapturing) NothingRed else Color(0xFF5A5A5A))
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = deviceName,
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 22.sp
+                )
+                Text(
+                    text = listOfNotNull(deviceDetail, patternLabel).joinToString("  •  "),
+                    color = Color(0xFFBDBDBD),
+                    fontFamily = displayFont,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = Color(0xFF111111),
+                border = BorderStroke(1.dp, dividerColor)
+            ) {
+                Text(
+                    text = stringResource(
+                        if (isCapturing) R.string.capture_state_live else R.string.experimental_home_state_waiting
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 14.sp
+                )
+            }
+        }
+        HorizontalDivider(color = dividerColor)
+        if (onOpenLatency != null) {
+            Surface(
+                onClick = onOpenLatency,
+                color = Color.Transparent,
+                contentColor = Color.White
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 64.dp)
+                        .padding(horizontal = 2.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.latency_title),
+                        modifier = Modifier.weight(1f),
+                        color = Color.White,
+                        fontFamily = displayFont,
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.latency_value_ms, latencyMs),
+                        color = Color(0xFFBDBDBD),
+                        fontFamily = if (nothingStyleEnabled) {
+                            NothingDotFontFamily
+                        } else {
+                            FontFamily.SansSerif
+                        },
+                        fontSize = 16.sp
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            HorizontalDivider(color = dividerColor)
+        }
+    }
+}
+
+private enum class ExperimentalDetailsTab {
+    LIVE,
+    TUNE,
+    SYSTEM
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExperimentalDetailsScreenContent(
+    heroTitle: String,
+    isCapturing: Boolean,
+    startPending: Boolean,
+    level: Float,
+    peak: Float,
+    meterSegments: Int,
+    latencyMs: Float,
+    sensitivity: Float,
+    noiseGate: Float,
+    dynamics: Float,
+    outputGamma: Float,
+    toneFocus: Float,
+    smoothing: Float,
+    autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float,
+    reverseDirection: Boolean,
+    glyphMode: String,
+    fillOtherGlyphLights: Boolean,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    matrixSmoothMotionEnabled: Boolean,
+    oscilloscopeAutoTimeAxisEnabled: Boolean,
+    baseIndicatorEnabled: Boolean,
+    recordingLightIncluded: Boolean,
+    levelAutoScale: Boolean,
+    spectrumAutoScale: Boolean,
+    allBrightnessAutoScale: Boolean,
+    mediaProjectionEnabled: Boolean,
+    nothingStyleEnabled: Boolean,
+    onResetParametersClick: () -> Unit,
+    onExportParametersClick: () -> Unit,
+    onImportParametersClick: () -> Unit,
+    onSensitivityChanged: (Float) -> Unit,
+    onNoiseGateChanged: (Float) -> Unit,
+    onDynamicsChanged: (Float) -> Unit,
+    onOutputGammaChanged: (Float) -> Unit,
+    onSmoothingChanged: (Float) -> Unit,
+    onToneFocusChanged: (Float) -> Unit,
+    onAutoScaleWindowSecondsChanged: (Float) -> Unit,
+    onAutoScaleWindowSecondsChangeFinished: () -> Unit,
+    onAutoScaleOffsetChanged: (Float) -> Unit,
+    onAutoScaleOffsetChangeFinished: () -> Unit,
+    onReverseDirectionChanged: (Boolean) -> Unit,
+    onGlyphModeChanged: (String) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onBinaryModeChanged: (Boolean) -> Unit,
+    onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
+    onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
+    onLevelAutoScaleChanged: (Boolean) -> Unit,
+    onSpectrumAutoScaleChanged: (Boolean) -> Unit,
+    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
+    onStartVisualizerClick: () -> Unit,
+    onStartProjectionClick: () -> Unit,
+    onStopClick: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenLatency: () -> Unit,
+    onBack: () -> Unit
+) {
+    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
+    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
+    val deviceName = remember(heroTitle) {
+        heroTitle.lineSequence().firstOrNull { it.isNotBlank() } ?: heroTitle
+    }
+    val deviceDetail = remember(heroTitle) {
+        heroTitle.lineSequence().drop(1).firstOrNull { it.isNotBlank() }
+    }
+    val patternDefinition = GlyphPatternRegistry.definition(glyphMode)
+    val patternLabel = patternDefinition?.let { stringResource(it.labelRes) } ?: glyphMode
+    val glyphRenderMode = patternDefinition?.recipe?.renderMode
+    val recordingLightBehavior = resolveRecordingLightBehavior(
+        baseIndicatorEnabled = baseIndicatorEnabled,
+        recordingLightIncluded = recordingLightIncluded
+    )
+    val recordingLightBehaviorLabel = when (recordingLightBehavior) {
+        RecordingLightBehavior.NONE -> stringResource(R.string.recording_light_behavior_none)
+        RecordingLightBehavior.INCLUDED_IN_METER -> stringResource(R.string.recording_light_behavior_meter)
+        RecordingLightBehavior.BASS_INDICATOR -> stringResource(R.string.recording_light_behavior_bass)
+    }
+    val meterModel = remember(
+        level,
+        glyphMode,
+        deviceProfile,
+        binaryMode,
+        recordingLightIncluded,
+        reverseDirection
+    ) {
+        buildUiMeterModel(
+            level = level,
+            meterSegments = meterSegments,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = true,
+            recordingLightIncluded = recordingLightIncluded,
+            reverseDirection = reverseDirection
+        )
+    }
+    val supportsFillOtherGlyphLights = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE1,
+        GlyphDeviceProfile.PHONE2,
+        GlyphDeviceProfile.PHONE2A
+    )
+    val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
+        !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
+        glyphRenderMode != GlyphPatternRenderMode.CLASSIC
+    val isMatrixDevice = deviceProfile in setOf(
+        GlyphDeviceProfile.PHONE3_MATRIX,
+        GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+    )
+
+    var selectedTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
+    var showPatternSheet by rememberSaveable { mutableStateOf(false) }
+    var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showPatternSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPatternSheet = false },
+            containerColor = Color(0xFF0A0A0A),
+            contentColor = Color.White,
+            dragHandle = null
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(top = 22.dp, bottom = 12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.experimental_home_select_pattern),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                    color = Color.White,
+                    fontFamily = displayFont,
+                    fontSize = 22.sp
+                )
+                LazyColumn(modifier = Modifier.heightIn(max = 520.dp)) {
+                    items(
+                        items = GlyphPatternRegistry.patternsFor(deviceProfile),
+                        key = { it.id }
+                    ) { pattern ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onGlyphModeChanged(pattern.id)
+                                    showPatternSheet = false
+                                }
+                                .padding(horizontal = 24.dp, vertical = 17.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(pattern.labelRes),
+                                modifier = Modifier.weight(1f),
+                                color = Color.White,
+                                fontFamily = displayFont,
+                                fontSize = 17.sp
+                            )
+                            if (pattern.id == glyphMode) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = NothingRed
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showRecordingLightDialog) {
+        ExperimentalRecordingLightDialog(
+            selected = recordingLightBehavior,
+            onDismiss = { showRecordingLightDialog = false },
+            onSelected = { behavior ->
+                showRecordingLightDialog = false
+                onRecordingLightBehaviorChanged(behavior)
+            }
+        )
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text(stringResource(R.string.reset_parameters_dialog_title)) },
+            text = { Text(stringResource(R.string.reset_parameters_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetDialog = false
+                        onResetParametersClick()
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_reset_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+
+    Scaffold(
+        containerColor = Color.Black,
+        contentColor = Color.White,
+        contentWindowInsets = WindowInsets.statusBars,
+        topBar = {
+            CenterAlignedTopAppBar(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Black,
+                    navigationIconContentColor = Color.White,
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back)
+                        )
+                    }
+                },
+                title = {
+                    Text(
+                        text = stringResource(R.string.experimental_home_details),
+                        fontFamily = displayFont,
+                        fontSize = 25.sp
+                    )
+                },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.cd_settings)
+                        )
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            ExperimentalDetailsTabRow(
+                selectedTab = selectedTab,
+                onSelected = { selectedTab = it },
+                displayFont = displayFont
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                        (
+                            slideInHorizontally(
+                                animationSpec = spring(
+                                    dampingRatio = 0.82f,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            ) { fullWidth -> direction * (fullWidth / 10) } +
+                                fadeIn(animationSpec = tween(durationMillis = 180))
+                            ) togetherWith (
+                            slideOutHorizontally(
+                                animationSpec = spring(
+                                    dampingRatio = 0.9f,
+                                    stiffness = Spring.StiffnessMedium
+                                )
+                            ) { fullWidth -> -direction * (fullWidth / 14) } +
+                                fadeOut(animationSpec = tween(durationMillis = 120))
+                            )
+                    },
+                    label = "experimental_details_tab_content"
+                ) { tab ->
+                    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        when (tab) {
+                            ExperimentalDetailsTab.LIVE -> ExperimentalDetailsLiveTab(
+                                deviceName = deviceName,
+                                deviceDetail = deviceDetail,
+                                isCapturing = isCapturing,
+                                startPending = startPending,
+                                patternLabel = patternLabel,
+                                recordingLightBehaviorLabel = recordingLightBehaviorLabel,
+                                level = level,
+                                peak = peak,
+                                meterModel = meterModel,
+                                onStartClick = onStartVisualizerClick,
+                                onStopClick = onStopClick,
+                                onOpenPattern = { showPatternSheet = true },
+                                onOpenRecordingLight = { showRecordingLightDialog = true },
+                                displayFont = displayFont,
+                                nothingStyleEnabled = nothingStyleEnabled
+                            )
+
+                            ExperimentalDetailsTab.TUNE -> ExperimentalDetailsTuneTab(
+                                sensitivity = sensitivity,
+                                noiseGate = noiseGate,
+                                dynamics = dynamics,
+                                outputGamma = outputGamma,
+                                toneFocus = toneFocus,
+                                smoothing = smoothing,
+                                autoScaleWindowSeconds = autoScaleWindowSeconds,
+                                autoScaleOffset = autoScaleOffset,
+                                onSensitivityChanged = onSensitivityChanged,
+                                onNoiseGateChanged = onNoiseGateChanged,
+                                onDynamicsChanged = onDynamicsChanged,
+                                onOutputGammaChanged = onOutputGammaChanged,
+                                onSmoothingChanged = onSmoothingChanged,
+                                onToneFocusChanged = onToneFocusChanged,
+                                onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
+                                onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                                onAutoScaleOffsetChanged = onAutoScaleOffsetChanged,
+                                onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
+                                onResetClick = { showResetDialog = true },
+                                onImportClick = onImportParametersClick,
+                                onExportClick = onExportParametersClick,
+                                nothingStyleEnabled = nothingStyleEnabled
+                            )
+
+                            ExperimentalDetailsTab.SYSTEM -> ExperimentalDetailsSystemTab(
+                                latencyMs = latencyMs,
+                                reverseDirection = reverseDirection,
+                                binaryMode = binaryMode,
+                                matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                                oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+                                levelAutoScale = levelAutoScale,
+                                spectrumAutoScale = spectrumAutoScale,
+                                allBrightnessAutoScale = allBrightnessAutoScale,
+                                fillOtherGlyphLights = fillOtherGlyphLights,
+                                glyphMode = glyphMode,
+                                isMatrixDevice = isMatrixDevice,
+                                glyphRenderMode = glyphRenderMode,
+                                fillOtherGlyphLightsEnabledForMode = fillOtherGlyphLightsEnabledForMode,
+                                mediaProjectionEnabled = mediaProjectionEnabled,
+                                nothingStyleEnabled = nothingStyleEnabled,
+                                onOpenLatency = onOpenLatency,
+                                onReverseDirectionChanged = onReverseDirectionChanged,
+                                onBinaryModeChanged = onBinaryModeChanged,
+                                onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
+                                onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
+                                onLevelAutoScaleChanged = onLevelAutoScaleChanged,
+                                onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
+                                onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                                onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                                onStartProjectionClick = onStartProjectionClick
+                            )
+                        }
+
+                        ExperimentalDetailsFooterHint(
+                            selectedTab = tab,
+                            displayFont = displayFont
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalDetailsTabRow(
+    selectedTab: ExperimentalDetailsTab,
+    onSelected: (ExperimentalDetailsTab) -> Unit,
+    displayFont: FontFamily
+) {
+    val labels = listOf(
+        ExperimentalDetailsTab.LIVE to stringResource(R.string.experimental_details_tab_live),
+        ExperimentalDetailsTab.TUNE to stringResource(R.string.experimental_details_tab_tune),
+        ExperimentalDetailsTab.SYSTEM to stringResource(R.string.experimental_details_tab_system)
+    )
+    val selectedIndex = labels.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0)
+    Column {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+        ) {
+            val sidePadding = 20.dp
+            val tabWidth = (maxWidth - (sidePadding * 2)) / labels.size
+            val indicatorWidth = 58.dp
+            val targetOffset = sidePadding +
+                (tabWidth * selectedIndex) +
+                ((tabWidth - indicatorWidth) / 2)
+            val indicatorOffset by animateDpAsState(
+                targetValue = targetOffset,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                label = "experimental_details_tab_indicator"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = sidePadding)
+            ) {
+                labels.forEach { (tab, label) ->
+                    val selected = tab == selectedTab
+                    val labelColor by animateColorAsState(
+                        targetValue = if (selected) Color.White else Color(0xFF8D8D8D),
+                        animationSpec = tween(durationMillis = 180),
+                        label = "experimental_details_tab_color_${tab.name}"
+                    )
+                    val labelScale by animateFloatAsState(
+                        targetValue = if (selected) 1.06f else 0.96f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "experimental_details_tab_scale_${tab.name}"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable { onSelected(tab) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = labelScale
+                                scaleY = labelScale
+                            },
+                            color = labelColor,
+                            fontFamily = displayFont,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = indicatorOffset)
+                    .width(indicatorWidth)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+            )
+        }
+        HorizontalDivider(color = Color(0xFF2F2F2F))
+    }
+}
+
+@Composable
+private fun ExperimentalDetailsFooterHint(
+    selectedTab: ExperimentalDetailsTab,
+    displayFont: FontFamily
+) {
+    val text = when (selectedTab) {
+        ExperimentalDetailsTab.LIVE -> stringResource(R.string.experimental_details_footer_live)
+        ExperimentalDetailsTab.TUNE -> stringResource(R.string.experimental_details_footer_tune)
+        ExperimentalDetailsTab.SYSTEM -> stringResource(R.string.experimental_details_footer_system)
+    }
+    Text(
+        text = text,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF9A9A9A),
+        fontFamily = displayFont,
+        fontSize = 13.sp,
+        textAlign = TextAlign.Center
+    )
+}
+
+@Composable
+private fun ExperimentalDetailsSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
+private fun ExperimentalDetailsLiveTab(
+    deviceName: String,
+    deviceDetail: String?,
+    isCapturing: Boolean,
+    startPending: Boolean,
+    patternLabel: String,
+    recordingLightBehaviorLabel: String,
+    level: Float,
+    peak: Float,
+    meterModel: UiMeterModel,
+    onStartClick: () -> Unit,
+    onStopClick: () -> Unit,
+    onOpenPattern: () -> Unit,
+    onOpenRecordingLight: () -> Unit,
+    displayFont: FontFamily,
+    nothingStyleEnabled: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(
+            text = stringResource(R.string.experimental_details_capture_section)
+        )
+        Column {
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Top
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = deviceName,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontFamily = displayFont,
+                            fontSize = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = listOfNotNull(
+                                deviceDetail,
+                                stringResource(
+                                    if (isCapturing) {
+                                        R.string.capture_state_live
+                                    } else {
+                                        R.string.experimental_home_state_waiting
+                                    }
+                                )
+                            ).joinToString("  •  "),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Button(
+                        onClick = if (isCapturing) onStopClick else onStartClick,
+                        enabled = !startPending,
+                        shape = RoundedCornerShape(999.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isCapturing) NothingRed else Color.White,
+                            contentColor = Color.Black,
+                            disabledContainerColor = Color(0xFF777777),
+                            disabledContentColor = Color.Black
+                        ),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp)
+                    ) {
+                        if (startPending) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(17.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.Black
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isCapturing) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(
+                                if (isCapturing) R.string.button_stop else R.string.button_no_capture
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            SettingsDividerGap()
+            SettingsEntry(
+                title = stringResource(R.string.glyph_pattern),
+                description = patternLabel,
+                onClick = onOpenPattern,
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Middle
+            )
+            SettingsDividerGap()
+            SettingsEntry(
+                title = stringResource(R.string.recording_light_behavior_title),
+                description = recordingLightBehaviorLabel,
+                onClick = onOpenRecordingLight,
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Bottom
+            )
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(
+            text = stringResource(R.string.experimental_details_live_meter_section)
+        )
+        SettingsItemSurface(
+            nothingStyle = nothingStyleEnabled,
+            position = SettingsGroupPosition.Single
+        ) {
+            Box(modifier = Modifier.padding(14.dp)) {
+                MeterCanvas(
+                    level = level,
+                    peak = peak,
+                    meterModel = meterModel,
+                    nothingStyleEnabled = nothingStyleEnabled
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalDetailsTuneTab(
+    sensitivity: Float,
+    noiseGate: Float,
+    dynamics: Float,
+    outputGamma: Float,
+    toneFocus: Float,
+    smoothing: Float,
+    autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float,
+    onSensitivityChanged: (Float) -> Unit,
+    onNoiseGateChanged: (Float) -> Unit,
+    onDynamicsChanged: (Float) -> Unit,
+    onOutputGammaChanged: (Float) -> Unit,
+    onSmoothingChanged: (Float) -> Unit,
+    onToneFocusChanged: (Float) -> Unit,
+    onAutoScaleWindowSecondsChanged: (Float) -> Unit,
+    onAutoScaleWindowSecondsChangeFinished: () -> Unit,
+    onAutoScaleOffsetChanged: (Float) -> Unit,
+    onAutoScaleOffsetChangeFinished: () -> Unit,
+    onResetClick: () -> Unit,
+    onImportClick: () -> Unit,
+    onExportClick: () -> Unit,
+    nothingStyleEnabled: Boolean
+) {
+    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(text = stringResource(R.string.meter_parameters))
+        Column {
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Top
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
+                    ParameterSlider(
+                        title = stringResource(R.string.param_sensitivity_title),
+                        valueText = stringResource(R.string.percent_value, (sensitivity * 100).toInt()),
+                        description = stringResource(R.string.param_sensitivity_desc),
+                        value = sensitivity,
+                        onValueChange = onSensitivityChanged,
+                        valueRange = 0.6f..3.0f,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                }
+            }
+            SettingsDividerGap()
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Middle
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
+                    ParameterSlider(
+                        title = stringResource(R.string.param_response_speed_title),
+                        valueText = responseSpeedValueText(smoothing),
+                        description = stringResource(R.string.param_response_speed_desc),
+                        value = smoothing,
+                        onValueChange = onSmoothingChanged,
+                        valueRange = 0.08f..0.55f,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                }
+            }
+            SettingsDividerGap()
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Bottom
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
+                    ParameterSlider(
+                        title = stringResource(R.string.param_tone_focus_title),
+                        valueText = when {
+                            toneFocus < -0.1f -> stringResource(
+                                R.string.param_tone_focus_bass,
+                                (toneFocus * -100).toInt()
+                            )
+                            toneFocus > 0.1f -> stringResource(
+                                R.string.param_tone_focus_treble,
+                                (toneFocus * 100).toInt()
+                            )
+                            else -> stringResource(R.string.param_tone_focus_balanced)
+                        },
+                        description = stringResource(R.string.param_tone_focus_desc),
+                        value = toneFocus,
+                        onValueChange = onToneFocusChanged,
+                        valueRange = -1f..1f,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                }
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(text = stringResource(R.string.advanced_meter_title))
+        SettingsItemSurface(
+            nothingStyle = nothingStyleEnabled,
+            position = SettingsGroupPosition.Single,
+            onClick = { advancedExpanded = !advancedExpanded }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.advanced_meter_title),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = stringResource(R.string.advanced_meter_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = if (advancedExpanded) {
+                        Icons.Default.KeyboardArrowUp
+                    } else {
+                        Icons.Default.KeyboardArrowDown
+                    },
+                    contentDescription = null
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = advancedExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column {
+                ExperimentalParameterSettingsCard(
+                    position = SettingsGroupPosition.Top,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    title = stringResource(R.string.param_noise_gate_title),
+                    valueText = stringResource(R.string.percent_value, (noiseGate * 100).toInt()),
+                    description = stringResource(R.string.param_noise_gate_desc),
+                    value = noiseGate,
+                    onValueChange = onNoiseGateChanged,
+                    valueRange = 0f..0.35f
+                )
+                SettingsDividerGap()
+                ExperimentalParameterSettingsCard(
+                    position = SettingsGroupPosition.Middle,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    title = stringResource(R.string.param_dynamics_title),
+                    valueText = stringResource(R.string.param_dynamics_value, dynamics),
+                    description = stringResource(R.string.param_dynamics_desc),
+                    value = dynamics,
+                    onValueChange = onDynamicsChanged,
+                    valueRange = 0.6f..2.2f
+                )
+                SettingsDividerGap()
+                ExperimentalParameterSettingsCard(
+                    position = SettingsGroupPosition.Middle,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    title = stringResource(R.string.param_output_gamma_title),
+                    valueText = stringResource(R.string.param_dynamics_value, outputGamma),
+                    description = stringResource(R.string.param_output_gamma_desc),
+                    value = outputGamma,
+                    onValueChange = onOutputGammaChanged,
+                    valueRange = 0.6f..2.6f
+                )
+                SettingsDividerGap()
+                ExperimentalParameterSettingsCard(
+                    position = SettingsGroupPosition.Middle,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    title = stringResource(R.string.param_auto_scale_window_title),
+                    valueText = stringResource(
+                        R.string.param_auto_scale_window_value,
+                        autoScaleWindowSeconds
+                    ),
+                    description = stringResource(R.string.param_auto_scale_window_desc),
+                    value = autoScaleWindowSeconds,
+                    onValueChange = onAutoScaleWindowSecondsChanged,
+                    onValueChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                    valueRange = 5f..60f
+                )
+                SettingsDividerGap()
+                ExperimentalParameterSettingsCard(
+                    position = SettingsGroupPosition.Bottom,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    title = stringResource(R.string.param_auto_scale_offset_title),
+                    valueText = stringResource(
+                        R.string.percent_value,
+                        (autoScaleOffset * 100).toInt()
+                    ),
+                    description = stringResource(R.string.param_auto_scale_offset_desc),
+                    value = autoScaleOffset,
+                    onValueChange = onAutoScaleOffsetChanged,
+                    onValueChangeFinished = onAutoScaleOffsetChangeFinished,
+                    valueRange = 0f..0.4f
+                )
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(
+            text = stringResource(R.string.experimental_details_data_section)
+        )
+        SettingsItemSurface(
+            nothingStyle = nothingStyleEnabled,
+            position = SettingsGroupPosition.Single
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onResetClick
+                ) {
+                    Text(stringResource(R.string.settings_reset_button))
+                }
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onImportClick
+                ) {
+                    Text(stringResource(R.string.settings_import_button))
+                }
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onExportClick
+                ) {
+                    Text(stringResource(R.string.settings_export_button))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalParameterSettingsCard(
+    position: SettingsGroupPosition,
+    nothingStyleEnabled: Boolean,
+    title: String,
+    valueText: String,
+    description: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: (() -> Unit)? = null,
+    valueRange: ClosedFloatingPointRange<Float>
+) {
+    SettingsItemSurface(
+        nothingStyle = nothingStyleEnabled,
+        position = position
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
+            ParameterSlider(
+                title = title,
+                valueText = valueText,
+                description = description,
+                value = value,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                valueRange = valueRange,
+                nothingStyleEnabled = nothingStyleEnabled
+            )
+        }
+    }
+}
+
+private data class ExperimentalDetailsToggleItem(
+    val title: String,
+    val description: String,
+    val checked: Boolean,
+    val onCheckedChange: (Boolean) -> Unit
+)
+
+@Composable
+private fun ExperimentalDetailsSystemTab(
+    latencyMs: Float,
+    reverseDirection: Boolean,
+    binaryMode: Boolean,
+    matrixSmoothMotionEnabled: Boolean,
+    oscilloscopeAutoTimeAxisEnabled: Boolean,
+    levelAutoScale: Boolean,
+    spectrumAutoScale: Boolean,
+    allBrightnessAutoScale: Boolean,
+    fillOtherGlyphLights: Boolean,
+    glyphMode: String,
+    isMatrixDevice: Boolean,
+    glyphRenderMode: GlyphPatternRenderMode?,
+    fillOtherGlyphLightsEnabledForMode: Boolean,
+    mediaProjectionEnabled: Boolean,
+    nothingStyleEnabled: Boolean,
+    onOpenLatency: () -> Unit,
+    onReverseDirectionChanged: (Boolean) -> Unit,
+    onBinaryModeChanged: (Boolean) -> Unit,
+    onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
+    onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
+    onLevelAutoScaleChanged: (Boolean) -> Unit,
+    onSpectrumAutoScaleChanged: (Boolean) -> Unit,
+    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onStartProjectionClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(
+            text = stringResource(R.string.experimental_details_system_section)
+        )
+        SettingsEntry(
+            title = stringResource(R.string.latency_title),
+            description = stringResource(R.string.latency_value_ms, latencyMs),
+            onClick = onOpenLatency,
+            nothingStyle = nothingStyleEnabled,
+            position = SettingsGroupPosition.Single
+        )
+        if (mediaProjectionEnabled) {
+            SettingsEntry(
+                title = stringResource(R.string.button_media_projection),
+                description = stringResource(R.string.button_media_projection_hint),
+                onClick = onStartProjectionClick,
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Single
+            )
+        }
+    }
+
+    val toggles = buildList {
+        add(
+            ExperimentalDetailsToggleItem(
+                title = stringResource(R.string.glyph_direction_title),
+                description = stringResource(R.string.glyph_direction_desc),
+                checked = reverseDirection,
+                onCheckedChange = onReverseDirectionChanged
+            )
+        )
+        add(
+            ExperimentalDetailsToggleItem(
+                title = stringResource(R.string.binary_mode_title),
+                description = stringResource(R.string.binary_mode_desc),
+                checked = binaryMode,
+                onCheckedChange = onBinaryModeChanged
+            )
+        )
+        if (fillOtherGlyphLightsEnabledForMode) {
+            add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.fill_other_glyph_lights_title),
+                    description = stringResource(R.string.fill_other_glyph_lights_desc),
+                    checked = fillOtherGlyphLights,
+                    onCheckedChange = onFillOtherGlyphLightsChanged
+                )
+            )
+        }
+        if (isMatrixDevice) {
+            add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.matrix_smooth_motion_title),
+                    description = stringResource(R.string.matrix_smooth_motion_desc),
+                    checked = matrixSmoothMotionEnabled,
+                    onCheckedChange = onMatrixSmoothMotionEnabledChanged
+                )
+            )
+        }
+        if (glyphRenderMode == GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE) {
+            add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.oscilloscope_auto_time_axis_title),
+                    description = stringResource(R.string.oscilloscope_auto_time_axis_desc),
+                    checked = oscilloscopeAutoTimeAxisEnabled,
+                    onCheckedChange = onOscilloscopeAutoTimeAxisEnabledChanged
+                )
+            )
+        }
+        when {
+            GlyphPatternRegistry.isSpectrum(glyphMode) -> add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.spectrum_auto_scale_title),
+                    description = stringResource(R.string.spectrum_auto_scale_desc),
+                    checked = spectrumAutoScale,
+                    onCheckedChange = onSpectrumAutoScaleChanged
+                )
+            )
+            GlyphPatternRegistry.isAllBrightness(glyphMode) -> add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.all_brightness_auto_scale_title),
+                    description = stringResource(R.string.all_brightness_auto_scale_desc),
+                    checked = allBrightnessAutoScale,
+                    onCheckedChange = onAllBrightnessAutoScaleChanged
+                )
+            )
+            else -> add(
+                ExperimentalDetailsToggleItem(
+                    title = stringResource(R.string.level_auto_scale_title),
+                    description = stringResource(R.string.level_auto_scale_desc),
+                    checked = levelAutoScale,
+                    onCheckedChange = onLevelAutoScaleChanged
+                )
+            )
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        ExperimentalDetailsSectionTitle(
+            text = stringResource(R.string.experimental_details_glyph_section)
+        )
+        Column {
+            toggles.forEachIndexed { index, item ->
+                val position = when {
+                    toggles.size == 1 -> SettingsGroupPosition.Single
+                    index == 0 -> SettingsGroupPosition.Top
+                    index == toggles.lastIndex -> SettingsGroupPosition.Bottom
+                    else -> SettingsGroupPosition.Middle
+                }
+                SettingsToggleEntry(
+                    title = item.title,
+                    description = item.description,
+                    checked = item.checked,
+                    onCheckedChange = item.onCheckedChange,
+                    nothingStyle = nothingStyleEnabled,
+                    position = position
+                )
+                if (index != toggles.lastIndex) {
+                    SettingsDividerGap()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalRecordingLightDialog(
+    selected: RecordingLightBehavior,
+    onDismiss: () -> Unit,
+    onSelected: (RecordingLightBehavior) -> Unit
+) {
+    val options = listOf(
+        Triple(
+            RecordingLightBehavior.NONE,
+            stringResource(R.string.recording_light_behavior_none),
+            stringResource(R.string.recording_light_behavior_none_desc)
+        ),
+        Triple(
+            RecordingLightBehavior.INCLUDED_IN_METER,
+            stringResource(R.string.recording_light_behavior_meter),
+            stringResource(R.string.recording_light_behavior_meter_desc)
+        ),
+        Triple(
+            RecordingLightBehavior.BASS_INDICATOR,
+            stringResource(R.string.recording_light_behavior_bass),
+            stringResource(R.string.recording_light_behavior_bass_desc)
+        )
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.recording_light_behavior_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { (behavior, label, description) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelected(behavior) }
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        RadioButton(
+                            selected = selected == behavior,
+                            onClick = { onSelected(behavior) }
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dialog_cancel))
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun MainScreenContent(
     containerBrush: Brush,
     statusText: String,
@@ -2952,6 +4692,7 @@ private fun MainScreenContent(
     level: Float,
     peak: Float,
     spectrumBands: FloatArray,
+    latencyMs: Float,
     sensitivity: Float,
     noiseGate: Float,
     dynamics: Float,
@@ -3023,9 +4764,76 @@ private fun MainScreenContent(
     logMessage: String?,
     onDismissLog: () -> Unit,
     onOpenMenu: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenLatency: (() -> Unit)? = null,
+    onBackToExperimental: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
+    val experimentalDetailsStyle = onBackToExperimental != null
+    val experimentalDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
+    if (experimentalDetailsStyle) {
+        ExperimentalDetailsScreenContent(
+            heroTitle = heroTitle,
+            isCapturing = isCapturing,
+            startPending = startPending,
+            level = level,
+            peak = peak,
+            meterSegments = meterSegments,
+            latencyMs = latencyMs,
+            sensitivity = sensitivity,
+            noiseGate = noiseGate,
+            dynamics = dynamics,
+            outputGamma = outputGamma,
+            toneFocus = toneFocus,
+            smoothing = smoothing,
+            autoScaleWindowSeconds = autoScaleWindowSeconds,
+            autoScaleOffset = autoScaleOffset,
+            reverseDirection = reverseDirection,
+            glyphMode = glyphMode,
+            fillOtherGlyphLights = fillOtherGlyphLights,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+            oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+            baseIndicatorEnabled = baseIndicatorEnabled,
+            recordingLightIncluded = recordingLightIncluded,
+            levelAutoScale = levelAutoScale,
+            spectrumAutoScale = spectrumAutoScale,
+            allBrightnessAutoScale = allBrightnessAutoScale,
+            mediaProjectionEnabled = mediaProjectionEnabled,
+            nothingStyleEnabled = nothingStyleEnabled,
+            onResetParametersClick = onResetParametersClick,
+            onExportParametersClick = onExportParametersClick,
+            onImportParametersClick = onImportParametersClick,
+            onSensitivityChanged = onSensitivityChanged,
+            onNoiseGateChanged = onNoiseGateChanged,
+            onDynamicsChanged = onDynamicsChanged,
+            onOutputGammaChanged = onOutputGammaChanged,
+            onSmoothingChanged = onSmoothingChanged,
+            onToneFocusChanged = onToneFocusChanged,
+            onAutoScaleWindowSecondsChanged = onAutoScaleWindowSecondsChanged,
+            onAutoScaleWindowSecondsChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+            onAutoScaleOffsetChanged = onAutoScaleOffsetChanged,
+            onAutoScaleOffsetChangeFinished = onAutoScaleOffsetChangeFinished,
+            onReverseDirectionChanged = onReverseDirectionChanged,
+            onGlyphModeChanged = onGlyphModeChanged,
+            onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+            onBinaryModeChanged = onBinaryModeChanged,
+            onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
+            onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
+            onLevelAutoScaleChanged = onLevelAutoScaleChanged,
+            onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
+            onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+            onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
+            onStartVisualizerClick = onStartVisualizerClick,
+            onStartProjectionClick = onStartProjectionClick,
+            onStopClick = onStopClick,
+            onOpenSettings = onOpenSettings,
+            onOpenLatency = onOpenLatency ?: {},
+            onBack = onBackToExperimental ?: onOpenMenu
+        )
+        return
+    }
     var heroBottomInRoot by remember { mutableStateOf(Float.POSITIVE_INFINITY) }
     var compactMeterDismissed by rememberSaveable { mutableStateOf(false) }
     val meterModel = if (!meterVisibleEnabled || lightweightMeterEnabled || spectrumMeterEnabled || nativeMeterViewEnabled) {
@@ -3060,12 +4868,15 @@ private fun MainScreenContent(
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = if (experimentalDetailsStyle) Color.Black else Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = if (experimentalDetailsStyle) Color.Black else Color.Transparent,
+                    navigationIconContentColor = if (experimentalDetailsStyle) Color.White else Color.Unspecified,
+                    titleContentColor = if (experimentalDetailsStyle) Color.White else Color.Unspecified,
+                    actionIconContentColor = if (experimentalDetailsStyle) Color.White else Color.Unspecified
                 ),
                 navigationIcon = {
                     IconButton(onClick = onOpenMenu) {
@@ -3077,8 +4888,19 @@ private fun MainScreenContent(
                 },
                 title = {
                     Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineSmall
+                        text = stringResource(
+                            if (experimentalDetailsStyle) {
+                                R.string.experimental_home_details
+                            } else {
+                                R.string.app_name
+                            }
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = if (experimentalDetailsStyle) {
+                            experimentalDisplayFont
+                        } else {
+                            FontFamily.Default
+                        }
                     )
                 },
                 actions = {
@@ -3095,7 +4917,13 @@ private fun MainScreenContent(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .background(containerBrush)
+                .then(
+                    if (experimentalDetailsStyle) {
+                        Modifier.background(Color.Black)
+                    } else {
+                        Modifier.background(containerBrush)
+                    }
+                )
                 .padding(innerPadding),
             color = Color.Transparent
         ) {
@@ -3104,11 +4932,26 @@ private fun MainScreenContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                        .padding(
+                            horizontal = if (experimentalDetailsStyle) 24.dp else 20.dp,
+                            vertical = if (experimentalDetailsStyle) 18.dp else 12.dp
+                        )
+                        .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(
+                        if (experimentalDetailsStyle) 24.dp else 18.dp
+                    )
                 ) {
-                    if (mainScreenUiIsolationEnabled && meterVisibleEnabled) {
+                    if (experimentalDetailsStyle) {
+                        ExperimentalDetailsSummary(
+                            heroTitle = heroTitle,
+                            isCapturing = isCapturing,
+                            glyphMode = glyphMode,
+                            latencyMs = latencyMs,
+                            onOpenLatency = onOpenLatency,
+                            displayFont = experimentalDisplayFont,
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
+                    } else if (mainScreenUiIsolationEnabled && meterVisibleEnabled) {
                         IsolatedHeroCard(
                             modifier = Modifier.onGloballyPositioned { coordinates ->
                                 heroBottomInRoot = coordinates.boundsInRoot().bottom
@@ -3224,17 +5067,23 @@ private fun MainScreenContent(
                         onStartVisualizerClick = onStartVisualizerClick,
                         onStartProjectionClick = onStartProjectionClick,
                         onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
-                        onStopClick = onStopClick
+                        onStopClick = onStopClick,
+                        experimentalDetailsStyle = experimentalDetailsStyle
                     )
 
-                    InfoStrip()
+                    if (experimentalDetailsStyle) {
+                        ExperimentalDetailsInfoStrip()
+                    } else {
+                        InfoStrip()
+                    }
 
                     MeterInfoSection(
                         statusText = statusText,
                         noiseGate = noiseGate,
                         dynamics = dynamics,
                         logMessage = logMessage,
-                        onDismissLog = onDismissLog
+                        onDismissLog = onDismissLog,
+                        experimentalDetailsStyle = experimentalDetailsStyle
                     )
                 }
 
@@ -3299,9 +5148,13 @@ private fun LatencyScreenContent(
     onLatencyMsChangeFinished: () -> Unit,
     onLatencyAutoSwitchChanged: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    experimentalStyle: Boolean = false,
+    onBack: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
+    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
+    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
     var latencySliderValue by rememberSaveable { mutableStateOf(latencyMs) }
 
     LaunchedEffect(latencyMs) {
@@ -3309,25 +5162,31 @@ private fun LatencyScreenContent(
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = if (experimentalStyle) Color.Black else Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = if (experimentalStyle) Color.Black else Color.Transparent,
+                    navigationIconContentColor = if (experimentalStyle) Color.White else Color.Unspecified,
+                    titleContentColor = if (experimentalStyle) Color.White else Color.Unspecified,
+                    actionIconContentColor = if (experimentalStyle) Color.White else Color.Unspecified
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onOpenMenu) {
+                    IconButton(onClick = onBack ?: onOpenMenu) {
                         Icon(
-                            Icons.Default.Menu,
-                            contentDescription = stringResource(R.string.cd_menu)
+                            if (onBack == null) Icons.Default.Menu else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(
+                                if (onBack == null) R.string.cd_menu else R.string.cd_back
+                            )
                         )
                     }
                 },
                 title = {
                     Text(
                         text = stringResource(R.string.latency_title),
-                        style = MaterialTheme.typography.headlineSmall
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = if (experimentalStyle) displayFont else FontFamily.Default
                     )
                 },
                 actions = {
@@ -3344,7 +5203,13 @@ private fun LatencyScreenContent(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .background(containerBrush)
+                .then(
+                    if (experimentalStyle) {
+                        Modifier.background(Color.Black)
+                    } else {
+                        Modifier.background(containerBrush)
+                    }
+                )
                 .padding(innerPadding),
             color = Color.Transparent
         ) {
@@ -3352,24 +5217,40 @@ private fun LatencyScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(
+                        horizontal = if (experimentalStyle) 24.dp else 20.dp,
+                        vertical = if (experimentalStyle) 18.dp else 12.dp
+                    )
                     .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 androidx.compose.material3.Card(
-                    shape = RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp),
+                    shape = if (experimentalStyle) {
+                        RoundedCornerShape(0.dp)
+                    } else {
+                        RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp)
+                    },
                     colors = CardDefaults.cardColors(
-                        containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
+                        containerColor = if (experimentalStyle) {
+                            Color.Transparent
+                        } else {
+                            materialCardColor(nothingStyleEnabled, prominent = true)
+                        }
                     ),
-                    border = materialCardBorder(nothingStyleEnabled),
+                    border = if (experimentalStyle) null else materialCardBorder(nothingStyleEnabled),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(22.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(if (experimentalStyle) 0.dp else 22.dp),
+                        verticalArrangement = Arrangement.spacedBy(
+                            if (experimentalStyle) 22.dp else 16.dp
+                        )
                     ) {
+                        if (experimentalStyle) {
+                            HorizontalDivider(color = Color(0xFF3A3A3A))
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -3381,11 +5262,7 @@ private fun LatencyScreenContent(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
-                                    text = if (latencyAutoSwitchEnabled) {
-                                        stringResource(R.string.latency_auto_switch_on)
-                                    } else {
-                                        stringResource(R.string.latency_auto_switch_off)
-                                    },
+                                    text = stringResource(R.string.latency_auto_switch_desc),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -3439,6 +5316,9 @@ private fun LatencyScreenContent(
                             valueRange = 0f..500f,
                             nothingStyleEnabled = nothingStyleEnabled
                         )
+                        if (experimentalStyle) {
+                            HorizontalDivider(color = Color(0xFF3A3A3A))
+                        }
                     }
                 }
             }
@@ -3881,15 +5761,23 @@ private fun MeterInfoSection(
     noiseGate: Float,
     dynamics: Float,
     logMessage: String?,
-    onDismissLog: () -> Unit
+    onDismissLog: () -> Unit,
+    experimentalDetailsStyle: Boolean = false
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            shape = RoundedCornerShape(if (experimentalDetailsStyle) 0.dp else 16.dp),
+            color = if (experimentalDetailsStyle) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            border = BorderStroke(
+                1.dp,
+                if (experimentalDetailsStyle) Color(0xFF3A3A3A) else MaterialTheme.colorScheme.outlineVariant
+            )
         ) {
             TextButton(
                 onClick = { expanded = !expanded },
@@ -6267,8 +8155,10 @@ private fun ControlCard(
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
     onEnablePhone1GlyphDebugClick: () -> Unit,
-    onStopClick: () -> Unit
+    onStopClick: () -> Unit,
+    experimentalDetailsStyle: Boolean = false
 ) {
+    val experimentalDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
@@ -6498,22 +8388,41 @@ private fun ControlCard(
     }
 
     androidx.compose.material3.Card(
-        shape = RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp),
+        shape = if (experimentalDetailsStyle) {
+            RoundedCornerShape(0.dp)
+        } else {
+            RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp)
+        },
         colors = CardDefaults.cardColors(
-            containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
+            containerColor = if (experimentalDetailsStyle) {
+                Color.Transparent
+            } else {
+                materialCardColor(nothingStyleEnabled, prominent = true)
+            }
         ),
-        border = materialCardBorder(nothingStyleEnabled),
+        border = if (experimentalDetailsStyle) null else materialCardBorder(nothingStyleEnabled),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(if (experimentalDetailsStyle) 0.dp else 22.dp),
+            verticalArrangement = Arrangement.spacedBy(
+                if (experimentalDetailsStyle) 20.dp else 16.dp
+            )
         ) {
             Text(
                 text = stringResource(R.string.capture_control_title),
-                style = MaterialTheme.typography.titleMedium
+                style = if (experimentalDetailsStyle) {
+                    MaterialTheme.typography.headlineSmall
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
+                fontFamily = if (experimentalDetailsStyle) {
+                    experimentalDisplayFont
+                } else {
+                    FontFamily.Default
+                }
             )
 
             if (isCapturing) {
@@ -6632,7 +8541,16 @@ private fun ControlCard(
 
             Text(
                 text = stringResource(R.string.glyph_pattern),
-                style = MaterialTheme.typography.titleMedium
+                style = if (experimentalDetailsStyle) {
+                    MaterialTheme.typography.headlineSmall
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
+                fontFamily = if (experimentalDetailsStyle) {
+                    experimentalDisplayFont
+                } else {
+                    FontFamily.Default
+                }
             )
             val modes = GlyphPatternRegistry.patternsFor(deviceProfile)
                 .map { it.id to stringResource(it.labelRes) }
@@ -6935,11 +8853,7 @@ private fun ControlCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (reverseDirection) {
-                            stringResource(R.string.glyph_direction_top_to_bottom)
-                        } else {
-                            stringResource(R.string.glyph_direction_bottom_to_top)
-                        },
+                        text = stringResource(R.string.glyph_direction_desc),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -6961,11 +8875,7 @@ private fun ControlCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (binaryMode) {
-                            stringResource(R.string.binary_mode_on)
-                        } else {
-                            stringResource(R.string.binary_mode_off)
-                        },
+                        text = stringResource(R.string.binary_mode_desc),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -6988,11 +8898,7 @@ private fun ControlCard(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (matrixSmoothMotionEnabled) {
-                                stringResource(R.string.matrix_smooth_motion_on)
-                            } else {
-                                stringResource(R.string.matrix_smooth_motion_off)
-                            },
+                            text = stringResource(R.string.matrix_smooth_motion_desc),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -7023,11 +8929,7 @@ private fun ControlCard(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (oscilloscopeAutoTimeAxisEnabled) {
-                                stringResource(R.string.oscilloscope_auto_time_axis_on)
-                            } else {
-                                stringResource(R.string.oscilloscope_auto_time_axis_off)
-                            },
+                            text = stringResource(R.string.oscilloscope_auto_time_axis_desc),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -7051,11 +8953,7 @@ private fun ControlCard(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (levelAutoScale) {
-                                stringResource(R.string.level_auto_scale_on)
-                            } else {
-                                stringResource(R.string.level_auto_scale_off)
-                            },
+                            text = stringResource(R.string.level_auto_scale_desc),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -7079,11 +8977,7 @@ private fun ControlCard(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (spectrumAutoScale) {
-                                stringResource(R.string.spectrum_auto_scale_on)
-                            } else {
-                                stringResource(R.string.spectrum_auto_scale_off)
-                            },
+                            text = stringResource(R.string.spectrum_auto_scale_desc),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -7107,11 +9001,7 @@ private fun ControlCard(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (allBrightnessAutoScale) {
-                                stringResource(R.string.all_brightness_auto_scale_on)
-                            } else {
-                                stringResource(R.string.all_brightness_auto_scale_off)
-                            },
+                            text = stringResource(R.string.all_brightness_auto_scale_desc),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -7193,6 +9083,46 @@ private fun InfoStrip() {
     }
 }
 
+@Composable
+private fun ExperimentalDetailsInfoStrip() {
+    val notes = listOf(
+        stringResource(R.string.info_note_phone),
+        stringResource(R.string.info_note_foreground),
+        stringResource(R.string.info_note_projection)
+    )
+    val dividerColor = Color(0xFF3A3A3A)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = dividerColor)
+        notes.forEachIndexed { index, note ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(if (index == 0) NothingRed else Color(0xFF666666))
+                )
+                Text(
+                    text = note,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (index != notes.lastIndex) {
+                HorizontalDivider(color = dividerColor.copy(alpha = 0.7f))
+            }
+        }
+        HorizontalDivider(color = dividerColor)
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun GlyphVisualizerPreview() {
@@ -7255,6 +9185,7 @@ private fun GlyphVisualizerPreview() {
             showPhone1GlyphDebugControlsEverywhere = false,
             autoEnablePhone1GlyphDebugOnStart = true,
             nothingStyleEnabled = false,
+            experimentalMainUiEnabled = true,
             turnOffWhenBackDown = false,
             onSensitivityChanged = {},
             onNoiseGateChanged = {},
@@ -7294,6 +9225,7 @@ private fun GlyphVisualizerPreview() {
             onAllBrightnessAutoScaleChanged = {},
             onMediaProjectionEnabledChanged = {},
             onNothingStyleEnabledChanged = {},
+            onExperimentalMainUiEnabledChanged = {},
             onTurnOffWhenBackDownChanged = {},
             onResetParametersClick = {},
             onExportParametersClick = {},

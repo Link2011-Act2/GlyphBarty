@@ -37,6 +37,47 @@ enum class SettingsGroupPosition {
 }
 
 @Composable
+fun SettingsDividerGap() {
+    Box(modifier = Modifier.height(2.dp))
+}
+
+@Composable
+fun SettingsItemSurface(
+    nothingStyle: Boolean,
+    position: SettingsGroupPosition,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    val modifier = Modifier.fillMaxWidth()
+    val shape = itemShape(position, nothingStyle)
+    val color = settingsCardColor(nothingStyle)
+    val border = settingsCardBorder()
+
+    if (onClick != null) {
+        Surface(
+            onClick = onClick,
+            modifier = modifier,
+            shape = shape,
+            color = color,
+            border = border,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            content = content
+        )
+    } else {
+        Surface(
+            modifier = modifier,
+            shape = shape,
+            color = color,
+            border = border,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            content = content
+        )
+    }
+}
+
+@Composable
 fun SettingsNothingGroup(
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -75,21 +116,16 @@ fun SettingsEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val containerColor = settingsCardColor(nothingStyle)
     val chevronTint = if (nothingStyle) {
         if (isSystemInDarkTheme()) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = itemShape(position, nothingStyle),
-        color = containerColor,
-        border = settingsCardBorder(),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    SettingsItemSurface(
+        nothingStyle = nothingStyle,
+        position = position,
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -137,15 +173,9 @@ fun SettingsToggleEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val containerColor = settingsCardColor(nothingStyle)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = itemShape(position, nothingStyle),
-        color = containerColor,
-        border = settingsCardBorder(),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    SettingsItemSurface(
+        nothingStyle = nothingStyle,
+        position = position
     ) {
         Row(
             modifier = Modifier
@@ -192,15 +222,9 @@ fun SettingsRadioEntry(
     nothingStyle: Boolean,
     position: SettingsGroupPosition
 ) {
-    val containerColor = settingsCardColor(nothingStyle)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = itemShape(position, nothingStyle),
-        color = containerColor,
-        border = settingsCardBorder(),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    SettingsItemSurface(
+        nothingStyle = nothingStyle,
+        position = position
     ) {
         Column(
             modifier = Modifier

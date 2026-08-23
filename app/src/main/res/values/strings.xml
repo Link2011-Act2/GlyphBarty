@@ -81,6 +81,8 @@
     <string name="settings_about_desc">Version, support links, logs, and licenses.</string>
     <string name="settings_nothing_style_title">Experimental: Nothing-like UI</string>
     <string name="settings_nothing_style_desc">Switches to a Nothing-inspired look with a black-and-white base and red accents. This is experimental and the design may change later.</string>
+    <string name="settings_experimental_main_ui_title">Experimental home screen</string>
+    <string name="settings_experimental_main_ui_desc">Uses a visualizer-first home screen. Turn this off at any time to return to the previous home screen.</string>
     <string name="settings_ui_mode_title">UI style</string>
     <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
     <string name="settings_ui_mode_nothing">Nothing-like</string>
@@ -238,6 +240,21 @@
     <string name="hero_tone_focus_balanced">Tone focus balanced</string>
     <string name="capture_state_live">Live</string>
     <string name="capture_state_idle">Idle</string>
+    <string name="experimental_home_state_waiting">Waiting</string>
+    <string name="experimental_home_details">Details</string>
+    <string name="experimental_home_select_pattern">Select pattern</string>
+    <string name="experimental_home_pattern_settings">Pattern settings</string>
+    <string name="experimental_details_tab_live">Live</string>
+    <string name="experimental_details_tab_tune">Tune</string>
+    <string name="experimental_details_tab_system">System</string>
+    <string name="experimental_details_capture_section">Capture</string>
+    <string name="experimental_details_live_meter_section">Live meter</string>
+    <string name="experimental_details_system_section">Capture system</string>
+    <string name="experimental_details_glyph_section">Glyph behavior</string>
+    <string name="experimental_details_data_section">Settings data</string>
+    <string name="experimental_details_footer_live">Tune: sensitivity · response · tone   System: latency · Glyph behavior</string>
+    <string name="experimental_details_footer_tune">Live: capture · meter   System: latency · Glyph behavior</string>
+    <string name="experimental_details_footer_system">Live: capture · meter   Tune: sensitivity · response · tone</string>
 
     <string name="meter_label_level">Level</string>
     <string name="meter_label_peak">Peak</string>
@@ -353,8 +370,7 @@
     <string name="latency_assign_bluetooth">Assign to Bluetooth output</string>
     <string name="latency_delete_preset">Delete preset</string>
     <string name="latency_auto_switch_title">Auto-switch presets</string>
-    <string name="latency_auto_switch_on">Switch presets automatically for Bluetooth and other outputs.</string>
-    <string name="latency_auto_switch_off">Keep using the current latency value regardless of output route.</string>
+    <string name="latency_auto_switch_desc">Automatically switches latency between Bluetooth and other outputs.</string>
     <string name="latency_route_bluetooth">Bluetooth output</string>
     <string name="latency_route_default">Other output</string>
     <string name="latency_active_route_bluetooth">Current route: Bluetooth</string>
@@ -419,31 +435,24 @@
     <string name="param_tone_focus_balanced">Balanced</string>
 
     <string name="glyph_direction_title">Reverse meter direction</string>
-    <string name="glyph_direction_top_to_bottom">Reversed direction</string>
-    <string name="glyph_direction_bottom_to_top">Normal direction</string>
+    <string name="glyph_direction_desc">Reverses the meter direction.</string>
 
     <string name="binary_mode_title">Binary mode</string>
-    <string name="binary_mode_on">Segments fully on/off only</string>
-    <string name="binary_mode_off">Smooth brightness</string>
+    <string name="binary_mode_desc">Controls Glyph lights using only on and off states.</string>
     <string name="matrix_smooth_motion_title">Smooth motion</string>
-    <string name="matrix_smooth_motion_on">60 FPS</string>
-    <string name="matrix_smooth_motion_off">24 FPS</string>
+    <string name="matrix_smooth_motion_desc">Renders at 60 fps, but may reduce performance.</string>
     <string name="oscilloscope_auto_time_axis_title">Auto time axis</string>
     <string name="oscilloscope_auto_time_axis_title_with_value">Auto time axis (%1$+.1f)</string>
-    <string name="oscilloscope_auto_time_axis_on">Automatically adjusts the waveform window so the current shape stays readable.</string>
-    <string name="oscilloscope_auto_time_axis_off">Uses a fixed waveform window.</string>
+    <string name="oscilloscope_auto_time_axis_desc">Automatically adjusts the display window to keep the waveform readable.</string>
 
     <string name="level_auto_scale_title">Level auto scale</string>
-    <string name="level_auto_scale_on">Adaptive level range (min/max tracking)</string>
-    <string name="level_auto_scale_off">Fixed level scale</string>
+    <string name="level_auto_scale_desc">Automatically adjusts the meter’s minimum and maximum values.</string>
 
     <string name="spectrum_auto_scale_title">Spectrum auto scale</string>
-    <string name="spectrum_auto_scale_on">Per-band adaptive range (min/max tracking)</string>
-    <string name="spectrum_auto_scale_off">Fixed band scale</string>
+    <string name="spectrum_auto_scale_desc">Automatically adjusts each band’s minimum and maximum meter values.</string>
 
     <string name="all_brightness_auto_scale_title">All Brightness auto scale</string>
-    <string name="all_brightness_auto_scale_on">Adaptive full-range scaling (min/max tracking)</string>
-    <string name="all_brightness_auto_scale_off">Fixed full-range scale</string>
+    <string name="all_brightness_auto_scale_desc">Automatically adjusts the level’s minimum and maximum values.</string>
 
     <string name="turn_off_when_back_down_title">Turn off when back side is down</string>
     <string name="turn_off_when_back_down_on">Glyph output pauses while the phone is back-down</string>

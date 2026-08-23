@@ -57,6 +57,7 @@ data class CaptureUiState(
     val showPhone1GlyphDebugControlsEverywhere: Boolean = false,
     val autoEnablePhone1GlyphDebugOnStart: Boolean = true,
     val nothingStyleEnabled: Boolean = false,
+    val experimentalMainUiEnabled: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null
 )

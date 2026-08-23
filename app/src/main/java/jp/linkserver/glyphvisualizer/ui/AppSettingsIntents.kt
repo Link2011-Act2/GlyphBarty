@@ -9,16 +9,13 @@ import android.provider.Settings
 
 fun openAppLanguageSettings(context: Context): Boolean {
     val packageName = context.packageName
+    val packageUri = Uri.fromParts("package", packageName, null)
     val intents = buildList {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            add(
-                Intent(Settings.ACTION_APP_LOCALE_SETTINGS).apply {
-                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                }
-            )
+            add(Intent(Settings.ACTION_APP_LOCALE_SETTINGS, packageUri))
         }
-        add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
         add(Intent(Settings.ACTION_LOCALE_SETTINGS))
+        add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri))
     }
 
     for (intent in intents) {

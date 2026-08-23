@@ -88,6 +88,8 @@ fun SettingsScreen(
     showAutoEnablePhone1GlyphDebugOnStart: Boolean,
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
+    experimentalMainUiEnabled: Boolean,
+    onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
@@ -115,6 +117,9 @@ fun SettingsScreen(
     }
     var localAutoEnablePhone1GlyphDebugOnStart by rememberSaveable {
         mutableStateOf(autoEnablePhone1GlyphDebugOnStart)
+    }
+    var localExperimentalMainUiEnabled by rememberSaveable {
+        mutableStateOf(experimentalMainUiEnabled)
     }
     var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -195,6 +200,9 @@ fun SettingsScreen(
     }
     LaunchedEffect(autoEnablePhone1GlyphDebugOnStart) {
         localAutoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart
+    }
+    LaunchedEffect(experimentalMainUiEnabled) {
+        localExperimentalMainUiEnabled = experimentalMainUiEnabled
     }
     LaunchedEffect(nothingStyleEnabled) {
         localNothingStyleEnabled = nothingStyleEnabled
@@ -351,12 +359,24 @@ fun SettingsScreen(
             SettingsCategory(
                 title = stringResource(R.string.settings_category_display)
             ) {
+                SettingsToggleEntry(
+                    title = stringResource(R.string.settings_experimental_main_ui_title),
+                    description = stringResource(R.string.settings_experimental_main_ui_desc),
+                    checked = localExperimentalMainUiEnabled,
+                    onCheckedChange = { checked ->
+                        localExperimentalMainUiEnabled = checked
+                        onExperimentalMainUiEnabledChanged(checked)
+                    },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Top
+                )
+                SettingsDividerGap()
                 SettingsEntry(
                     title = stringResource(R.string.settings_meter_style_title),
                     description = meterStyleSummary,
                     onClick = { showMeterStyleDialog = true },
                     nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Top
+                    position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
@@ -474,11 +494,6 @@ private fun SettingsCategory(
             content = content
         )
     }
-}
-
-@Composable
-private fun SettingsDividerGap() {
-    Spacer(modifier = Modifier.height(2.dp))
 }
 
 @Composable
