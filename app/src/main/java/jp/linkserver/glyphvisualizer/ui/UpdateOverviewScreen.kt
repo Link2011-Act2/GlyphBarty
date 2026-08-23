@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,12 @@ fun UpdateOverviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.update_screen_title)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.update_screen_title),
+                        fontFamily = NTypeFontFamily
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

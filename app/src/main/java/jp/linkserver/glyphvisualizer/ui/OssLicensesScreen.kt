@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -92,7 +93,12 @@ fun OssLicensesScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.oss_screen_title)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.oss_screen_title),
+                        fontFamily = NTypeFontFamily
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

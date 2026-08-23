@@ -107,6 +107,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -182,6 +183,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
+import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
@@ -934,7 +936,6 @@ class MainActivity : ComponentActivity() {
     private val isPhone2aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE2A }
     private val isPhone3aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE3A }
     private val isPhone4aDevice by lazy { deviceProfile == GlyphDeviceProfile.PHONE4A }
-    private val isPhone1Device by lazy { Phone1GlyphDebugHelper.supports(deviceProfile) }
 
     private var pendingStartMode: CaptureMode? = null
     private var pendingExportContent: String? = null
@@ -1024,7 +1025,8 @@ class MainActivity : ComponentActivity() {
             importedState.copy(
                 baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled,
                 recordingLightIncluded = CaptureUiStore.state.recordingLightIncluded,
-                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled
+                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled,
+                debugDeviceProfileOverride = CaptureUiStore.state.debugDeviceProfileOverride
             )
         )
         Toast.makeText(this, getString(R.string.settings_import_success), Toast.LENGTH_SHORT).show()
@@ -1096,9 +1098,10 @@ class MainActivity : ComponentActivity() {
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)
         val initialSetupPending = !SettingsPreferences.hasCompletedInitialSetup(this)
-        val savedDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
+        val savedDeviceProfile = GlyphDeviceCatalog.effectiveUiProfile(
             actualProfile = deviceProfile,
-            phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled
+            phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
+            debugDeviceProfileOverride = savedSettings.debugDeviceProfileOverride
         )
         val normalizedMode = GlyphDeviceCatalog.normalizeGlyphMode(savedDeviceProfile, savedSettings.glyphMode)
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
@@ -1117,7 +1120,9 @@ class MainActivity : ComponentActivity() {
                     spectrumMeterEnabled = resolvedLatencySettings.spectrumMeterEnabled,
                     nativeMeterViewEnabled = resolvedLatencySettings.nativeMeterViewEnabled,
                     mainScreenUiIsolationEnabled = resolvedLatencySettings.mainScreenUiIsolationEnabled,
-                    automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled
+                    automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
+                    phone4bEmulationEnabled = resolvedLatencySettings.phone4bEmulationEnabled,
+                    debugDeviceProfileOverride = resolvedLatencySettings.debugDeviceProfileOverride
                 )
             } else {
                 resolvedLatencySettings.copy(
@@ -1128,9 +1133,10 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val uiState = CaptureUiStore.state
-            val effectiveDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
+            val effectiveDeviceProfile = GlyphDeviceCatalog.effectiveUiProfile(
                 actualProfile = deviceProfile,
-                phone4bEmulationEnabled = uiState.phone4bEmulationEnabled
+                phone4bEmulationEnabled = uiState.phone4bEmulationEnabled,
+                debugDeviceProfileOverride = uiState.debugDeviceProfileOverride
             )
             val effectivePresentation = if (effectiveDeviceProfile == deviceProfile) {
                 currentDevice.presentation
@@ -1177,6 +1183,7 @@ class MainActivity : ComponentActivity() {
                     baseIndicatorEnabled = uiState.baseIndicatorEnabled,
                     recordingLightIncluded = uiState.recordingLightIncluded,
                     phone4bEmulationEnabled = uiState.phone4bEmulationEnabled,
+                    debugDeviceProfileOverride = uiState.debugDeviceProfileOverride,
                     levelAutoScale = uiState.levelAutoScale,
                     spectrumAutoScale = uiState.spectrumAutoScale,
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
@@ -1194,7 +1201,6 @@ class MainActivity : ComponentActivity() {
                     experimentalPerformanceOptimizationsEnabled = uiState.experimentalPerformanceOptimizationsEnabled,
                     matrixSmoothMotionEnabled = uiState.matrixSmoothMotionEnabled,
                     oscilloscopeAutoTimeAxisEnabled = uiState.oscilloscopeAutoTimeAxisEnabled,
-                    showPhone1GlyphDebugControlsEverywhere = uiState.showPhone1GlyphDebugControlsEverywhere,
                     autoEnablePhone1GlyphDebugOnStart = uiState.autoEnablePhone1GlyphDebugOnStart,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
                     experimentalMainUiEnabled = uiState.experimentalMainUiEnabled,
@@ -1415,13 +1421,6 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         syncCurrentParameters(updated)
                     },
-                    onShowPhone1GlyphDebugControlsEverywhereChanged = { enabled ->
-                        val updated = CaptureUiStore.state.copy(
-                            showPhone1GlyphDebugControlsEverywhere = enabled
-                        )
-                        CaptureUiStore.update { updated }
-                        SettingsPreferences.save(this, updated)
-                    },
                     onAutoEnablePhone1GlyphDebugOnStartChanged = { enabled ->
                         val updated = CaptureUiStore.state.copy(
                             autoEnablePhone1GlyphDebugOnStart = enabled
@@ -1436,12 +1435,36 @@ class MainActivity : ComponentActivity() {
                     },
                     onPhone4bEmulationEnabledChanged = { enabled ->
                         if (deviceProfile == GlyphDeviceProfile.PHONE4A && !CaptureUiStore.state.isCapturing) {
-                            val effectiveProfile = GlyphDeviceCatalog.effectiveProfile(deviceProfile, enabled)
-                            val updated = CaptureUiStore.state.copy(
+                            val current = CaptureUiStore.state
+                            val effectiveProfile = GlyphDeviceCatalog.effectiveUiProfile(
+                                actualProfile = deviceProfile,
+                                phone4bEmulationEnabled = enabled,
+                                debugDeviceProfileOverride = current.debugDeviceProfileOverride
+                            )
+                            val updated = current.copy(
                                 phone4bEmulationEnabled = enabled,
                                 glyphMode = GlyphDeviceCatalog.normalizeGlyphMode(
                                     effectiveProfile,
-                                    CaptureUiStore.state.glyphMode
+                                    current.glyphMode
+                                )
+                            )
+                            CaptureUiStore.update { updated }
+                            SettingsPreferences.save(this, updated)
+                        }
+                    },
+                    onDebugDeviceProfileOverrideChanged = { profile ->
+                        if (!CaptureUiStore.state.isCapturing) {
+                            val current = CaptureUiStore.state
+                            val effectiveProfile = GlyphDeviceCatalog.effectiveUiProfile(
+                                actualProfile = deviceProfile,
+                                phone4bEmulationEnabled = current.phone4bEmulationEnabled,
+                                debugDeviceProfileOverride = profile
+                            )
+                            val updated = current.copy(
+                                debugDeviceProfileOverride = profile,
+                                glyphMode = GlyphDeviceCatalog.normalizeGlyphMode(
+                                    effectiveProfile,
+                                    current.glyphMode
                                 )
                             )
                             CaptureUiStore.update { updated }
@@ -1772,12 +1795,14 @@ class MainActivity : ComponentActivity() {
         return applyRouteAwareLatency(
             SettingsPreferences.defaultParameters().copy(
                 glyphMode = GlyphDeviceCatalog.defaultGlyphModeForProfile(
-                    GlyphDeviceCatalog.effectiveProfile(
-                        deviceProfile,
-                        CaptureUiStore.state.phone4bEmulationEnabled
+                    GlyphDeviceCatalog.effectiveUiProfile(
+                        actualProfile = deviceProfile,
+                        phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled,
+                        debugDeviceProfileOverride = CaptureUiStore.state.debugDeviceProfileOverride
                     )
                 ),
-                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled
+                phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled,
+                debugDeviceProfileOverride = CaptureUiStore.state.debugDeviceProfileOverride
             )
         )
     }
@@ -1802,7 +1827,11 @@ class MainActivity : ComponentActivity() {
             defaultOutputLatencyMs = parameters.defaultOutputLatencyMs.coerceIn(0f, 500f),
             bluetoothLatencyMs = parameters.bluetoothLatencyMs.coerceIn(0f, 500f),
             glyphMode = GlyphDeviceCatalog.normalizeGlyphMode(
-                GlyphDeviceCatalog.effectiveProfile(deviceProfile, parameters.phone4bEmulationEnabled),
+                GlyphDeviceCatalog.effectiveUiProfile(
+                    actualProfile = deviceProfile,
+                    phone4bEmulationEnabled = parameters.phone4bEmulationEnabled,
+                    debugDeviceProfileOverride = parameters.debugDeviceProfileOverride
+                ),
                 parameters.glyphMode
             )
         ))
@@ -2098,17 +2127,30 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun silentlyEnablePhone1GlyphDebugIfPossible() {
-        if (isPhone1Device && CaptureUiStore.state.autoEnablePhone1GlyphDebugOnStart) {
+        if (
+            Phone1GlyphDebugHelper.supports(currentEffectiveUiDeviceProfile()) &&
+            CaptureUiStore.state.autoEnablePhone1GlyphDebugOnStart
+        ) {
             AppLogger.i("Phone1GlyphDebug", "Attempting silent Phone (1) glyph debug enable on mode start")
             requestPhone1GlyphDebug(manual = false)
         }
     }
 
+    private fun currentEffectiveUiDeviceProfile(): GlyphDeviceProfile {
+        val state = CaptureUiStore.state
+        return GlyphDeviceCatalog.effectiveUiProfile(
+            actualProfile = deviceProfile,
+            phone4bEmulationEnabled = state.phone4bEmulationEnabled,
+            debugDeviceProfileOverride = state.debugDeviceProfileOverride
+        )
+    }
+
     private fun requestPhone1GlyphDebug(manual: Boolean) {
-        val debugAllowed = isPhone1Device || CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere
+        val effectiveUiProfile = currentEffectiveUiDeviceProfile()
+        val debugAllowed = Phone1GlyphDebugHelper.supports(effectiveUiProfile)
         AppLogger.i(
             "Phone1GlyphDebug",
-            "requestPhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed isPhone1Device=$isPhone1Device debugControlsEverywhere=${CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere}"
+            "requestPhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed actualProfile=$deviceProfile effectiveUiProfile=$effectiveUiProfile"
         )
         if (!debugAllowed) {
             AppLogger.i("Phone1GlyphDebug", "Skipping debug request because debug controls are not allowed")
@@ -2154,7 +2196,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun enablePhone1GlyphDebug(manual: Boolean) {
-        val debugAllowed = isPhone1Device || CaptureUiStore.state.showPhone1GlyphDebugControlsEverywhere
+        val debugAllowed = Phone1GlyphDebugHelper.supports(currentEffectiveUiDeviceProfile())
         AppLogger.i(
             "Phone1GlyphDebug",
             "enablePhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed"
@@ -2292,6 +2334,7 @@ private fun GlyphVisualizerApp(
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     phone4bEmulationEnabled: Boolean,
+    debugDeviceProfileOverride: GlyphDeviceProfile?,
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
@@ -2307,7 +2350,6 @@ private fun GlyphVisualizerApp(
     experimentalVisualizerStabilizationEnabled: Boolean,
     experimentalVisualizerSignalWatchdogEnabled: Boolean,
     experimentalPerformanceOptimizationsEnabled: Boolean,
-    showPhone1GlyphDebugControlsEverywhere: Boolean,
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     nothingStyleEnabled: Boolean,
     experimentalMainUiEnabled: Boolean,
@@ -2337,10 +2379,10 @@ private fun GlyphVisualizerApp(
     onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,
     onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
-    onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
+    onDebugDeviceProfileOverrideChanged: (GlyphDeviceProfile?) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
@@ -2366,7 +2408,7 @@ private fun GlyphVisualizerApp(
 ) {
     val context = LocalContext.current
     val repositoryUrl = stringResource(R.string.about_support_site_url)
-    val showPhone1GlyphDebugControls = isPhone1Device || showPhone1GlyphDebugControlsEverywhere
+    val showPhone1GlyphDebugControls = isPhone1Device
     val intDevBuild = rememberSaveable { isIntDevBuild() }
     var screen by rememberSaveable {
         mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
@@ -2381,6 +2423,7 @@ private fun GlyphVisualizerApp(
             screen == Screen.UPDATE -> screen = Screen.ABOUT
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
+            screen == Screen.EXPERIMENTAL -> screen = Screen.SETTINGS
             screen == Screen.LATENCY && experimentalMainUiEnabled -> screen = Screen.DETAILS
             else -> screen = Screen.MAIN
         }
@@ -2494,6 +2537,8 @@ private fun GlyphVisualizerApp(
                     ) {
                         ExperimentalMainScreenContent(
                             heroTitle = heroTitle,
+                            statusText = statusText,
+                            logMessage = logMessage,
                             isCapturing = isCapturing,
                             startPending = startPending,
                             glyphMode = glyphMode,
@@ -2642,6 +2687,7 @@ private fun GlyphVisualizerApp(
                     Screen.SETTINGS -> SettingsScreen(
                         onBack = { screen = Screen.MAIN },
                         onAbout = { screen = Screen.ABOUT },
+                        onExperimentalFeatures = { screen = Screen.EXPERIMENTAL },
                         mediaProjectionEnabled = mediaProjectionEnabled,
                         onMediaProjectionEnabledChanged = onMediaProjectionEnabledChanged,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
@@ -2672,9 +2718,7 @@ private fun GlyphVisualizerApp(
                         onExperimentalVisualizerStabilizationEnabledChanged = onExperimentalVisualizerStabilizationEnabledChanged,
                         experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
                         onExperimentalVisualizerSignalWatchdogEnabledChanged = onExperimentalVisualizerSignalWatchdogEnabledChanged,
-                        showPhone1GlyphDebugControlsEverywhere = showPhone1GlyphDebugControlsEverywhere,
-                        onShowPhone1GlyphDebugControlsEverywhereChanged = onShowPhone1GlyphDebugControlsEverywhereChanged,
-                        showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device || showPhone1GlyphDebugControlsEverywhere,
+                        showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device,
                         autoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart,
                         onAutoEnablePhone1GlyphDebugOnStartChanged = onAutoEnablePhone1GlyphDebugOnStartChanged,
                         experimentalMainUiEnabled = experimentalMainUiEnabled,
@@ -2686,11 +2730,12 @@ private fun GlyphVisualizerApp(
                         containerBrush = containerBrush,
                         actualDeviceProfile = actualDeviceProfile,
                         phone4bEmulationEnabled = phone4bEmulationEnabled,
+                        debugDeviceProfileOverride = debugDeviceProfileOverride,
                         isCapturing = isCapturing,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onPhone4bEmulationEnabledChanged = onPhone4bEmulationEnabledChanged,
-                        onOpenMenu = { drawerOpen = true },
-                        onOpenSettings = { screen = Screen.SETTINGS }
+                        onDebugDeviceProfileOverrideChanged = onDebugDeviceProfileOverrideChanged,
+                        onBack = { screen = Screen.SETTINGS }
                     )
                     Screen.ABOUT -> AboutScreen(
                         onBack = { screen = Screen.SETTINGS },
@@ -2729,7 +2774,6 @@ private fun GlyphVisualizerApp(
                 visible = drawerOpen,
                 currentScreen = screen,
                 nothingStyleEnabled = nothingStyleEnabled,
-                showExperimental = intDevBuild,
                 onDismiss = { drawerOpen = false },
                 onNavigate = { destination ->
                     screen = destination
@@ -3024,6 +3068,8 @@ private fun WelcomeRadioOption(
 @Composable
 private fun ExperimentalMainScreenContent(
     heroTitle: String,
+    statusText: String,
+    logMessage: String?,
     isCapturing: Boolean,
     startPending: Boolean,
     glyphMode: String,
@@ -3072,16 +3118,14 @@ private fun ExperimentalMainScreenContent(
     }
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
     var showDevicePatternSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showFillOtherGlyphLightsDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
     val supportsFillOtherGlyphLights = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE1,
         GlyphDeviceProfile.PHONE2,
         GlyphDeviceProfile.PHONE2A
     )
-    val supportsRecordingLightBehavior = deviceProfile in setOf(
-        GlyphDeviceProfile.PHONE4A,
-        GlyphDeviceProfile.PHONE4B
-    )
+    val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
     val hasDevicePatternSettings =
         supportsFillOtherGlyphLights || supportsRecordingLightBehavior
     val recordingLightBehavior = resolveRecordingLightBehavior(
@@ -3095,6 +3139,13 @@ private fun ExperimentalMainScreenContent(
         RecordingLightBehavior.BASS_INDICATOR ->
             stringResource(R.string.recording_light_behavior_bass)
     }
+    val fillOtherGlyphLightsLabel = stringResource(
+        if (fillOtherGlyphLights) {
+            R.string.fill_other_glyph_lights_enabled
+        } else {
+            R.string.fill_other_glyph_lights_disabled
+        }
+    )
     val dividerColor = Color(0xFF3A3A3A)
     val startButtonContainerColor by animateColorAsState(
         targetValue = if (isCapturing) NothingRed else Color.White,
@@ -3132,6 +3183,7 @@ private fun ExperimentalMainScreenContent(
                         items = GlyphPatternRegistry.patternsFor(deviceProfile),
                         key = { it.id }
                     ) { pattern ->
+                        val patternDescription = glyphPatternDescriptionText(pattern.id)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3139,16 +3191,29 @@ private fun ExperimentalMainScreenContent(
                                     onGlyphModeChanged(pattern.id)
                                     showPatternSheet = false
                                 }
-                                .padding(horizontal = 24.dp, vertical = 17.dp),
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = stringResource(pattern.labelRes),
+                            Column(
                                 modifier = Modifier.weight(1f),
-                                color = Color.White,
-                                fontFamily = displayFont,
-                                fontSize = 17.sp
-                            )
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(pattern.labelRes),
+                                    color = Color.White,
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 17.sp
+                                )
+                                patternDescription?.let { description ->
+                                    Text(
+                                        text = description,
+                                        color = Color(0xFFAAAAAA),
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
                             if (pattern.id == glyphMode) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
@@ -3185,11 +3250,13 @@ private fun ExperimentalMainScreenContent(
                     fontSize = 22.sp
                 )
                 if (supportsFillOtherGlyphLights) {
-                    SettingsToggleEntry(
+                    SettingsEntry(
                         title = stringResource(R.string.fill_other_glyph_lights_title),
-                        description = stringResource(R.string.fill_other_glyph_lights_desc),
-                        checked = fillOtherGlyphLights,
-                        onCheckedChange = onFillOtherGlyphLightsChanged,
+                        description = fillOtherGlyphLightsLabel,
+                        onClick = {
+                            showDevicePatternSettingsSheet = false
+                            showFillOtherGlyphLightsDialog = true
+                        },
                         nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Single
                     )
@@ -3208,6 +3275,17 @@ private fun ExperimentalMainScreenContent(
                 }
             }
         }
+    }
+
+    if (showFillOtherGlyphLightsDialog) {
+        ExperimentalFillOtherGlyphLightsDialog(
+            selected = fillOtherGlyphLights,
+            onDismiss = { showFillOtherGlyphLightsDialog = false },
+            onSelected = { enabled ->
+                showFillOtherGlyphLightsDialog = false
+                onFillOtherGlyphLightsChanged(enabled)
+            }
+        )
     }
 
     if (showRecordingLightDialog) {
@@ -3269,7 +3347,7 @@ private fun ExperimentalMainScreenContent(
                     )}",
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
                     color = Color.White,
-                    fontFamily = displayFont,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 16.sp,
                     maxLines = 1
                 )
@@ -3289,6 +3367,11 @@ private fun ExperimentalMainScreenContent(
                     nothingStyleEnabled = nothingStyleEnabled
                 )
             }
+
+            ExperimentalHomeLogPanel(
+                statusText = statusText,
+                logMessage = logMessage
+            )
 
             HorizontalDivider(color = dividerColor)
             Row(
@@ -3359,7 +3442,7 @@ private fun ExperimentalMainScreenContent(
                             text = patternLabel,
                             modifier = Modifier.weight(1f),
                             color = Color.White,
-                            fontFamily = displayFont,
+                            fontFamily = NTypeFontFamily,
                             fontSize = 17.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -3417,7 +3500,7 @@ private fun ExperimentalMainScreenContent(
                                 text = stringResource(R.string.experimental_home_details),
                                 modifier = Modifier.weight(1f),
                                 color = Color.White,
-                                fontFamily = displayFont,
+                                fontFamily = FontFamily.SansSerif,
                                 fontSize = 16.sp,
                                 textAlign = TextAlign.End
                             )
@@ -3432,6 +3515,82 @@ private fun ExperimentalMainScreenContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ExperimentalHomeLogPanel(
+    statusText: String,
+    logMessage: String?
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val displayedMessage = when {
+        !logMessage.isNullOrBlank() && logMessage != statusText && statusText.isNotBlank() ->
+            "$statusText  •  $logMessage"
+        !logMessage.isNullOrBlank() -> logMessage
+        else -> statusText
+    }
+    val messageColor = if (!logMessage.isNullOrBlank() && logMessage != statusText) {
+        Color(0xFFFF8C86)
+    } else {
+        Color(0xFFD6D6D6)
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Black)
+            .height(40.dp)
+            .clickable { expanded = !expanded }
+    ) {
+        val arrowOffset by animateDpAsState(
+            targetValue = if (expanded) {
+                (maxWidth - 36.dp).coerceAtLeast(12.dp)
+            } else {
+                12.dp
+            },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
+            label = "experimental_home_log_arrow_offset"
+        )
+
+        AnimatedVisibility(
+            visible = expanded && displayedMessage.isNotBlank(),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 12.dp, end = 48.dp),
+            enter = fadeIn(animationSpec = tween(durationMillis = 150)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 100))
+        ) {
+            Text(
+                text = displayedMessage,
+                color = messageColor,
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Icon(
+            imageVector = if (expanded) {
+                Icons.Default.ChevronLeft
+            } else {
+                Icons.Default.ChevronRight
+            },
+            contentDescription = if (expanded) {
+                stringResource(R.string.cd_collapse)
+            } else {
+                stringResource(R.string.cd_expand)
+            },
+            tint = Color.White,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = arrowOffset)
+                .size(24.dp)
+        )
     }
 }
 
@@ -3477,13 +3636,13 @@ private fun ExperimentalDetailsSummary(
                 Text(
                     text = deviceName,
                     color = Color.White,
-                    fontFamily = displayFont,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 22.sp
                 )
                 Text(
                     text = listOfNotNull(deviceDetail, patternLabel).joinToString("  •  "),
                     color = Color(0xFFBDBDBD),
-                    fontFamily = displayFont,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -3500,7 +3659,7 @@ private fun ExperimentalDetailsSummary(
                     ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                     color = Color.White,
-                    fontFamily = displayFont,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 14.sp
                 )
             }
@@ -3524,7 +3683,7 @@ private fun ExperimentalDetailsSummary(
                         text = stringResource(R.string.latency_title),
                         modifier = Modifier.weight(1f),
                         color = Color.White,
-                        fontFamily = displayFont,
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = 18.sp
                     )
                     Text(
@@ -3638,6 +3797,13 @@ private fun ExperimentalDetailsScreenContent(
         RecordingLightBehavior.INCLUDED_IN_METER -> stringResource(R.string.recording_light_behavior_meter)
         RecordingLightBehavior.BASS_INDICATOR -> stringResource(R.string.recording_light_behavior_bass)
     }
+    val fillOtherGlyphLightsLabel = stringResource(
+        if (fillOtherGlyphLights) {
+            R.string.fill_other_glyph_lights_enabled
+        } else {
+            R.string.fill_other_glyph_lights_disabled
+        }
+    )
     val meterModel = remember(
         level,
         glyphMode,
@@ -3662,6 +3828,7 @@ private fun ExperimentalDetailsScreenContent(
         GlyphDeviceProfile.PHONE2,
         GlyphDeviceProfile.PHONE2A
     )
+    val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
         glyphRenderMode != GlyphPatternRenderMode.CLASSIC
@@ -3672,6 +3839,7 @@ private fun ExperimentalDetailsScreenContent(
 
     var selectedTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
+    var showFillOtherGlyphLightsDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -3700,6 +3868,7 @@ private fun ExperimentalDetailsScreenContent(
                         items = GlyphPatternRegistry.patternsFor(deviceProfile),
                         key = { it.id }
                     ) { pattern ->
+                        val patternDescription = glyphPatternDescriptionText(pattern.id)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3707,16 +3876,29 @@ private fun ExperimentalDetailsScreenContent(
                                     onGlyphModeChanged(pattern.id)
                                     showPatternSheet = false
                                 }
-                                .padding(horizontal = 24.dp, vertical = 17.dp),
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = stringResource(pattern.labelRes),
+                            Column(
                                 modifier = Modifier.weight(1f),
-                                color = Color.White,
-                                fontFamily = displayFont,
-                                fontSize = 17.sp
-                            )
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(pattern.labelRes),
+                                    color = Color.White,
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 17.sp
+                                )
+                                patternDescription?.let { description ->
+                                    Text(
+                                        text = description,
+                                        color = Color(0xFFAAAAAA),
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
                             if (pattern.id == glyphMode) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
@@ -3731,13 +3913,24 @@ private fun ExperimentalDetailsScreenContent(
         }
     }
 
-    if (showRecordingLightDialog) {
+    if (showRecordingLightDialog && supportsRecordingLightBehavior) {
         ExperimentalRecordingLightDialog(
             selected = recordingLightBehavior,
             onDismiss = { showRecordingLightDialog = false },
             onSelected = { behavior ->
                 showRecordingLightDialog = false
                 onRecordingLightBehaviorChanged(behavior)
+            }
+        )
+    }
+
+    if (showFillOtherGlyphLightsDialog && fillOtherGlyphLightsEnabledForMode) {
+        ExperimentalFillOtherGlyphLightsDialog(
+            selected = fillOtherGlyphLights,
+            onDismiss = { showFillOtherGlyphLightsDialog = false },
+            onSelected = { enabled ->
+                showFillOtherGlyphLightsDialog = false
+                onFillOtherGlyphLightsChanged(enabled)
             }
         )
     }
@@ -3810,8 +4003,7 @@ private fun ExperimentalDetailsScreenContent(
         ) {
             ExperimentalDetailsTabRow(
                 selectedTab = selectedTab,
-                onSelected = { selectedTab = it },
-                displayFont = displayFont
+                onSelected = { selectedTab = it }
             )
             Column(
                 modifier = Modifier
@@ -3853,15 +4045,20 @@ private fun ExperimentalDetailsScreenContent(
                                 isCapturing = isCapturing,
                                 startPending = startPending,
                                 patternLabel = patternLabel,
+                                fillOtherGlyphLightsLabel = fillOtherGlyphLightsLabel,
+                                showFillOtherGlyphLights = fillOtherGlyphLightsEnabledForMode,
                                 recordingLightBehaviorLabel = recordingLightBehaviorLabel,
+                                supportsRecordingLightBehavior = supportsRecordingLightBehavior,
                                 level = level,
                                 peak = peak,
                                 meterModel = meterModel,
                                 onStartClick = onStartVisualizerClick,
                                 onStopClick = onStopClick,
                                 onOpenPattern = { showPatternSheet = true },
+                                onOpenFillOtherGlyphLights = {
+                                    showFillOtherGlyphLightsDialog = true
+                                },
                                 onOpenRecordingLight = { showRecordingLightDialog = true },
-                                displayFont = displayFont,
                                 nothingStyleEnabled = nothingStyleEnabled
                             )
 
@@ -3899,11 +4096,9 @@ private fun ExperimentalDetailsScreenContent(
                                 levelAutoScale = levelAutoScale,
                                 spectrumAutoScale = spectrumAutoScale,
                                 allBrightnessAutoScale = allBrightnessAutoScale,
-                                fillOtherGlyphLights = fillOtherGlyphLights,
                                 glyphMode = glyphMode,
                                 isMatrixDevice = isMatrixDevice,
                                 glyphRenderMode = glyphRenderMode,
-                                fillOtherGlyphLightsEnabledForMode = fillOtherGlyphLightsEnabledForMode,
                                 mediaProjectionEnabled = mediaProjectionEnabled,
                                 nothingStyleEnabled = nothingStyleEnabled,
                                 onOpenLatency = onOpenLatency,
@@ -3914,14 +4109,12 @@ private fun ExperimentalDetailsScreenContent(
                                 onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                                 onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                                 onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                                onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                                 onStartProjectionClick = onStartProjectionClick
                             )
                         }
 
                         ExperimentalDetailsFooterHint(
-                            selectedTab = tab,
-                            displayFont = displayFont
+                            selectedTab = tab
                         )
                     }
                 }
@@ -3933,8 +4126,7 @@ private fun ExperimentalDetailsScreenContent(
 @Composable
 private fun ExperimentalDetailsTabRow(
     selectedTab: ExperimentalDetailsTab,
-    onSelected: (ExperimentalDetailsTab) -> Unit,
-    displayFont: FontFamily
+    onSelected: (ExperimentalDetailsTab) -> Unit
 ) {
     val labels = listOf(
         ExperimentalDetailsTab.LIVE to stringResource(R.string.experimental_details_tab_live),
@@ -3997,7 +4189,7 @@ private fun ExperimentalDetailsTabRow(
                                 scaleY = labelScale
                             },
                             color = labelColor,
-                            fontFamily = displayFont,
+                            fontFamily = FontFamily.SansSerif,
                             fontSize = 16.sp
                         )
                     }
@@ -4020,8 +4212,7 @@ private fun ExperimentalDetailsTabRow(
 
 @Composable
 private fun ExperimentalDetailsFooterHint(
-    selectedTab: ExperimentalDetailsTab,
-    displayFont: FontFamily
+    selectedTab: ExperimentalDetailsTab
 ) {
     val text = when (selectedTab) {
         ExperimentalDetailsTab.LIVE -> stringResource(R.string.experimental_details_footer_live)
@@ -4032,7 +4223,7 @@ private fun ExperimentalDetailsFooterHint(
         text = text,
         modifier = Modifier.fillMaxWidth(),
         color = Color(0xFF9A9A9A),
-        fontFamily = displayFont,
+        fontFamily = FontFamily.SansSerif,
         fontSize = 13.sp,
         textAlign = TextAlign.Center
     )
@@ -4055,15 +4246,18 @@ private fun ExperimentalDetailsLiveTab(
     isCapturing: Boolean,
     startPending: Boolean,
     patternLabel: String,
+    fillOtherGlyphLightsLabel: String,
+    showFillOtherGlyphLights: Boolean,
     recordingLightBehaviorLabel: String,
+    supportsRecordingLightBehavior: Boolean,
     level: Float,
     peak: Float,
     meterModel: UiMeterModel,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
     onOpenPattern: () -> Unit,
+    onOpenFillOtherGlyphLights: () -> Unit,
     onOpenRecordingLight: () -> Unit,
-    displayFont: FontFamily,
     nothingStyleEnabled: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -4089,7 +4283,7 @@ private fun ExperimentalDetailsLiveTab(
                         Text(
                             text = deviceName,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontFamily = displayFont,
+                            fontFamily = NTypeFontFamily,
                             fontSize = 20.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -4152,16 +4346,36 @@ private fun ExperimentalDetailsLiveTab(
                 description = patternLabel,
                 onClick = onOpenPattern,
                 nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Middle
+                position = if (showFillOtherGlyphLights || supportsRecordingLightBehavior) {
+                    SettingsGroupPosition.Middle
+                } else {
+                    SettingsGroupPosition.Bottom
+                }
             )
-            SettingsDividerGap()
-            SettingsEntry(
-                title = stringResource(R.string.recording_light_behavior_title),
-                description = recordingLightBehaviorLabel,
-                onClick = onOpenRecordingLight,
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Bottom
-            )
+            if (showFillOtherGlyphLights) {
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.fill_other_glyph_lights_title),
+                    description = fillOtherGlyphLightsLabel,
+                    onClick = onOpenFillOtherGlyphLights,
+                    nothingStyle = nothingStyleEnabled,
+                    position = if (supportsRecordingLightBehavior) {
+                        SettingsGroupPosition.Middle
+                    } else {
+                        SettingsGroupPosition.Bottom
+                    }
+                )
+            }
+            if (supportsRecordingLightBehavior) {
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.recording_light_behavior_title),
+                    description = recordingLightBehaviorLabel,
+                    onClick = onOpenRecordingLight,
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Bottom
+                )
+            }
         }
     }
 
@@ -4473,11 +4687,9 @@ private fun ExperimentalDetailsSystemTab(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
-    fillOtherGlyphLights: Boolean,
     glyphMode: String,
     isMatrixDevice: Boolean,
     glyphRenderMode: GlyphPatternRenderMode?,
-    fillOtherGlyphLightsEnabledForMode: Boolean,
     mediaProjectionEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     onOpenLatency: () -> Unit,
@@ -4488,7 +4700,6 @@ private fun ExperimentalDetailsSystemTab(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
-    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onStartProjectionClick: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -4530,16 +4741,6 @@ private fun ExperimentalDetailsSystemTab(
                 onCheckedChange = onBinaryModeChanged
             )
         )
-        if (fillOtherGlyphLightsEnabledForMode) {
-            add(
-                ExperimentalDetailsToggleItem(
-                    title = stringResource(R.string.fill_other_glyph_lights_title),
-                    description = stringResource(R.string.fill_other_glyph_lights_desc),
-                    checked = fillOtherGlyphLights,
-                    onCheckedChange = onFillOtherGlyphLightsChanged
-                )
-            )
-        }
         if (isMatrixDevice) {
             add(
                 ExperimentalDetailsToggleItem(
@@ -4614,6 +4815,67 @@ private fun ExperimentalDetailsSystemTab(
             }
         }
     }
+}
+
+@Composable
+private fun ExperimentalFillOtherGlyphLightsDialog(
+    selected: Boolean,
+    onDismiss: () -> Unit,
+    onSelected: (Boolean) -> Unit
+) {
+    val options = listOf(
+        Triple(
+            false,
+            stringResource(R.string.fill_other_glyph_lights_disabled),
+            stringResource(R.string.fill_other_glyph_lights_disabled_desc)
+        ),
+        Triple(
+            true,
+            stringResource(R.string.fill_other_glyph_lights_enabled),
+            stringResource(R.string.fill_other_glyph_lights_desc)
+        )
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.fill_other_glyph_lights_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { (enabled, label, description) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelected(enabled) }
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        RadioButton(
+                            selected = selected == enabled,
+                            onClick = { onSelected(enabled) }
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dialog_cancel))
+            }
+        }
+    )
 }
 
 @Composable
@@ -4770,7 +5032,6 @@ private fun MainScreenContent(
 ) {
     val scrollState = rememberScrollState()
     val experimentalDetailsStyle = onBackToExperimental != null
-    val experimentalDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
     if (experimentalDetailsStyle) {
         ExperimentalDetailsScreenContent(
             heroTitle = heroTitle,
@@ -4896,11 +5157,7 @@ private fun MainScreenContent(
                             }
                         ),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = if (experimentalDetailsStyle) {
-                            experimentalDisplayFont
-                        } else {
-                            FontFamily.Default
-                        }
+                        fontFamily = NTypeFontFamily
                     )
                 },
                 actions = {
@@ -4948,7 +5205,7 @@ private fun MainScreenContent(
                             glyphMode = glyphMode,
                             latencyMs = latencyMs,
                             onOpenLatency = onOpenLatency,
-                            displayFont = experimentalDisplayFont,
+                            displayFont = FontFamily.SansSerif,
                             nothingStyleEnabled = nothingStyleEnabled
                         )
                     } else if (mainScreenUiIsolationEnabled && meterVisibleEnabled) {
@@ -5186,7 +5443,7 @@ private fun LatencyScreenContent(
                     Text(
                         text = stringResource(R.string.latency_title),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = if (experimentalStyle) displayFont else FontFamily.Default
+                        fontFamily = if (experimentalStyle) displayFont else NTypeFontFamily
                     )
                 },
                 actions = {
@@ -5332,17 +5589,24 @@ private fun ExperimentalScreenContent(
     containerBrush: Brush,
     actualDeviceProfile: GlyphDeviceProfile,
     phone4bEmulationEnabled: Boolean,
+    debugDeviceProfileOverride: GlyphDeviceProfile?,
     isCapturing: Boolean,
     nothingStyleEnabled: Boolean,
     onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
-    onOpenMenu: () -> Unit,
-    onOpenSettings: () -> Unit
+    onDebugDeviceProfileOverrideChanged: (GlyphDeviceProfile?) -> Unit,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     var statusText by rememberSaveable { mutableStateOf("") }
+    var showDeviceProfileDialog by rememberSaveable { mutableStateOf(false) }
     val isActualPhone4a = actualDeviceProfile == GlyphDeviceProfile.PHONE4A
     val isActualPhone4b = actualDeviceProfile == GlyphDeviceProfile.PHONE4B
     val emulatedOnPhone4a = isActualPhone4a && phone4bEmulationEnabled
+    val automaticDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
+        actualProfile = actualDeviceProfile,
+        phone4bEmulationEnabled = phone4bEmulationEnabled
+    )
+    val selectedDeviceProfile = debugDeviceProfileOverride ?: automaticDeviceProfile
     val showProbeControls = isActualPhone4b || emulatedOnPhone4a
     val probe = remember(actualDeviceProfile, emulatedOnPhone4a) {
         Phone4aAsPhone4bGlyphProbe(
@@ -5368,18 +5632,65 @@ private fun ExperimentalScreenContent(
         }
     }
 
+    if (showDeviceProfileDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeviceProfileDialog = false },
+            title = { Text(stringResource(R.string.experimental_device_profile_dialog_title)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    ExperimentalDeviceProfileOption(
+                        title = stringResource(
+                            R.string.experimental_device_profile_automatic,
+                            debugDeviceProfileLabel(automaticDeviceProfile)
+                        ),
+                        selected = debugDeviceProfileOverride == null,
+                        onClick = {
+                            onDebugDeviceProfileOverrideChanged(null)
+                            showDeviceProfileDialog = false
+                        }
+                    )
+                    GlyphDeviceProfile.entries.forEach { profile ->
+                        ExperimentalDeviceProfileOption(
+                            title = debugDeviceProfileLabel(profile),
+                            selected = debugDeviceProfileOverride == profile,
+                            onClick = {
+                                onDebugDeviceProfileOverrideChanged(profile)
+                                showDeviceProfileDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDeviceProfileDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.experimental_screen_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onOpenMenu) {
-                        Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.cd_menu))
-                    }
+                title = {
+                    Text(
+                        text = stringResource(R.string.experimental_screen_title),
+                        fontFamily = NTypeFontFamily
+                    )
                 },
-                actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.menu_settings))
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -5403,6 +5714,38 @@ private fun ExperimentalScreenContent(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                val profileSummary = if (debugDeviceProfileOverride == null) {
+                    stringResource(
+                        R.string.experimental_device_profile_automatic,
+                        debugDeviceProfileLabel(automaticDeviceProfile)
+                    )
+                } else {
+                    debugDeviceProfileLabel(selectedDeviceProfile)
+                }
+                val profileDescription = buildString {
+                    append(stringResource(R.string.experimental_device_profile_desc))
+                    append('\n')
+                    append(
+                        stringResource(
+                            R.string.experimental_device_profile_current,
+                            profileSummary
+                        )
+                    )
+                    if (isCapturing) {
+                        append('\n')
+                        append(stringResource(R.string.experimental_device_profile_stop_first))
+                    }
+                }
+                SettingsEntry(
+                    title = stringResource(R.string.experimental_device_profile_title),
+                    description = profileDescription,
+                    onClick = {
+                        if (!isCapturing) showDeviceProfileDialog = true
+                    },
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Single
+                )
+
                 if (!isActualPhone4a && !isActualPhone4b) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -5619,12 +5962,48 @@ private fun ExperimentalScreenContent(
     }
 }
 
+private fun debugDeviceProfileLabel(profile: GlyphDeviceProfile): String = when (profile) {
+    GlyphDeviceProfile.PHONE1 -> "Phone (1)"
+    GlyphDeviceProfile.PHONE2 -> "Phone (2)"
+    GlyphDeviceProfile.PHONE2A -> "Phone (2a) Series"
+    GlyphDeviceProfile.PHONE3A -> "Phone (3a) Series"
+    GlyphDeviceProfile.PHONE4A -> "Phone (4a)"
+    GlyphDeviceProfile.PHONE4B -> "Phone (4b)"
+    GlyphDeviceProfile.PHONE3_MATRIX -> "Phone (3)"
+    GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> "Phone (4a) Pro"
+}
+
+@Composable
+private fun ExperimentalDeviceProfileOption(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
 @Composable
 private fun HomeDrawerOverlay(
     visible: Boolean,
     currentScreen: Screen,
     nothingStyleEnabled: Boolean,
-    showExperimental: Boolean,
     onDismiss: () -> Unit,
     onNavigate: (Screen) -> Unit
 ) {
@@ -5695,16 +6074,6 @@ private fun HomeDrawerOverlay(
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.LATENCY) }
                 )
-                if (showExperimental) {
-                    HomeDrawerItem(
-                        title = stringResource(R.string.menu_experimental),
-                        icon = Icons.Default.Warning,
-                        selected = currentScreen == Screen.EXPERIMENTAL,
-                        nothingStyleEnabled = nothingStyleEnabled,
-                        selectedColor = selectedColor,
-                        onClick = { onNavigate(Screen.EXPERIMENTAL) }
-                    )
-                }
             }
             }
         }
@@ -6114,6 +6483,12 @@ private fun HeroCard(
                     )
                 } else if (nativeMeterViewEnabled && lightweightMeterEnabled) {
                     DirectNativeMeterCanvas(
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        binaryMode = binaryMode,
+                        glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
+                        reverseDirection = reverseDirection,
                         nothingStyleEnabled = nothingStyleEnabled
                     )
                 } else if (lightweightMeterEnabled) {
@@ -7650,6 +8025,12 @@ private fun NativeDetailedMeterBar(
 
 @Composable
 private fun DirectNativeMeterCanvas(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
+    reverseDirection: Boolean,
     nothingStyleEnabled: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -7672,12 +8053,12 @@ private fun DirectNativeMeterCanvas(
             verticalAlignment = Alignment.CenterVertically
         ) {
             DirectNativeMeterStats(
-                glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
-                deviceProfile = GlyphDeviceCatalog.currentProfile(),
-                binaryMode = false,
-                glyphMeterPreviewEnabled = false,
-                recordingLightIncluded = false,
-                reverseDirection = false,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
+                reverseDirection = reverseDirection,
                 lightweightMode = true,
                 nothingStyleEnabled = nothingStyleEnabled,
                 compact = false,
@@ -8158,7 +8539,6 @@ private fun ControlCard(
     onStopClick: () -> Unit,
     experimentalDetailsStyle: Boolean = false
 ) {
-    val experimentalDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
@@ -8418,11 +8798,7 @@ private fun ControlCard(
                 } else {
                     MaterialTheme.typography.titleMedium
                 },
-                fontFamily = if (experimentalDetailsStyle) {
-                    experimentalDisplayFont
-                } else {
-                    FontFamily.Default
-                }
+                fontFamily = FontFamily.Default
             )
 
             if (isCapturing) {
@@ -8546,11 +8922,7 @@ private fun ControlCard(
                 } else {
                     MaterialTheme.typography.titleMedium
                 },
-                fontFamily = if (experimentalDetailsStyle) {
-                    experimentalDisplayFont
-                } else {
-                    FontFamily.Default
-                }
+                fontFamily = FontFamily.Default
             )
             val modes = GlyphPatternRegistry.patternsFor(deviceProfile)
                 .map { it.id to stringResource(it.labelRes) }
@@ -8649,7 +9021,7 @@ private fun ControlCard(
                 }
             }
 
-            if (deviceProfile in setOf(GlyphDeviceProfile.PHONE4A, GlyphDeviceProfile.PHONE4B)) {
+            if (deviceProfile.supportsRecordingLightBehavior()) {
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { showRecordingLightBehaviorDialog = true },
@@ -9167,6 +9539,7 @@ private fun GlyphVisualizerPreview() {
             baseIndicatorEnabled = false,
             recordingLightIncluded = false,
             phone4bEmulationEnabled = false,
+            debugDeviceProfileOverride = null,
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
@@ -9182,7 +9555,6 @@ private fun GlyphVisualizerPreview() {
             experimentalVisualizerStabilizationEnabled = false,
             experimentalVisualizerSignalWatchdogEnabled = false,
             experimentalPerformanceOptimizationsEnabled = true,
-            showPhone1GlyphDebugControlsEverywhere = false,
             autoEnablePhone1GlyphDebugOnStart = true,
             nothingStyleEnabled = false,
             experimentalMainUiEnabled = true,
@@ -9212,10 +9584,10 @@ private fun GlyphVisualizerPreview() {
             onExperimentalVisualizerSignalWatchdogEnabledChanged = {},
             onMatrixSmoothMotionEnabledChanged = {},
             onOscilloscopeAutoTimeAxisEnabledChanged = {},
-            onShowPhone1GlyphDebugControlsEverywhereChanged = {},
             onAutoEnablePhone1GlyphDebugOnStartChanged = {},
             onRecordingLightBehaviorChanged = {},
             onPhone4bEmulationEnabledChanged = {},
+            onDebugDeviceProfileOverrideChanged = {},
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onFillOtherGlyphLightsChanged = {},

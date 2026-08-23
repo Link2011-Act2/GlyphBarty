@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.BuildConfig
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
@@ -144,7 +145,12 @@ fun AboutScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
-                title = { Text(stringResource(R.string.about_screen_title)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.about_screen_title),
+                        fontFamily = NTypeFontFamily
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

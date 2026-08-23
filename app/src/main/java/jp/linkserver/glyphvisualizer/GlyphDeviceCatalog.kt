@@ -235,6 +235,15 @@ object GlyphDeviceCatalog {
         }
     }
 
+    fun effectiveUiProfile(
+        actualProfile: GlyphDeviceProfile,
+        phone4bEmulationEnabled: Boolean,
+        debugDeviceProfileOverride: GlyphDeviceProfile?
+    ): GlyphDeviceProfile {
+        return debugDeviceProfileOverride
+            ?: effectiveProfile(actualProfile, phone4bEmulationEnabled)
+    }
+
     fun presentationForProfile(profile: GlyphDeviceProfile): GlyphDevicePresentation {
         return entries.firstOrNull { it.definition.profile == profile }
             ?.definition

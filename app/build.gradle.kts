@@ -20,7 +20,7 @@ val buildNumberFiles = (
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
 val appCodeName = "Naia" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
-val appVersionName = "2.0.0-IntDev_rev0"
+val appVersionName = "2.0.0-IntDev_rev1"
 val buildContentHash = MessageDigest.getInstance("SHA-256").run {
     buildNumberFiles.forEach { file ->
         update(file.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
@@ -33,8 +33,16 @@ val buildContentHash = MessageDigest.getInstance("SHA-256").run {
 val buildTimestamp = DateTimeFormatter.ofPattern("yyMMdd-HHmm")
     .withZone(ZoneId.systemDefault())
     .format(Instant.ofEpochMilli(buildNumberFiles.maxOf { it.lastModified() }))
+val buildNumberVersionPrefix = if (
+    appVersionName.substringAfter('-', missingDelimiterValue = "")
+        .startsWith("IntDev", ignoreCase = true)
+) {
+    "d"
+} else {
+    "v"
+}
 val generatedBuildNumber =
-    "$appCodeName-v${appVersionName.substringBefore('-')}-$buildTimestamp-${buildContentHash.take(3)}"
+    "$appCodeName-$buildNumberVersionPrefix${appVersionName.substringBefore('-')}-$buildTimestamp-${buildContentHash.take(3)}"
 
 android {
     namespace = "jp.linkserver.glyphvisualizer"

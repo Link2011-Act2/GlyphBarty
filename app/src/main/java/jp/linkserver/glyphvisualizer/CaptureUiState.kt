@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import android.os.Handler
 import android.os.Looper
+import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 
 data class CaptureUiState(
     val statusText: String = "",
@@ -29,6 +30,7 @@ data class CaptureUiState(
     val baseIndicatorEnabled: Boolean = false,
     val recordingLightIncluded: Boolean = false,
     val phone4bEmulationEnabled: Boolean = false,
+    val debugDeviceProfileOverride: GlyphDeviceProfile? = null,
     val levelAutoScale: Boolean = true,
     val spectrumAutoScale: Boolean = true,
     val allBrightnessAutoScale: Boolean = true,
@@ -49,7 +51,7 @@ data class CaptureUiState(
     val automaticUpdateCheckEnabled: Boolean = false,
     val mediaPlaybackOnlyEnabled: Boolean = false,
     val experimentalVisualizerStabilizationEnabled: Boolean = false,
-    val experimentalVisualizerSignalWatchdogEnabled: Boolean = false,
+    val experimentalVisualizerSignalWatchdogEnabled: Boolean = true,
     val experimentalSpectrumDecayEnabled: Boolean = false,
     val experimentalPerformanceOptimizationsEnabled: Boolean = true,
     val matrixSmoothMotionEnabled: Boolean = false,
@@ -57,7 +59,7 @@ data class CaptureUiState(
     val showPhone1GlyphDebugControlsEverywhere: Boolean = false,
     val autoEnablePhone1GlyphDebugOnStart: Boolean = true,
     val nothingStyleEnabled: Boolean = false,
-    val experimentalMainUiEnabled: Boolean = false,
+    val experimentalMainUiEnabled: Boolean = true,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null
 )
@@ -82,6 +84,9 @@ fun resolveRecordingLightBehavior(
     recordingLightIncluded -> RecordingLightBehavior.INCLUDED_IN_METER
     else -> RecordingLightBehavior.NONE
 }
+
+fun GlyphDeviceProfile.supportsRecordingLightBehavior(): Boolean =
+    this == GlyphDeviceProfile.PHONE4A || this == GlyphDeviceProfile.PHONE4B
 
 fun CaptureUiState.withRecordingLightBehavior(
     behavior: RecordingLightBehavior

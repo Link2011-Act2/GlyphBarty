@@ -64,4 +64,40 @@ class ExampleUnitTest {
         assertFalse(none.baseIndicatorEnabled)
         assertFalse(none.recordingLightIncluded)
     }
+
+    @Test
+    fun recordingLightBehavior_isAvailableOnlyOnBarProfiles() {
+        assertTrue(GlyphDeviceProfile.PHONE4A.supportsRecordingLightBehavior())
+        assertTrue(GlyphDeviceProfile.PHONE4B.supportsRecordingLightBehavior())
+
+        GlyphDeviceProfile.entries
+            .filterNot { it == GlyphDeviceProfile.PHONE4A || it == GlyphDeviceProfile.PHONE4B }
+            .forEach { profile ->
+                assertFalse(profile.supportsRecordingLightBehavior())
+            }
+    }
+
+    @Test
+    fun effectiveUiProfile_debugOverrideTakesPriority() {
+        assertEquals(
+            GlyphDeviceProfile.PHONE1,
+            GlyphDeviceCatalog.effectiveUiProfile(
+                actualProfile = GlyphDeviceProfile.PHONE4A,
+                phone4bEmulationEnabled = true,
+                debugDeviceProfileOverride = GlyphDeviceProfile.PHONE1
+            )
+        )
+    }
+
+    @Test
+    fun effectiveUiProfile_withoutOverrideKeepsExistingEmulationBehavior() {
+        assertEquals(
+            GlyphDeviceProfile.PHONE4B,
+            GlyphDeviceCatalog.effectiveUiProfile(
+                actualProfile = GlyphDeviceProfile.PHONE4A,
+                phone4bEmulationEnabled = true,
+                debugDeviceProfileOverride = null
+            )
+        )
+    }
 }

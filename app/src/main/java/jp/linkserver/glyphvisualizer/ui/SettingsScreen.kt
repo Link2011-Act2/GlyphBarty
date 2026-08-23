@@ -39,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +46,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
+import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 private enum class MeterStyleMode {
@@ -62,6 +62,7 @@ private enum class MeterStyleMode {
 fun SettingsScreen(
     onBack: () -> Unit,
     onAbout: () -> Unit,
+    onExperimentalFeatures: () -> Unit,
     mediaProjectionEnabled: Boolean,
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     glyphMeterPreviewEnabled: Boolean,
@@ -83,8 +84,6 @@ fun SettingsScreen(
     onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
     experimentalVisualizerSignalWatchdogEnabled: Boolean,
     onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,
-    showPhone1GlyphDebugControlsEverywhere: Boolean,
-    onShowPhone1GlyphDebugControlsEverywhereChanged: (Boolean) -> Unit,
     showAutoEnablePhone1GlyphDebugOnStart: Boolean,
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
@@ -93,7 +92,7 @@ fun SettingsScreen(
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
-    val settingsTitleFontFamily = FontFamily(Font(R.font.ntype82_regular))
+    val settingsTitleFontFamily = NTypeFontFamily
     val context = LocalContext.current
     val openFailedText = stringResource(R.string.about_language_open_failed)
     val nothingLabel = stringResource(R.string.settings_ui_mode_nothing)
@@ -112,14 +111,11 @@ fun SettingsScreen(
     var localExperimentalVisualizerSignalWatchdogEnabled by rememberSaveable {
         mutableStateOf(experimentalVisualizerSignalWatchdogEnabled)
     }
-    var localShowPhone1GlyphDebugControlsEverywhere by rememberSaveable {
-        mutableStateOf(showPhone1GlyphDebugControlsEverywhere)
-    }
     var localAutoEnablePhone1GlyphDebugOnStart by rememberSaveable {
         mutableStateOf(autoEnablePhone1GlyphDebugOnStart)
     }
-    var localExperimentalMainUiEnabled by rememberSaveable {
-        mutableStateOf(experimentalMainUiEnabled)
+    var localLegacyUiEnabled by rememberSaveable {
+        mutableStateOf(!experimentalMainUiEnabled)
     }
     var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -195,14 +191,11 @@ fun SettingsScreen(
     LaunchedEffect(experimentalVisualizerSignalWatchdogEnabled) {
         localExperimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled
     }
-    LaunchedEffect(showPhone1GlyphDebugControlsEverywhere) {
-        localShowPhone1GlyphDebugControlsEverywhere = showPhone1GlyphDebugControlsEverywhere
-    }
     LaunchedEffect(autoEnablePhone1GlyphDebugOnStart) {
         localAutoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart
     }
     LaunchedEffect(experimentalMainUiEnabled) {
-        localExperimentalMainUiEnabled = experimentalMainUiEnabled
+        localLegacyUiEnabled = !experimentalMainUiEnabled
     }
     LaunchedEffect(nothingStyleEnabled) {
         localNothingStyleEnabled = nothingStyleEnabled
@@ -362,10 +355,10 @@ fun SettingsScreen(
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_experimental_main_ui_title),
                     description = stringResource(R.string.settings_experimental_main_ui_desc),
-                    checked = localExperimentalMainUiEnabled,
+                    checked = localLegacyUiEnabled,
                     onCheckedChange = { checked ->
-                        localExperimentalMainUiEnabled = checked
-                        onExperimentalMainUiEnabledChanged(checked)
+                        localLegacyUiEnabled = checked
+                        onExperimentalMainUiEnabledChanged(!checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Top
@@ -404,20 +397,20 @@ fun SettingsScreen(
                         onAutomaticUpdateCheckEnabledChanged(checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
-                    position = if (intDevBuild) SettingsGroupPosition.Top else SettingsGroupPosition.Single
+                    position = SettingsGroupPosition.Single
                 )
-                if (intDevBuild) {
-                    SettingsDividerGap()
-                    SettingsToggleEntry(
-                        title = stringResource(R.string.settings_phone1_debug_controls_title),
-                        description = stringResource(R.string.settings_phone1_debug_controls_desc),
-                        checked = localShowPhone1GlyphDebugControlsEverywhere,
-                        onCheckedChange = { checked ->
-                            localShowPhone1GlyphDebugControlsEverywhere = checked
-                            onShowPhone1GlyphDebugControlsEverywhereChanged(checked)
-                        },
+            }
+
+            if (intDevBuild) {
+                SettingsCategory(
+                    title = stringResource(R.string.settings_category_developer)
+                ) {
+                    SettingsEntry(
+                        title = stringResource(R.string.settings_experimental_features_title),
+                        description = stringResource(R.string.settings_experimental_features_desc),
+                        onClick = onExperimentalFeatures,
                         nothingStyle = localNothingStyleEnabled,
-                        position = SettingsGroupPosition.Bottom
+                        position = SettingsGroupPosition.Single
                     )
                 }
             }
@@ -460,7 +453,7 @@ private fun SettingsHeader(
                     platformStyle = PlatformTextStyle(includeFontPadding = false)
                 ),
                 fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
-                fontFamily = if (nothingStyleEnabled) titleFontFamily else null
+                fontFamily = titleFontFamily
             )
         },
         navigationIcon = {

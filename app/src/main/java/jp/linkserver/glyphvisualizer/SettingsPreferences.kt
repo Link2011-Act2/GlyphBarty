@@ -2,6 +2,7 @@ package jp.linkserver.glyphvisualizer
 
 import android.content.Context
 import org.json.JSONObject
+import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 object SettingsPreferences {
@@ -10,6 +11,7 @@ object SettingsPreferences {
     private const val EXPORT_VERSION = 2
     private const val KEY_INITIAL_SETUP_COMPLETED = "initial_setup_completed"
     private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
+    private const val KEY_DEBUG_DEVICE_PROFILE_OVERRIDE = "debug_device_profile_override"
 
     fun defaultParameters(): CaptureUiState = CaptureUiState()
 
@@ -31,6 +33,7 @@ object SettingsPreferences {
             baseIndicatorEnabled = state.baseIndicatorEnabled,
             recordingLightIncluded = state.recordingLightIncluded,
             phone4bEmulationEnabled = state.phone4bEmulationEnabled,
+            debugDeviceProfileOverride = state.debugDeviceProfileOverride,
             levelAutoScale = state.levelAutoScale,
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
@@ -98,6 +101,12 @@ object SettingsPreferences {
                 KEY_PHONE4B_EMULATION_ENABLED,
                 defaults.phone4bEmulationEnabled
             ),
+            debugDeviceProfileOverride = prefs.getString(
+                KEY_DEBUG_DEVICE_PROFILE_OVERRIDE,
+                null
+            )?.let { savedName ->
+                GlyphDeviceProfile.entries.firstOrNull { it.name == savedName }
+            },
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
@@ -152,6 +161,10 @@ object SettingsPreferences {
             .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
             .putBoolean("recording_light_included", parameters.recordingLightIncluded)
             .putBoolean(KEY_PHONE4B_EMULATION_ENABLED, parameters.phone4bEmulationEnabled)
+            .putString(
+                KEY_DEBUG_DEVICE_PROFILE_OVERRIDE,
+                parameters.debugDeviceProfileOverride?.name
+            )
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)
@@ -268,6 +281,11 @@ object SettingsPreferences {
         return normalizedRecordingLight.copy(
             turnOffWhenBackDown = false,
             mainScreenUiIsolationEnabled = true,
+            debugDeviceProfileOverride = if (isIntDevBuild()) {
+                state.debugDeviceProfileOverride
+            } else {
+                null
+            },
             showPhone1GlyphDebugControlsEverywhere = if (isIntDevBuild()) {
                 state.showPhone1GlyphDebugControlsEverywhere
             } else {

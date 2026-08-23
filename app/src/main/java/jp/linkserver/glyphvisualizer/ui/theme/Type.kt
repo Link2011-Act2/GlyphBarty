@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.R
 
 private val AppFontFamily = FontFamily.SansSerif
-private val NothingDisplayFontFamily = FontFamily(Font(R.font.ntype82_regular))
+val NTypeFontFamily = FontFamily(Font(R.font.ntype82_regular))
 val NothingDotFontFamily = FontFamily(Font(R.font.ndot_55))
 
 val Typography = Typography(
@@ -95,28 +95,28 @@ val Typography = Typography(
 
 val NothingTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = NothingDisplayFontFamily,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 50.sp,
         lineHeight = 60.sp,
         letterSpacing = (-1.2).sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = NothingDisplayFontFamily,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 28.sp,
         lineHeight = 38.sp,
         letterSpacing = (-0.4).sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = NothingDisplayFontFamily,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 24.sp,
         lineHeight = 34.sp,
         letterSpacing = (-0.1).sp
     ),
     titleLarge = TextStyle(
-        fontFamily = NothingDisplayFontFamily,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 22.sp,
         lineHeight = 32.sp,
