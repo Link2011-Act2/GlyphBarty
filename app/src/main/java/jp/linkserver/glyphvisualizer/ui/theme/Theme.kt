@@ -2,7 +2,6 @@ package jp.linkserver.glyphvisualizer.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -12,7 +11,6 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 
 private val DarkColorScheme = darkColorScheme(
     primary = NightAccent,
@@ -114,14 +112,6 @@ private val NothingLightColorScheme = lightColorScheme(
     outlineVariant = Color(0xFFE7E7E7)
 )
 
-private val ExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(14.dp),
-    small = RoundedCornerShape(18.dp),
-    medium = RoundedCornerShape(26.dp),
-    large = RoundedCornerShape(32.dp),
-    extraLarge = RoundedCornerShape(40.dp)
-)
-
 @Composable
 fun GlyphBartyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -143,7 +133,9 @@ fun GlyphBartyTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = if (nothingStyle) NothingTypography else Typography,
-        shapes = if (nothingStyle) Shapes() else ExpressiveShapes,
+        // Both modes share the Nothing-like component geometry. Material mode
+        // differs through its dynamic color scheme and standard typography.
+        shapes = Shapes(),
         content = content
     )
 }

@@ -50,8 +50,8 @@ fun SettingsItemSurface(
     content: @Composable () -> Unit
 ) {
     val modifier = Modifier.fillMaxWidth()
-    val shape = itemShape(position, nothingStyle)
-    val color = containerColor ?: settingsCardColor(nothingStyle)
+    val shape = itemShape(position)
+    val color = containerColor ?: settingsCardColor()
     val border = settingsCardBorder()
 
     if (onClick != null) {
@@ -85,7 +85,7 @@ fun SettingsNothingGroup(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        color = settingsCardColor(nothingStyle = true),
+        color = settingsCardColor(),
         border = settingsCardBorder(),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
@@ -134,8 +134,8 @@ fun SettingsEntry(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = if (nothingStyle) 22.dp else 16.dp,
-                    vertical = if (nothingStyle) 18.dp else 16.dp
+                    horizontal = 22.dp,
+                    vertical = 18.dp
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -186,8 +186,8 @@ fun SettingsToggleEntry(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = if (nothingStyle) 22.dp else 16.dp,
-                    vertical = if (nothingStyle) 18.dp else 16.dp
+                    horizontal = 22.dp,
+                    vertical = 18.dp
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -235,8 +235,8 @@ fun SettingsRadioEntry(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = if (nothingStyle) 22.dp else 16.dp,
-                    vertical = if (nothingStyle) 18.dp else 16.dp
+                    horizontal = 22.dp,
+                    vertical = 18.dp
                 ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -274,9 +274,9 @@ fun SettingsRadioEntry(
     }
 }
 
-private fun itemShape(position: SettingsGroupPosition, nothingStyle: Boolean): RoundedCornerShape {
-    val cornerRadius = if (nothingStyle) 22.dp else 30.dp
-    val innerRadius = if (nothingStyle) 6.dp else 10.dp
+private fun itemShape(position: SettingsGroupPosition): RoundedCornerShape {
+    val cornerRadius = 22.dp
+    val innerRadius = 6.dp
     return when (position) {
         SettingsGroupPosition.Single -> RoundedCornerShape(cornerRadius)
         SettingsGroupPosition.Top -> RoundedCornerShape(
@@ -301,14 +301,4 @@ private fun settingsCardBorder(): BorderStroke? {
 }
 
 @Composable
-private fun settingsCardColor(nothingStyle: Boolean): Color {
-    return if (nothingStyle) {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    } else {
-        if (isSystemInDarkTheme()) {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        } else {
-            MaterialTheme.colorScheme.surfaceContainer
-        }
-    }
-}
+private fun settingsCardColor(): Color = MaterialTheme.colorScheme.surfaceContainerHigh

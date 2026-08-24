@@ -195,7 +195,7 @@ fun AboutScreen(
                         Text(
                             text = stringResource(R.string.about_updates_body),
                             modifier = Modifier.padding(
-                                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                                horizontal = 22.dp,
                                 vertical = 18.dp
                             ),
                             style = MaterialTheme.typography.bodyMedium,
@@ -204,7 +204,7 @@ fun AboutScreen(
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(
-                                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp
+                                horizontal = 22.dp
                             ),
                             color = MaterialTheme.colorScheme.outlineVariant
                         )
@@ -212,7 +212,7 @@ fun AboutScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
-                                    horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                                    horizontal = 22.dp,
                                     vertical = 14.dp
                                 ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -250,7 +250,7 @@ fun AboutScreen(
                     Text(
                         text = stringResource(R.string.about_known_issues_body),
                         modifier = Modifier.padding(
-                            horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                            horizontal = 22.dp,
                             vertical = 18.dp
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -286,8 +286,8 @@ fun AboutScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
-                                    horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
-                                    vertical = if (nothingStyleEnabled) 18.dp else 16.dp
+                                    horizontal = 22.dp,
+                                    vertical = 18.dp
                                 ),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
@@ -437,8 +437,8 @@ private fun AboutSettingsActionCardContent(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
-                vertical = if (nothingStyleEnabled) 18.dp else 16.dp
+                horizontal = 22.dp,
+                vertical = 18.dp
             ),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -476,11 +476,7 @@ private fun AboutOverviewMosaic(
     onChannelClick: () -> Unit
 ) {
     val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    val cardBorder = if (nothingStyleEnabled) {
-        null
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    }
+    val cardBorder: BorderStroke? = null
     val titleFontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
     val gap = 3.dp
     val cardRadius = 20.dp
@@ -643,9 +639,8 @@ private fun AboutOverviewMosaic(
                     }
                 }
 
-                if (nothingStyleEnabled) {
-                    val horizontalBridgeStart = (squareSize - bridgeLength) * 0.5f
-                    val verticalBridgeStart = (squareSize - bridgeLength) * 0.5f
+                val horizontalBridgeStart = (squareSize - bridgeLength) * 0.5f
+                val verticalBridgeStart = (squareSize - bridgeLength) * 0.5f
 
                     Box(
                         modifier = Modifier
@@ -694,16 +689,15 @@ private fun AboutOverviewMosaic(
                             .size(gap)
                             .background(gutterColor, CircleShape)
                     )
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = squareSize,
-                                y = verticalBridgeStart + bridgeLength - gap * 0.5f
-                            )
-                            .size(gap)
-                            .background(gutterColor, CircleShape)
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = squareSize,
+                            y = verticalBridgeStart + bridgeLength - gap * 0.5f
+                        )
+                        .size(gap)
+                        .background(gutterColor, CircleShape)
+                )
             }
         }
     }

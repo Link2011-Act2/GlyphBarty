@@ -5386,7 +5386,7 @@ private fun MainScreenContent(
                             horizontal = if (experimentalDetailsStyle) 24.dp else 20.dp,
                             vertical = if (experimentalDetailsStyle) 18.dp else 12.dp
                         )
-                        .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
+                        .padding(bottom = 0.dp),
                     verticalArrangement = Arrangement.spacedBy(
                         if (experimentalDetailsStyle) 24.dp else 18.dp
                     )
@@ -5672,23 +5672,23 @@ private fun LatencyScreenContent(
                         horizontal = if (experimentalStyle) 24.dp else 20.dp,
                         vertical = if (experimentalStyle) 18.dp else 12.dp
                     )
-                    .padding(bottom = if (nothingStyleEnabled) 0.dp else 10.dp),
+                    .padding(bottom = 0.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 androidx.compose.material3.Card(
                     shape = if (experimentalStyle) {
                         RoundedCornerShape(0.dp)
                     } else {
-                        RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp)
+                        RoundedCornerShape(28.dp)
                     },
                     colors = CardDefaults.cardColors(
                         containerColor = if (experimentalStyle) {
                             Color.Transparent
                         } else {
-                            materialCardColor(nothingStyleEnabled, prominent = true)
+                            materialCardColor(prominent = true)
                         }
                     ),
-                    border = if (experimentalStyle) null else materialCardBorder(nothingStyleEnabled),
+                    border = if (experimentalStyle) null else materialCardBorder(),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
@@ -6556,11 +6556,11 @@ private fun HeroCard(
 ) {
     androidx.compose.material3.Card(
         modifier = modifier,
-        shape = RoundedCornerShape(if (nothingStyleEnabled) 32.dp else 34.dp),
+        shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(
-            containerColor = materialCardColor(nothingStyleEnabled, prominent = true)
+            containerColor = materialCardColor(prominent = true)
         ),
-        border = materialCardBorder(nothingStyleEnabled),
+        border = materialCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -6845,15 +6845,10 @@ private fun CompactMeterOverlay(
     onDismissUpward: () -> Unit
 ) {
     val density = LocalDensity.current
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    val activeColor = if (darkTheme) Color.White else Color.Black
+    val activeColor = MaterialTheme.colorScheme.primary
     val peakColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.75f)
-    val containerColor = if (nothingStyleEnabled) {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val animatedPeak by animateFloatAsState(
         targetValue = peak,
         animationSpec = spring(stiffness = Spring.StiffnessLow),
@@ -7205,11 +7200,7 @@ private fun UpdateNotificationOverlay(
     onDismissUntilNextVersion: () -> Unit
 ) {
     val density = LocalDensity.current
-    val containerColor = if (nothingStyleEnabled) {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     var dragOffsetPx by remember(updateInfo.tagName) { mutableStateOf(0f) }
     var dismissing by remember(updateInfo.tagName) { mutableStateOf(false) }
     val exitDistancePx = with(density) { 96.dp.toPx() }
@@ -7303,26 +7294,16 @@ private fun activeModeLabel(activeMode: String): String {
 }
 
 @Composable
-private fun materialCardBorder(nothingStyleEnabled: Boolean): BorderStroke? {
-    return if (nothingStyleEnabled) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    } else {
-        null
-    }
+private fun materialCardBorder(): BorderStroke {
+    return BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
-private fun materialCardColor(nothingStyleEnabled: Boolean, prominent: Boolean = false): Color {
-    return if (nothingStyleEnabled) {
-        if (prominent) {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        }
-    } else if (prominent) {
-        MaterialTheme.colorScheme.surfaceContainerHigh
+private fun materialCardColor(prominent: Boolean = false): Color {
+    return if (prominent) {
+        MaterialTheme.colorScheme.surfaceContainerHighest
     } else {
-        MaterialTheme.colorScheme.surfaceContainer
+        MaterialTheme.colorScheme.surfaceContainerHigh
     }
 }
 
@@ -7911,9 +7892,8 @@ private fun SpectrumMeterBar(
     recordingLightIncluded: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    val activeColor = if (darkTheme) Color.White else Color.Black
+    val activeColor = MaterialTheme.colorScheme.primary
     val animatedLevel by animateFloatAsState(
         targetValue = level.coerceIn(0f, 1f),
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -8004,9 +7984,8 @@ private fun DirectNativeSpectrumMeterBar(
     recordingLightIncluded: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
-    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val activeColor = MaterialTheme.colorScheme.primary.toArgb()
     val context = LocalContext.current
     val meterView = remember { NativeSpectrumMeterView(context) }
     val listener = remember(meterView) {
@@ -8046,9 +8025,8 @@ private fun DirectNativeDetailedMeterBar(
     compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
-    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val activeColor = MaterialTheme.colorScheme.primary.toArgb()
     val peakColor = MaterialTheme.colorScheme.tertiary.toArgb()
     val sweepColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f).toArgb()
     val context = LocalContext.current
@@ -8194,9 +8172,8 @@ private fun NativeDetailedMeterBar(
     meterModel: UiMeterModel,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
-    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val activeColor = MaterialTheme.colorScheme.primary.toArgb()
     val peakColor = MaterialTheme.colorScheme.tertiary.toArgb()
     val sweepColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f).toArgb()
 
@@ -8266,9 +8243,8 @@ private fun DirectNativeMeterCanvas(
 private fun DirectNativeMeterBar(
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
-    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val activeColor = MaterialTheme.colorScheme.primary.toArgb()
     val context = LocalContext.current
     val meterView = remember { NativeLevelMeterView(context) }
     val listener = remember(meterView) {
@@ -8342,9 +8318,8 @@ private fun NativeMeterBar(
     level: Float,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f).toArgb()
-    val activeColor = (if (darkTheme) Color.White else Color.Black).toArgb()
+    val activeColor = MaterialTheme.colorScheme.primary.toArgb()
 
     AndroidView(
         modifier = modifier,
@@ -8409,9 +8384,8 @@ private fun LightweightMeterBar(
     nothingStyleEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
     val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    val activeColor = if (darkTheme) Color.White else Color.Black
+    val activeColor = MaterialTheme.colorScheme.primary
     val activeSegments = (level.coerceIn(0f, 1f) * 16f).toInt().coerceIn(0, 16)
 
     Canvas(modifier = modifier) {
@@ -8965,16 +8939,16 @@ private fun ControlCard(
         shape = if (experimentalDetailsStyle) {
             RoundedCornerShape(0.dp)
         } else {
-            RoundedCornerShape(if (nothingStyleEnabled) 28.dp else 32.dp)
+            RoundedCornerShape(28.dp)
         },
         colors = CardDefaults.cardColors(
             containerColor = if (experimentalDetailsStyle) {
                 Color.Transparent
             } else {
-                materialCardColor(nothingStyleEnabled, prominent = true)
+                materialCardColor(prominent = true)
             }
         ),
-        border = if (experimentalDetailsStyle) null else materialCardBorder(nothingStyleEnabled),
+        border = if (experimentalDetailsStyle) null else materialCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
