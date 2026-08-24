@@ -92,7 +92,7 @@ fun SettingsScreen(
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
-    val settingsTitleFontFamily = NTypeFontFamily
+    val settingsTitleFontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
     val context = LocalContext.current
     val openFailedText = stringResource(R.string.about_language_open_failed)
     val nothingLabel = stringResource(R.string.settings_ui_mode_nothing)
@@ -437,7 +437,7 @@ fun SettingsScreen(
 private fun SettingsHeader(
     title: String,
     onBack: () -> Unit,
-    titleFontFamily: FontFamily,
+    titleFontFamily: FontFamily?,
     nothingStyleEnabled: Boolean
 ) {
     TopAppBar(

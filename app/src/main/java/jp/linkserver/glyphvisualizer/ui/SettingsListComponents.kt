@@ -46,11 +46,12 @@ fun SettingsItemSurface(
     nothingStyle: Boolean,
     position: SettingsGroupPosition,
     onClick: (() -> Unit)? = null,
+    containerColor: Color? = null,
     content: @Composable () -> Unit
 ) {
     val modifier = Modifier.fillMaxWidth()
     val shape = itemShape(position, nothingStyle)
-    val color = settingsCardColor(nothingStyle)
+    val color = containerColor ?: settingsCardColor(nothingStyle)
     val border = settingsCardBorder()
 
     if (onClick != null) {
@@ -114,7 +115,8 @@ fun SettingsEntry(
     description: String,
     onClick: () -> Unit,
     nothingStyle: Boolean,
-    position: SettingsGroupPosition
+    position: SettingsGroupPosition,
+    containerColor: Color? = null
 ) {
     val chevronTint = if (nothingStyle) {
         if (isSystemInDarkTheme()) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
@@ -125,7 +127,8 @@ fun SettingsEntry(
     SettingsItemSurface(
         nothingStyle = nothingStyle,
         position = position,
-        onClick = onClick
+        onClick = onClick,
+        containerColor = containerColor
     ) {
         Row(
             modifier = Modifier
@@ -171,11 +174,13 @@ fun SettingsToggleEntry(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     nothingStyle: Boolean,
-    position: SettingsGroupPosition
+    position: SettingsGroupPosition,
+    containerColor: Color? = null
 ) {
     SettingsItemSurface(
         nothingStyle = nothingStyle,
-        position = position
+        position = position,
+        containerColor = containerColor
     ) {
         Row(
             modifier = Modifier

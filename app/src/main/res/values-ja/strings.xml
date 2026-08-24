@@ -7,6 +7,11 @@
     <string name="about_version_label" translatable="false">%1$s  v%2$s (%3$d)</string>
     <string name="about_simple_version_title">バージョン</string>
     <string name="about_simple_version_value" translatable="false">v%1$s</string>
+    <string name="about_overview_release_line">%1$s  v%2$s</string>
+    <string name="about_overview_channel_title">チャネル</string>
+    <string name="about_overview_build_title">ビルド</string>
+    <string name="about_overview_version_title">バージョン</string>
+    <string name="about_overview_version_value">v%1$s (%2$d)</string>
     <string name="about_dev_channel_title">開発チャネル</string>
     <string name="about_dev_channel_dialog_title">開発チャネル: %1$s</string>
     <string name="about_dev_channel_value_intdev">内部検証版</string>
@@ -249,16 +254,12 @@
     <string name="experimental_home_pattern_settings">パターン設定</string>
     <string name="experimental_details_tab_live">ライブ</string>
     <string name="experimental_details_tab_tune">調整</string>
-    <string name="experimental_details_tab_system">システム</string>
+    <string name="experimental_details_tab_system">表示</string>
     <string name="experimental_details_capture_section">キャプチャ</string>
     <string name="experimental_details_live_meter_section">ライブメーター</string>
     <string name="experimental_details_system_section">キャプチャシステム</string>
     <string name="experimental_details_glyph_section">Glyphの挙動</string>
     <string name="experimental_details_data_section">設定データ</string>
-    <string name="experimental_details_footer_live">調整：感度・応答・音域　システム：レイテンシ・Glyph動作</string>
-    <string name="experimental_details_footer_tune">ライブ：キャプチャ・メーター　システム：レイテンシ・Glyph動作</string>
-    <string name="experimental_details_footer_system">ライブ：キャプチャ・メーター　調整：感度・応答・音域</string>
-
     <string name="meter_label_level">レベル</string>
     <string name="meter_label_peak">ピーク</string>
     <string name="meter_label_segments">セグメント</string>

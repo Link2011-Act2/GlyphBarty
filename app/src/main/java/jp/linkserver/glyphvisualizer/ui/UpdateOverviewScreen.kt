@@ -82,7 +82,7 @@ fun UpdateOverviewScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.update_screen_title),
-                        fontFamily = NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
                     )
                 },
                 navigationIcon = {

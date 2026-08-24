@@ -5,18 +5,24 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -42,9 +48,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -148,7 +155,7 @@ fun AboutScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.about_screen_title),
-                        fontFamily = NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
                     )
                 },
                 navigationIcon = {
@@ -166,87 +173,21 @@ fun AboutScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(horizontal = 20.dp, vertical = 18.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    modifier = Modifier.padding(top = 10.dp),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        lineHeight = 44.sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = true)
-                    ),
-                    fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.about_version_label, channelLabel, versionName, versionCode),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_version_section_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showVersionDetailsDialog = true }
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.about_simple_version_title),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = stringResource(R.string.about_simple_version_value, simpleVersion),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showChannelDialog = true }
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.about_dev_channel_title),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = channelLabel,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
+            AboutOverviewMosaic(
+                channelLabel = channelLabel,
+                channelName = channelName,
+                versionName = versionName,
+                simpleVersion = simpleVersion,
+                versionCode = versionCode,
+                buildNumber = BuildConfig.BUILD_NUMBER,
+                nothingStyleEnabled = nothingStyleEnabled,
+                onVersionClick = { showVersionDetailsDialog = true },
+                onChannelClick = { showChannelDialog = true }
+            )
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -503,6 +444,248 @@ fun AboutScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun AboutOverviewMosaic(
+    channelLabel: String,
+    channelName: String,
+    versionName: String,
+    simpleVersion: String,
+    versionCode: Int,
+    buildNumber: String,
+    nothingStyleEnabled: Boolean,
+    onVersionClick: () -> Unit,
+    onChannelClick: () -> Unit
+) {
+    val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val cardBorder = if (nothingStyleEnabled) {
+        null
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
+    val titleFontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
+    val gap = 3.dp
+    val cardRadius = 20.dp
+    val heroHeight = 176.dp
+    val bridgeLength = 48.dp
+    val bridgeOverlap = 1.dp
+    val gutterColor = MaterialTheme.colorScheme.surface
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val squareSize = (maxWidth - gap) * 0.5f
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(gap)
+        ) {
+            Surface(
+                onClick = onVersionClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight),
+                shape = RoundedCornerShape(cardRadius),
+                color = cardColor,
+                border = cardBorder
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(92.dp),
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Image(
+                            painter = painterResource(R.mipmap.icon_round),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            fontFamily = titleFontFamily,
+                            fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
+                            fontSize = 27.sp,
+                            lineHeight = 32.sp
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.about_overview_release_line,
+                                channelLabel,
+                                versionName
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(squareSize)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(squareSize),
+                    horizontalArrangement = Arrangement.spacedBy(gap)
+                ) {
+                    Surface(
+                        onClick = onChannelClick,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(squareSize),
+                        shape = RoundedCornerShape(cardRadius),
+                        color = cardColor,
+                        border = cardBorder
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(22.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = stringResource(R.string.about_overview_channel_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = channelName,
+                                fontFamily = titleFontFamily,
+                                fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
+                                fontSize = 25.sp,
+                                lineHeight = 29.sp
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onVersionClick,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(squareSize),
+                        shape = RoundedCornerShape(cardRadius),
+                        color = cardColor,
+                        border = cardBorder
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(22.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = stringResource(R.string.about_overview_build_title),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = buildNumber,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = stringResource(R.string.about_overview_version_title),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.about_overview_version_value,
+                                        simpleVersion,
+                                        versionCode
+                                    ),
+                                    fontFamily = titleFontFamily,
+                                    fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
+                                    fontSize = 25.sp,
+                                    lineHeight = 29.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (nothingStyleEnabled) {
+                    val horizontalBridgeStart = (squareSize - bridgeLength) * 0.5f
+                    val verticalBridgeStart = (squareSize - bridgeLength) * 0.5f
+
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = horizontalBridgeStart,
+                                y = -gap - bridgeOverlap
+                            )
+                            .width(bridgeLength)
+                            .height(gap + bridgeOverlap * 2f)
+                            .background(cardColor)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = horizontalBridgeStart - gap * 0.5f,
+                                y = -gap
+                            )
+                            .size(gap)
+                            .background(gutterColor, CircleShape)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = horizontalBridgeStart + bridgeLength - gap * 0.5f,
+                                y = -gap
+                            )
+                            .size(gap)
+                            .background(gutterColor, CircleShape)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = squareSize - bridgeOverlap,
+                                y = verticalBridgeStart
+                            )
+                            .width(gap + bridgeOverlap * 2f)
+                            .height(bridgeLength)
+                            .background(cardColor)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = squareSize,
+                                y = verticalBridgeStart - gap * 0.5f
+                            )
+                            .size(gap)
+                            .background(gutterColor, CircleShape)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = squareSize,
+                                y = verticalBridgeStart + bridgeLength - gap * 0.5f
+                            )
+                            .size(gap)
+                            .background(gutterColor, CircleShape)
+                    )
+                }
+            }
+        }
     }
 }
 

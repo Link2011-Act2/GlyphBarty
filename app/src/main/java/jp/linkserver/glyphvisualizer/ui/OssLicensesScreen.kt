@@ -85,7 +85,10 @@ private fun loadOssEntries(context: android.content.Context): List<OssEntry> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OssLicensesScreen(onBack: () -> Unit) {
+fun OssLicensesScreen(
+    nothingStyleEnabled: Boolean,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     val entries = remember { loadOssEntries(context) }
     var selectedEntry by remember { mutableStateOf<OssEntry?>(null) }
@@ -96,7 +99,7 @@ fun OssLicensesScreen(onBack: () -> Unit) {
                 title = {
                     Text(
                         text = stringResource(R.string.oss_screen_title),
-                        fontFamily = NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
                     )
                 },
                 navigationIcon = {

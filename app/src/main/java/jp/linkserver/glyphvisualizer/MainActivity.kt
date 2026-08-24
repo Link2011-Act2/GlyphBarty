@@ -60,6 +60,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -131,6 +133,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
@@ -152,6 +155,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -162,7 +166,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
@@ -173,6 +176,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
@@ -277,6 +281,7 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
     private var recordingLightIncluded = false
     private var reverseDirection = false
     private var compactMode = false
+    private var lastFrame = CaptureLiveFrame()
     private var animationScheduled = false
     private var lastAnimationFrameNanos = 0L
     private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
@@ -320,10 +325,14 @@ private class NativeDetailedMeterView @JvmOverloads constructor(
         this.activeColor = activeColor
         this.peakColor = peakColor
         this.sweepColor = sweepColor
-        if (changed) invalidate()
+        if (changed) {
+            setLiveFrame(lastFrame)
+            invalidate()
+        }
     }
 
     fun setLiveFrame(frame: CaptureLiveFrame) {
+        lastFrame = frame
         setMeterState(
             level = frame.level,
             peak = frame.peak,
@@ -2548,6 +2557,11 @@ private fun GlyphVisualizerApp(
                             baseIndicatorEnabled = baseIndicatorEnabled,
                             recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
+                            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                            meterVisibleEnabled = meterVisibleEnabled,
+                            lightweightMeterEnabled = lightweightMeterEnabled,
+                            spectrumMeterEnabled = spectrumMeterEnabled,
+                            nativeMeterViewEnabled = nativeMeterViewEnabled,
                             nothingStyleEnabled = nothingStyleEnabled,
                             onStartClick = {
                                 startPending = true
@@ -2766,7 +2780,10 @@ private fun GlyphVisualizerApp(
                             )
                         }
                     }
-                    Screen.OSS -> OssLicensesScreen(onBack = { screen = Screen.ABOUT })
+                    Screen.OSS -> OssLicensesScreen(
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onBack = { screen = Screen.ABOUT }
+                    )
                 }
             }
 
@@ -2821,7 +2838,7 @@ private fun WelcomeScreen(
     onComplete: (Boolean) -> Unit
 ) {
     var step by rememberSaveable { mutableStateOf(WelcomeStep.INTRO) }
-    val welcomeHeadingFontFamily = FontFamily(Font(R.font.ntype82_regular))
+    val welcomeHeadingFontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface
     ) { padding ->
@@ -2859,7 +2876,9 @@ private fun WelcomeScreen(
                                 WelcomeStep.UPDATE_CHECK -> stringResource(R.string.welcome_update_check_title)
                             },
                             style = if (themedNothingStyleEnabled) {
-                                MaterialTheme.typography.headlineMedium.copy(fontFamily = welcomeHeadingFontFamily)
+                                MaterialTheme.typography.headlineMedium.copy(
+                                    fontFamily = welcomeHeadingFontFamily
+                                )
                             } else {
                                 MaterialTheme.typography.headlineMedium
                             }
@@ -3079,6 +3098,11 @@ private fun ExperimentalMainScreenContent(
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -3088,37 +3112,14 @@ private fun ExperimentalMainScreenContent(
     onOpenDetails: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
-    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
-    val liveFrame = CaptureUiStore.liveFrame
+    val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
     val deviceName = remember(heroTitle) {
         heroTitle.lineSequence().firstOrNull { it.isNotBlank() } ?: heroTitle
     }
     val patternDefinition = GlyphPatternRegistry.definition(glyphMode)
     val patternLabel = patternDefinition?.let { stringResource(it.labelRes) } ?: glyphMode
-    val meterModel = remember(
-        liveFrame.level,
-        liveFrame.meterSegments,
-        glyphMode,
-        deviceProfile,
-        binaryMode,
-        recordingLightIncluded,
-        reverseDirection
-    ) {
-        buildUiMeterModel(
-            level = liveFrame.level,
-            meterSegments = liveFrame.meterSegments,
-            glyphMode = glyphMode,
-            deviceProfile = deviceProfile,
-            binaryMode = binaryMode,
-            glyphMeterPreviewEnabled = true,
-            recordingLightIncluded = recordingLightIncluded,
-            reverseDirection = reverseDirection
-        )
-    }
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
     var showDevicePatternSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var showFillOtherGlyphLightsDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
     val supportsFillOtherGlyphLights = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE1,
@@ -3139,21 +3140,45 @@ private fun ExperimentalMainScreenContent(
         RecordingLightBehavior.BASS_INDICATOR ->
             stringResource(R.string.recording_light_behavior_bass)
     }
-    val fillOtherGlyphLightsLabel = stringResource(
-        if (fillOtherGlyphLights) {
-            R.string.fill_other_glyph_lights_enabled
-        } else {
-            R.string.fill_other_glyph_lights_disabled
-        }
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val secondaryContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val darkTheme = isSystemInDarkTheme()
+    val bottomSheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val bottomSheetItemColor = MaterialTheme.colorScheme.onSurface.copy(
+        alpha = if (darkTheme) 0.10f else 0.06f
     )
-    val dividerColor = Color(0xFF3A3A3A)
+    val patternSettingsSheetContainerColor = if (darkTheme) {
+        bottomSheetContainerColor
+    } else {
+        bottomSheetItemColor.compositeOver(bottomSheetContainerColor)
+    }
+    val patternSettingsSheetItemColor = if (darkTheme) {
+        bottomSheetItemColor
+    } else {
+        bottomSheetContainerColor
+    }
+    val dividerColor = if (darkTheme) {
+        MaterialTheme.colorScheme.outlineVariant
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
+    }
     val startButtonContainerColor by animateColorAsState(
-        targetValue = if (isCapturing) NothingRed else Color.White,
+        targetValue = if (isCapturing && nothingStyleEnabled) {
+            NothingRed
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
         animationSpec = tween(durationMillis = 180),
         label = "experimental_home_start_button_container"
     )
     val startButtonContentColor by animateColorAsState(
-        targetValue = if (isCapturing) Color.White else Color.Black,
+        targetValue = if (isCapturing && nothingStyleEnabled) {
+            Color.White
+        } else {
+            MaterialTheme.colorScheme.onPrimary
+        },
         animationSpec = tween(durationMillis = 180),
         label = "experimental_home_start_button_content"
     )
@@ -3161,8 +3186,8 @@ private fun ExperimentalMainScreenContent(
     if (showPatternSheet) {
         ModalBottomSheet(
             onDismissRequest = { showPatternSheet = false },
-            containerColor = Color(0xFF0A0A0A),
-            contentColor = Color.White,
+            containerColor = bottomSheetContainerColor,
+            contentColor = contentColor,
             dragHandle = null
         ) {
             Column(
@@ -3174,7 +3199,7 @@ private fun ExperimentalMainScreenContent(
                 Text(
                     text = stringResource(R.string.experimental_home_select_pattern),
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                    color = Color.White,
+                    color = contentColor,
                     fontFamily = displayFont,
                     fontSize = 22.sp
                 )
@@ -3200,14 +3225,14 @@ private fun ExperimentalMainScreenContent(
                             ) {
                                 Text(
                                     text = stringResource(pattern.labelRes),
-                                    color = Color.White,
+                                    color = contentColor,
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 17.sp
                                 )
                                 patternDescription?.let { description ->
                                     Text(
                                         text = description,
-                                        color = Color(0xFFAAAAAA),
+                                        color = secondaryContentColor,
                                         fontFamily = FontFamily.SansSerif,
                                         fontSize = 13.sp,
                                         lineHeight = 18.sp
@@ -3218,7 +3243,11 @@ private fun ExperimentalMainScreenContent(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = NothingRed
+                                    tint = if (nothingStyleEnabled) {
+                                        NothingRed
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
                                 )
                             }
                         }
@@ -3231,8 +3260,8 @@ private fun ExperimentalMainScreenContent(
     if (showDevicePatternSettingsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showDevicePatternSettingsSheet = false },
-            containerColor = Color(0xFF0A0A0A),
-            contentColor = Color.White,
+            containerColor = patternSettingsSheetContainerColor,
+            contentColor = contentColor,
             dragHandle = null
         ) {
             Column(
@@ -3245,20 +3274,19 @@ private fun ExperimentalMainScreenContent(
                 Text(
                     text = stringResource(R.string.experimental_home_pattern_settings),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    color = Color.White,
+                    color = contentColor,
                     fontFamily = displayFont,
                     fontSize = 22.sp
                 )
                 if (supportsFillOtherGlyphLights) {
-                    SettingsEntry(
+                    SettingsToggleEntry(
                         title = stringResource(R.string.fill_other_glyph_lights_title),
-                        description = fillOtherGlyphLightsLabel,
-                        onClick = {
-                            showDevicePatternSettingsSheet = false
-                            showFillOtherGlyphLightsDialog = true
-                        },
+                        description = stringResource(R.string.fill_other_glyph_lights_desc),
+                        checked = fillOtherGlyphLights,
+                        onCheckedChange = onFillOtherGlyphLightsChanged,
                         nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Single
+                        position = SettingsGroupPosition.Single,
+                        containerColor = patternSettingsSheetItemColor
                     )
                 }
                 if (supportsRecordingLightBehavior) {
@@ -3270,22 +3298,12 @@ private fun ExperimentalMainScreenContent(
                             showRecordingLightDialog = true
                         },
                         nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Single
+                        position = SettingsGroupPosition.Single,
+                        containerColor = patternSettingsSheetItemColor
                     )
                 }
             }
         }
-    }
-
-    if (showFillOtherGlyphLightsDialog) {
-        ExperimentalFillOtherGlyphLightsDialog(
-            selected = fillOtherGlyphLights,
-            onDismiss = { showFillOtherGlyphLightsDialog = false },
-            onSelected = { enabled ->
-                showFillOtherGlyphLightsDialog = false
-                onFillOtherGlyphLightsChanged(enabled)
-            }
-        )
     }
 
     if (showRecordingLightDialog) {
@@ -3301,8 +3319,8 @@ private fun ExperimentalMainScreenContent(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color.Black,
-        contentColor = Color.White
+        color = surfaceColor,
+        contentColor = contentColor
     ) {
         Column(
             modifier = Modifier
@@ -3318,7 +3336,7 @@ private fun ExperimentalMainScreenContent(
                 Text(
                     text = stringResource(R.string.app_name),
                     modifier = Modifier.align(Alignment.Center),
-                    color = Color.White,
+                    color = contentColor,
                     fontFamily = displayFont,
                     fontSize = 25.sp
                 )
@@ -3329,7 +3347,7 @@ private fun ExperimentalMainScreenContent(
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = stringResource(R.string.cd_settings),
-                        tint = Color.White,
+                        tint = contentColor,
                         modifier = Modifier.size(27.dp)
                     )
                 }
@@ -3338,7 +3356,7 @@ private fun ExperimentalMainScreenContent(
             Surface(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 shape = RoundedCornerShape(28.dp),
-                color = Color(0xFF101010),
+                color = containerColor,
                 border = BorderStroke(1.dp, dividerColor)
             ) {
                 Text(
@@ -3346,7 +3364,7 @@ private fun ExperimentalMainScreenContent(
                         if (isCapturing) R.string.capture_state_live else R.string.experimental_home_state_waiting
                     )}",
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
-                    color = Color.White,
+                    color = contentColor,
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 16.sp,
                     maxLines = 1
@@ -3360,10 +3378,17 @@ private fun ExperimentalMainScreenContent(
                     .padding(horizontal = 30.dp, vertical = 24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                MeterCanvas(
-                    level = liveFrame.level,
-                    peak = liveFrame.peak,
-                    meterModel = meterModel,
+                ExperimentalMeterPreview(
+                    glyphMode = glyphMode,
+                    deviceProfile = deviceProfile,
+                    binaryMode = binaryMode,
+                    glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                    meterVisibleEnabled = meterVisibleEnabled,
+                    lightweightMeterEnabled = lightweightMeterEnabled,
+                    spectrumMeterEnabled = spectrumMeterEnabled,
+                    nativeMeterViewEnabled = nativeMeterViewEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
+                    reverseDirection = reverseDirection,
                     nothingStyleEnabled = nothingStyleEnabled
                 )
             }
@@ -3441,8 +3466,8 @@ private fun ExperimentalMainScreenContent(
                         Text(
                             text = patternLabel,
                             modifier = Modifier.weight(1f),
-                            color = Color.White,
-                            fontFamily = NTypeFontFamily,
+                            color = contentColor,
+                            fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null,
                             fontSize = 17.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -3450,7 +3475,7 @@ private fun ExperimentalMainScreenContent(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = contentColor,
                             modifier = Modifier.size(23.dp)
                         )
                     }
@@ -3475,7 +3500,7 @@ private fun ExperimentalMainScreenContent(
                                     contentDescription = stringResource(
                                         R.string.experimental_home_pattern_settings
                                     ),
-                                    tint = Color.White,
+                                    tint = contentColor,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
@@ -3499,7 +3524,7 @@ private fun ExperimentalMainScreenContent(
                             Text(
                                 text = stringResource(R.string.experimental_home_details),
                                 modifier = Modifier.weight(1f),
-                                color = Color.White,
+                                color = contentColor,
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 16.sp,
                                 textAlign = TextAlign.End
@@ -3507,13 +3532,109 @@ private fun ExperimentalMainScreenContent(
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = contentColor,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalMeterPreview(
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
+    reverseDirection: Boolean,
+    nothingStyleEnabled: Boolean
+) {
+    if (!meterVisibleEnabled) return
+
+    val liveFrame = CaptureUiStore.liveFrame
+    val meterModel = if (lightweightMeterEnabled || spectrumMeterEnabled || nativeMeterViewEnabled) {
+        null
+    } else {
+        remember(
+            liveFrame.level,
+            liveFrame.meterSegments,
+            glyphMode,
+            deviceProfile,
+            binaryMode,
+            glyphMeterPreviewEnabled,
+            recordingLightIncluded,
+            reverseDirection
+        ) {
+            buildUiMeterModel(
+                level = liveFrame.level,
+                meterSegments = liveFrame.meterSegments,
+                glyphMode = glyphMode,
+                deviceProfile = deviceProfile,
+                binaryMode = binaryMode,
+                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                recordingLightIncluded = recordingLightIncluded,
+                reverseDirection = reverseDirection
+            )
+        }
+    }
+
+    when {
+        spectrumMeterEnabled && nativeMeterViewEnabled -> DirectNativeSpectrumMeterCanvas(
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            recordingLightIncluded = recordingLightIncluded,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+
+        spectrumMeterEnabled -> SpectrumMeterCanvas(
+            level = liveFrame.level,
+            spectrumBands = liveFrame.spectrumBands,
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            recordingLightIncluded = recordingLightIncluded,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+
+        lightweightMeterEnabled && nativeMeterViewEnabled -> DirectNativeMeterCanvas(
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
+            reverseDirection = reverseDirection,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+
+        lightweightMeterEnabled -> LightweightMeterCanvas(
+            level = liveFrame.level,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+
+        nativeMeterViewEnabled -> DirectNativeDetailedMeterCanvas(
+            glyphMode = glyphMode,
+            deviceProfile = deviceProfile,
+            binaryMode = binaryMode,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            recordingLightIncluded = recordingLightIncluded,
+            reverseDirection = reverseDirection,
+            nothingStyleEnabled = nothingStyleEnabled
+        )
+
+        else -> meterModel?.let {
+            MeterCanvas(
+                level = liveFrame.level,
+                peak = liveFrame.peak,
+                meterModel = it,
+                nothingStyleEnabled = nothingStyleEnabled
+            )
         }
     }
 }
@@ -3531,23 +3652,22 @@ private fun ExperimentalHomeLogPanel(
         else -> statusText
     }
     val messageColor = if (!logMessage.isNullOrBlank() && logMessage != statusText) {
-        Color(0xFFFF8C86)
+        MaterialTheme.colorScheme.tertiary
     } else {
-        Color(0xFFD6D6D6)
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .height(40.dp)
-            .clickable { expanded = !expanded }
     ) {
         val arrowOffset by animateDpAsState(
             targetValue = if (expanded) {
-                (maxWidth - 36.dp).coerceAtLeast(12.dp)
+                (maxWidth - 44.dp).coerceAtLeast(4.dp)
             } else {
-                12.dp
+                4.dp
             },
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -3574,23 +3694,30 @@ private fun ExperimentalHomeLogPanel(
             )
         }
 
-        Icon(
-            imageVector = if (expanded) {
-                Icons.Default.ChevronLeft
-            } else {
-                Icons.Default.ChevronRight
-            },
-            contentDescription = if (expanded) {
-                stringResource(R.string.cd_collapse)
-            } else {
-                stringResource(R.string.cd_expand)
-            },
-            tint = Color.White,
+        Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .offset(x = arrowOffset)
-                .size(24.dp)
-        )
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable { expanded = !expanded },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (expanded) {
+                    Icons.Default.ChevronLeft
+                } else {
+                    Icons.Default.ChevronRight
+                },
+                contentDescription = if (expanded) {
+                    stringResource(R.string.cd_collapse)
+                } else {
+                    stringResource(R.string.cd_expand)
+                },
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
@@ -3612,7 +3739,7 @@ private fun ExperimentalDetailsSummary(
     }
     val patternDefinition = GlyphPatternRegistry.definition(glyphMode)
     val patternLabel = patternDefinition?.let { stringResource(it.labelRes) } ?: glyphMode
-    val dividerColor = Color(0xFF3A3A3A)
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
 
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = dividerColor)
@@ -3627,7 +3754,13 @@ private fun ExperimentalDetailsSummary(
                 modifier = Modifier
                     .size(10.dp)
                     .clip(CircleShape)
-                    .background(if (isCapturing) NothingRed else Color(0xFF5A5A5A))
+                    .background(
+                        if (isCapturing) {
+                            if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        }
+                    )
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -3635,13 +3768,13 @@ private fun ExperimentalDetailsSummary(
             ) {
                 Text(
                     text = deviceName,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 22.sp
                 )
                 Text(
                     text = listOfNotNull(deviceDetail, patternLabel).joinToString("  •  "),
-                    color = Color(0xFFBDBDBD),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -3650,7 +3783,7 @@ private fun ExperimentalDetailsSummary(
             }
             Surface(
                 shape = RoundedCornerShape(999.dp),
-                color = Color(0xFF111111),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, dividerColor)
             ) {
                 Text(
@@ -3658,7 +3791,7 @@ private fun ExperimentalDetailsSummary(
                         if (isCapturing) R.string.capture_state_live else R.string.experimental_home_state_waiting
                     ),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 14.sp
                 )
@@ -3669,7 +3802,7 @@ private fun ExperimentalDetailsSummary(
             Surface(
                 onClick = onOpenLatency,
                 color = Color.Transparent,
-                contentColor = Color.White
+                contentColor = MaterialTheme.colorScheme.onSurface
             ) {
                 Row(
                     modifier = Modifier
@@ -3682,13 +3815,13 @@ private fun ExperimentalDetailsSummary(
                     Text(
                         text = stringResource(R.string.latency_title),
                         modifier = Modifier.weight(1f),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 18.sp
                     )
                     Text(
                         text = stringResource(R.string.latency_value_ms, latencyMs),
-                        color = Color(0xFFBDBDBD),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = if (nothingStyleEnabled) {
                             NothingDotFontFamily
                         } else {
@@ -3699,7 +3832,7 @@ private fun ExperimentalDetailsSummary(
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -3711,8 +3844,8 @@ private fun ExperimentalDetailsSummary(
 
 private enum class ExperimentalDetailsTab {
     LIVE,
-    TUNE,
-    SYSTEM
+    SYSTEM,
+    TUNE
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3721,9 +3854,6 @@ private fun ExperimentalDetailsScreenContent(
     heroTitle: String,
     isCapturing: Boolean,
     startPending: Boolean,
-    level: Float,
-    peak: Float,
-    meterSegments: Int,
     latencyMs: Float,
     sensitivity: Float,
     noiseGate: Float,
@@ -3746,6 +3876,11 @@ private fun ExperimentalDetailsScreenContent(
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     mediaProjectionEnabled: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     onResetParametersClick: () -> Unit,
     onExportParametersClick: () -> Unit,
@@ -3777,8 +3912,10 @@ private fun ExperimentalDetailsScreenContent(
     onOpenLatency: () -> Unit,
     onBack: () -> Unit
 ) {
-    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
-    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
+    val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    val secondaryContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val bottomSheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val deviceName = remember(heroTitle) {
         heroTitle.lineSequence().firstOrNull { it.isNotBlank() } ?: heroTitle
     }
@@ -3797,32 +3934,6 @@ private fun ExperimentalDetailsScreenContent(
         RecordingLightBehavior.INCLUDED_IN_METER -> stringResource(R.string.recording_light_behavior_meter)
         RecordingLightBehavior.BASS_INDICATOR -> stringResource(R.string.recording_light_behavior_bass)
     }
-    val fillOtherGlyphLightsLabel = stringResource(
-        if (fillOtherGlyphLights) {
-            R.string.fill_other_glyph_lights_enabled
-        } else {
-            R.string.fill_other_glyph_lights_disabled
-        }
-    )
-    val meterModel = remember(
-        level,
-        glyphMode,
-        deviceProfile,
-        binaryMode,
-        recordingLightIncluded,
-        reverseDirection
-    ) {
-        buildUiMeterModel(
-            level = level,
-            meterSegments = meterSegments,
-            glyphMode = glyphMode,
-            deviceProfile = deviceProfile,
-            binaryMode = binaryMode,
-            glyphMeterPreviewEnabled = true,
-            recordingLightIncluded = recordingLightIncluded,
-            reverseDirection = reverseDirection
-        )
-    }
     val supportsFillOtherGlyphLights = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE1,
         GlyphDeviceProfile.PHONE2,
@@ -3837,17 +3948,19 @@ private fun ExperimentalDetailsScreenContent(
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     )
 
-    var selectedTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
+    val detailsTabs = ExperimentalDetailsTab.entries
+    val pagerState = rememberPagerState(pageCount = { detailsTabs.size })
+    val selectedTab = detailsTabs[pagerState.currentPage]
+    val coroutineScope = rememberCoroutineScope()
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
-    var showFillOtherGlyphLightsDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showPatternSheet) {
         ModalBottomSheet(
             onDismissRequest = { showPatternSheet = false },
-            containerColor = Color(0xFF0A0A0A),
-            contentColor = Color.White,
+            containerColor = bottomSheetContainerColor,
+            contentColor = contentColor,
             dragHandle = null
         ) {
             Column(
@@ -3859,7 +3972,7 @@ private fun ExperimentalDetailsScreenContent(
                 Text(
                     text = stringResource(R.string.experimental_home_select_pattern),
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                    color = Color.White,
+                    color = contentColor,
                     fontFamily = displayFont,
                     fontSize = 22.sp
                 )
@@ -3885,14 +3998,14 @@ private fun ExperimentalDetailsScreenContent(
                             ) {
                                 Text(
                                     text = stringResource(pattern.labelRes),
-                                    color = Color.White,
+                                    color = contentColor,
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 17.sp
                                 )
                                 patternDescription?.let { description ->
                                     Text(
                                         text = description,
-                                        color = Color(0xFFAAAAAA),
+                                        color = secondaryContentColor,
                                         fontFamily = FontFamily.SansSerif,
                                         fontSize = 13.sp,
                                         lineHeight = 18.sp
@@ -3903,7 +4016,11 @@ private fun ExperimentalDetailsScreenContent(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = NothingRed
+                                    tint = if (nothingStyleEnabled) {
+                                        NothingRed
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
                                 )
                             }
                         }
@@ -3920,17 +4037,6 @@ private fun ExperimentalDetailsScreenContent(
             onSelected = { behavior ->
                 showRecordingLightDialog = false
                 onRecordingLightBehaviorChanged(behavior)
-            }
-        )
-    }
-
-    if (showFillOtherGlyphLightsDialog && fillOtherGlyphLightsEnabledForMode) {
-        ExperimentalFillOtherGlyphLightsDialog(
-            selected = fillOtherGlyphLights,
-            onDismiss = { showFillOtherGlyphLightsDialog = false },
-            onSelected = { enabled ->
-                showFillOtherGlyphLightsDialog = false
-                onFillOtherGlyphLightsChanged(enabled)
             }
         )
     }
@@ -3959,16 +4065,16 @@ private fun ExperimentalDetailsScreenContent(
     }
 
     Scaffold(
-        containerColor = Color.Black,
-        contentColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = contentColor,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Black,
-                    navigationIconContentColor = Color.White,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    navigationIconContentColor = contentColor,
+                    titleContentColor = contentColor,
+                    actionIconContentColor = contentColor
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -4003,41 +4109,26 @@ private fun ExperimentalDetailsScreenContent(
         ) {
             ExperimentalDetailsTabRow(
                 selectedTab = selectedTab,
-                onSelected = { selectedTab = it }
+                onSelected = { tab ->
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(tab.ordinal)
+                    }
+                }
             )
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = {
-                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                        (
-                            slideInHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = 0.82f,
-                                    stiffness = Spring.StiffnessMediumLow
-                                )
-                            ) { fullWidth -> direction * (fullWidth / 10) } +
-                                fadeIn(animationSpec = tween(durationMillis = 180))
-                            ) togetherWith (
-                            slideOutHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = 0.9f,
-                                    stiffness = Spring.StiffnessMedium
-                                )
-                            ) { fullWidth -> -direction * (fullWidth / 14) } +
-                                fadeOut(animationSpec = tween(durationMillis = 120))
-                            )
-                    },
-                    label = "experimental_details_tab_content"
-                ) { tab ->
-                    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                key = { page -> detailsTabs[page].name }
+            ) { page ->
+                val tab = detailsTabs[page]
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
                         when (tab) {
                             ExperimentalDetailsTab.LIVE -> ExperimentalDetailsLiveTab(
                                 deviceName = deviceName,
@@ -4045,19 +4136,24 @@ private fun ExperimentalDetailsScreenContent(
                                 isCapturing = isCapturing,
                                 startPending = startPending,
                                 patternLabel = patternLabel,
-                                fillOtherGlyphLightsLabel = fillOtherGlyphLightsLabel,
+                                fillOtherGlyphLights = fillOtherGlyphLights,
                                 showFillOtherGlyphLights = fillOtherGlyphLightsEnabledForMode,
                                 recordingLightBehaviorLabel = recordingLightBehaviorLabel,
                                 supportsRecordingLightBehavior = supportsRecordingLightBehavior,
-                                level = level,
-                                peak = peak,
-                                meterModel = meterModel,
+                                glyphMode = glyphMode,
+                                deviceProfile = deviceProfile,
+                                binaryMode = binaryMode,
+                                glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                                meterVisibleEnabled = meterVisibleEnabled,
+                                lightweightMeterEnabled = lightweightMeterEnabled,
+                                spectrumMeterEnabled = spectrumMeterEnabled,
+                                nativeMeterViewEnabled = nativeMeterViewEnabled,
+                                recordingLightIncluded = recordingLightIncluded,
+                                reverseDirection = reverseDirection,
                                 onStartClick = onStartVisualizerClick,
                                 onStopClick = onStopClick,
                                 onOpenPattern = { showPatternSheet = true },
-                                onOpenFillOtherGlyphLights = {
-                                    showFillOtherGlyphLightsDialog = true
-                                },
+                                onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                                 onOpenRecordingLight = { showRecordingLightDialog = true },
                                 nothingStyleEnabled = nothingStyleEnabled
                             )
@@ -4113,10 +4209,6 @@ private fun ExperimentalDetailsScreenContent(
                             )
                         }
 
-                        ExperimentalDetailsFooterHint(
-                            selectedTab = tab
-                        )
-                    }
                 }
             }
         }
@@ -4130,8 +4222,8 @@ private fun ExperimentalDetailsTabRow(
 ) {
     val labels = listOf(
         ExperimentalDetailsTab.LIVE to stringResource(R.string.experimental_details_tab_live),
-        ExperimentalDetailsTab.TUNE to stringResource(R.string.experimental_details_tab_tune),
-        ExperimentalDetailsTab.SYSTEM to stringResource(R.string.experimental_details_tab_system)
+        ExperimentalDetailsTab.SYSTEM to stringResource(R.string.experimental_details_tab_system),
+        ExperimentalDetailsTab.TUNE to stringResource(R.string.experimental_details_tab_tune)
     )
     val selectedIndex = labels.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0)
     Column {
@@ -4163,7 +4255,11 @@ private fun ExperimentalDetailsTabRow(
                 labels.forEach { (tab, label) ->
                     val selected = tab == selectedTab
                     val labelColor by animateColorAsState(
-                        targetValue = if (selected) Color.White else Color(0xFF8D8D8D),
+                        targetValue = if (selected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         animationSpec = tween(durationMillis = 180),
                         label = "experimental_details_tab_color_${tab.name}"
                     )
@@ -4203,30 +4299,11 @@ private fun ExperimentalDetailsTabRow(
                     .width(indicatorWidth)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(Color.White)
+                    .background(MaterialTheme.colorScheme.primary)
             )
         }
-        HorizontalDivider(color = Color(0xFF2F2F2F))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
-}
-
-@Composable
-private fun ExperimentalDetailsFooterHint(
-    selectedTab: ExperimentalDetailsTab
-) {
-    val text = when (selectedTab) {
-        ExperimentalDetailsTab.LIVE -> stringResource(R.string.experimental_details_footer_live)
-        ExperimentalDetailsTab.TUNE -> stringResource(R.string.experimental_details_footer_tune)
-        ExperimentalDetailsTab.SYSTEM -> stringResource(R.string.experimental_details_footer_system)
-    }
-    Text(
-        text = text,
-        modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF9A9A9A),
-        fontFamily = FontFamily.SansSerif,
-        fontSize = 13.sp,
-        textAlign = TextAlign.Center
-    )
 }
 
 @Composable
@@ -4246,17 +4323,24 @@ private fun ExperimentalDetailsLiveTab(
     isCapturing: Boolean,
     startPending: Boolean,
     patternLabel: String,
-    fillOtherGlyphLightsLabel: String,
+    fillOtherGlyphLights: Boolean,
     showFillOtherGlyphLights: Boolean,
     recordingLightBehaviorLabel: String,
     supportsRecordingLightBehavior: Boolean,
-    level: Float,
-    peak: Float,
-    meterModel: UiMeterModel,
+    glyphMode: String,
+    deviceProfile: GlyphDeviceProfile,
+    binaryMode: Boolean,
+    glyphMeterPreviewEnabled: Boolean,
+    meterVisibleEnabled: Boolean,
+    lightweightMeterEnabled: Boolean,
+    spectrumMeterEnabled: Boolean,
+    nativeMeterViewEnabled: Boolean,
+    recordingLightIncluded: Boolean,
+    reverseDirection: Boolean,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
     onOpenPattern: () -> Unit,
-    onOpenFillOtherGlyphLights: () -> Unit,
+    onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
     onOpenRecordingLight: () -> Unit,
     nothingStyleEnabled: Boolean
 ) {
@@ -4283,7 +4367,7 @@ private fun ExperimentalDetailsLiveTab(
                         Text(
                             text = deviceName,
                             color = MaterialTheme.colorScheme.onSurface,
-                            fontFamily = NTypeFontFamily,
+                            fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null,
                             fontSize = 20.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -4310,10 +4394,18 @@ private fun ExperimentalDetailsLiveTab(
                         enabled = !startPending,
                         shape = RoundedCornerShape(999.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isCapturing) NothingRed else Color.White,
-                            contentColor = Color.Black,
-                            disabledContainerColor = Color(0xFF777777),
-                            disabledContentColor = Color.Black
+                            containerColor = if (isCapturing && nothingStyleEnabled) {
+                                NothingRed
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            contentColor = if (isCapturing && nothingStyleEnabled) {
+                                Color.White
+                            } else {
+                                MaterialTheme.colorScheme.onPrimary
+                            },
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp)
                     ) {
@@ -4321,7 +4413,7 @@ private fun ExperimentalDetailsLiveTab(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(17.dp),
                                 strokeWidth = 2.dp,
-                                color = Color.Black
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
                             Icon(
@@ -4354,10 +4446,11 @@ private fun ExperimentalDetailsLiveTab(
             )
             if (showFillOtherGlyphLights) {
                 SettingsDividerGap()
-                SettingsEntry(
+                SettingsToggleEntry(
                     title = stringResource(R.string.fill_other_glyph_lights_title),
-                    description = fillOtherGlyphLightsLabel,
-                    onClick = onOpenFillOtherGlyphLights,
+                    description = stringResource(R.string.fill_other_glyph_lights_desc),
+                    checked = fillOtherGlyphLights,
+                    onCheckedChange = onFillOtherGlyphLightsChanged,
                     nothingStyle = nothingStyleEnabled,
                     position = if (supportsRecordingLightBehavior) {
                         SettingsGroupPosition.Middle
@@ -4379,21 +4472,30 @@ private fun ExperimentalDetailsLiveTab(
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        ExperimentalDetailsSectionTitle(
-            text = stringResource(R.string.experimental_details_live_meter_section)
-        )
-        SettingsItemSurface(
-            nothingStyle = nothingStyleEnabled,
-            position = SettingsGroupPosition.Single
-        ) {
-            Box(modifier = Modifier.padding(14.dp)) {
-                MeterCanvas(
-                    level = level,
-                    peak = peak,
-                    meterModel = meterModel,
-                    nothingStyleEnabled = nothingStyleEnabled
-                )
+    if (meterVisibleEnabled) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            ExperimentalDetailsSectionTitle(
+                text = stringResource(R.string.experimental_details_live_meter_section)
+            )
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Single
+            ) {
+                Box(modifier = Modifier.padding(14.dp)) {
+                    ExperimentalMeterPreview(
+                        glyphMode = glyphMode,
+                        deviceProfile = deviceProfile,
+                        binaryMode = binaryMode,
+                        glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+                        meterVisibleEnabled = meterVisibleEnabled,
+                        lightweightMeterEnabled = lightweightMeterEnabled,
+                        spectrumMeterEnabled = spectrumMeterEnabled,
+                        nativeMeterViewEnabled = nativeMeterViewEnabled,
+                        recordingLightIncluded = recordingLightIncluded,
+                        reverseDirection = reverseDirection,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                }
             }
         }
     }
@@ -5037,9 +5139,6 @@ private fun MainScreenContent(
             heroTitle = heroTitle,
             isCapturing = isCapturing,
             startPending = startPending,
-            level = level,
-            peak = peak,
-            meterSegments = meterSegments,
             latencyMs = latencyMs,
             sensitivity = sensitivity,
             noiseGate = noiseGate,
@@ -5062,6 +5161,11 @@ private fun MainScreenContent(
             spectrumAutoScale = spectrumAutoScale,
             allBrightnessAutoScale = allBrightnessAutoScale,
             mediaProjectionEnabled = mediaProjectionEnabled,
+            glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
+            meterVisibleEnabled = meterVisibleEnabled,
+            lightweightMeterEnabled = lightweightMeterEnabled,
+            spectrumMeterEnabled = spectrumMeterEnabled,
+            nativeMeterViewEnabled = nativeMeterViewEnabled,
             nothingStyleEnabled = nothingStyleEnabled,
             onResetParametersClick = onResetParametersClick,
             onExportParametersClick = onExportParametersClick,
@@ -5157,7 +5261,7 @@ private fun MainScreenContent(
                             }
                         ),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
                     )
                 },
                 actions = {
@@ -5329,7 +5433,9 @@ private fun MainScreenContent(
                     )
 
                     if (experimentalDetailsStyle) {
-                        ExperimentalDetailsInfoStrip()
+                        ExperimentalDetailsInfoStrip(
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
                     } else {
                         InfoStrip()
                     }
@@ -5410,8 +5516,7 @@ private fun LatencyScreenContent(
     onBack: (() -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
-    val nothingDisplayFont = remember { FontFamily(Font(R.font.ntype82_regular)) }
-    val displayFont = if (nothingStyleEnabled) nothingDisplayFont else FontFamily.SansSerif
+    val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
     var latencySliderValue by rememberSaveable { mutableStateOf(latencyMs) }
 
     LaunchedEffect(latencyMs) {
@@ -5443,7 +5548,7 @@ private fun LatencyScreenContent(
                     Text(
                         text = stringResource(R.string.latency_title),
                         style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = if (experimentalStyle) displayFont else NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) displayFont else null
                     )
                 },
                 actions = {
@@ -5682,7 +5787,7 @@ private fun ExperimentalScreenContent(
                 title = {
                     Text(
                         text = stringResource(R.string.experimental_screen_title),
-                        fontFamily = NTypeFontFamily
+                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
                     )
                 },
                 navigationIcon = {
@@ -8544,8 +8649,8 @@ private fun ControlCard(
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
     var showPhone1GlyphDebugInfoDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightBehaviorDialog by rememberSaveable { mutableStateOf(false) }
-    val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
-    val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
+    val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
+    val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onPrimary
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val phone1GlyphDebugAdbCommand = stringResource(R.string.phone1_glyph_debug_adb_command)
@@ -9456,7 +9561,9 @@ private fun InfoStrip() {
 }
 
 @Composable
-private fun ExperimentalDetailsInfoStrip() {
+private fun ExperimentalDetailsInfoStrip(
+    nothingStyleEnabled: Boolean
+) {
     val notes = listOf(
         stringResource(R.string.info_note_phone),
         stringResource(R.string.info_note_foreground),
@@ -9478,7 +9585,13 @@ private fun ExperimentalDetailsInfoStrip() {
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(if (index == 0) NothingRed else Color(0xFF666666))
+                        .background(
+                            if (index == 0) {
+                                if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
+                            } else {
+                                Color(0xFF666666)
+                            }
+                        )
                 )
                 Text(
                     text = note,
