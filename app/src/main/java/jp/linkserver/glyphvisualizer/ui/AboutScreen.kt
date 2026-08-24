@@ -26,16 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,15 +59,12 @@ import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.BuildConfig
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
+import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
-import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.isUpdateCheckIntervalIgnoredForTesting
 import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
-import jp.linkserver.glyphvisualizer.update.setShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.setUpdateCheckIntervalIgnoredForTesting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,9 +105,8 @@ fun AboutScreen(
     var showVersionDetailsDialog by remember { mutableStateOf(false) }
     var checkingUpdates by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
-    val isIntDevBuild = remember { isIntDevBuild() }
-    var showLatestForTesting by remember { mutableStateOf(isShowLatestReleaseForTestingEnabled(context)) }
-    var ignoreCheckIntervalForTesting by remember { mutableStateOf(isUpdateCheckIntervalIgnoredForTesting(context)) }
+    var logExists by remember { mutableStateOf(AppLogger.exists()) }
+    var showClearLogConfirmation by remember { mutableStateOf(false) }
     val repositoryUrl = stringResource(R.string.about_support_site_url)
 
     fun startUpdateCheck(manual: Boolean) {
@@ -189,221 +185,168 @@ fun AboutScreen(
                 onChannelClick = { showChannelDialog = true }
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_updates_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AboutSectionTitle(stringResource(R.string.about_updates_title))
+                SettingsItemSurface(
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Single
                 ) {
-                    Text(
-                        text = stringResource(R.string.about_updates_body),
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                OutlinedButton(
-                    onClick = { startUpdateCheck(manual = true) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !checkingUpdates
-                ) {
-                    if (checkingUpdates) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(end = 10.dp)
-                                .size(16.dp),
-                            strokeWidth = 2.dp
+                    Column {
+                        Text(
+                            text = stringResource(R.string.about_updates_body),
+                            modifier = Modifier.padding(
+                                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                                vertical = 18.dp
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 22.sp
                         )
-                    }
-                    Text(stringResource(R.string.about_update_check_button))
-                }
-                updateStatus?.let { status ->
-                    Text(
-                        text = status,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (isIntDevBuild) {
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        HorizontalDivider(
+                            modifier = Modifier.padding(
+                                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp
+                            ),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                                    vertical = 14.dp
+                                ),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = updateStatus
+                                    ?: stringResource(R.string.about_update_not_checked),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (updateStatus == null) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                fontWeight = FontWeight.Medium
+                            )
+                            Button(
+                                onClick = { startUpdateCheck(manual = true) },
+                                enabled = !checkingUpdates
                             ) {
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.about_update_test_mode_title),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.about_update_test_mode_desc),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = showLatestForTesting,
-                                    onCheckedChange = { enabled ->
-                                        showLatestForTesting = enabled
-                                        setShowLatestReleaseForTestingEnabled(context, enabled)
-                                    }
-                                )
-                            }
-                            HorizontalDivider()
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.about_update_ignore_interval_test_title),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.about_update_ignore_interval_test_desc),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = ignoreCheckIntervalForTesting,
-                                    onCheckedChange = { enabled ->
-                                        ignoreCheckIntervalForTesting = enabled
-                                        setUpdateCheckIntervalIgnoredForTesting(context, enabled)
-                                    }
-                                )
+                                Text(stringResource(R.string.about_update_check_button))
                             }
                         }
                     }
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_known_issues_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AboutSectionTitle(stringResource(R.string.about_known_issues_title))
+                SettingsItemSurface(
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Single
                 ) {
                     Text(
                         text = stringResource(R.string.about_known_issues_body),
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(
+                            horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                            vertical = 18.dp
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 22.sp
                     )
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_support_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.about_support_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedButton(
-                    onClick = {
-                        openUrl(context, context.getString(R.string.about_support_site_url))
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.about_support_open_site))
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_debug_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.about_debug_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                var logExists by remember { mutableStateOf(AppLogger.exists()) }
-                OutlinedButton(
-                    onClick = { AppLogger.share(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = logExists
-                ) {
-                    Text(
-                        if (logExists) {
-                            stringResource(R.string.about_debug_share)
-                        } else {
-                            stringResource(R.string.about_debug_empty)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AboutSectionTitle(stringResource(R.string.settings_category_information))
+                Column {
+                    SettingsItemSurface(
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Top
+                    ) {
+                        AboutSettingsActionCardContent(
+                            title = stringResource(R.string.about_support_title),
+                            description = stringResource(R.string.about_support_help),
+                            actionLabel = stringResource(R.string.about_support_open_site),
+                            nothingStyleEnabled = nothingStyleEnabled,
+                            onAction = {
+                                openUrl(context, context.getString(R.string.about_support_site_url))
+                            }
+                        )
+                    }
+                    SettingsDividerGap()
+                    SettingsItemSurface(
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Middle
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                                    vertical = if (nothingStyleEnabled) 18.dp else 16.dp
+                                ),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = stringResource(R.string.about_debug_title),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (nothingStyleEnabled) {
+                                        FontWeight.Normal
+                                    } else {
+                                        FontWeight.Bold
+                                    }
+                                )
+                                Text(
+                                    text = stringResource(R.string.about_debug_help),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = { AppLogger.share(context) },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = logExists
+                                ) {
+                                    Text(
+                                        if (logExists) {
+                                            stringResource(R.string.about_debug_share)
+                                        } else {
+                                            stringResource(R.string.about_debug_empty)
+                                        }
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { showClearLogConfirmation = true },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = logExists
+                                ) {
+                                    Text(stringResource(R.string.about_debug_clear))
+                                }
+                            }
                         }
-                    )
-                }
-                OutlinedButton(
-                    onClick = {
-                        AppLogger.clear()
-                        logExists = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = logExists
-                ) {
-                    Text(stringResource(R.string.about_debug_clear))
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.about_oss_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.about_oss_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedButton(
-                    onClick = onOssLicenses,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.about_oss_open))
+                    }
+                    SettingsDividerGap()
+                    SettingsItemSurface(
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Bottom
+                    ) {
+                        AboutSettingsActionCardContent(
+                            title = stringResource(R.string.about_oss_title),
+                            description = stringResource(R.string.about_oss_help),
+                            actionLabel = stringResource(R.string.about_oss_open),
+                            nothingStyleEnabled = nothingStyleEnabled,
+                            onAction = onOssLicenses
+                        )
+                    }
                 }
             }
         }
@@ -444,6 +387,79 @@ fun AboutScreen(
                 }
             }
         )
+    }
+
+    if (showClearLogConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearLogConfirmation = false },
+            title = { Text(stringResource(R.string.about_debug_clear_dialog_title)) },
+            text = { Text(stringResource(R.string.about_debug_clear_dialog_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        AppLogger.clear()
+                        logExists = false
+                        showClearLogConfirmation = false
+                    }
+                ) {
+                    Text(stringResource(R.string.about_debug_clear))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearLogConfirmation = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AboutSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.SansSerif,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
+private fun AboutSettingsActionCardContent(
+    title: String,
+    description: String,
+    actionLabel: String,
+    nothingStyleEnabled: Boolean,
+    onAction: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = if (nothingStyleEnabled) 22.dp else 16.dp,
+                vertical = if (nothingStyleEnabled) 18.dp else 16.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Button(
+            onClick = onAction,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(actionLabel)
+        }
     }
 }
 
@@ -503,7 +519,7 @@ private fun AboutOverviewMosaic(
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Image(
-                            painter = painterResource(R.mipmap.icon_round),
+                        painter = painterResource(R.drawable.app_icon_foreground),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -613,7 +629,11 @@ private fun AboutOverviewMosaic(
                                         simpleVersion,
                                         versionCode
                                     ),
-                                    fontFamily = titleFontFamily,
+                                    fontFamily = if (nothingStyleEnabled) {
+                                        NothingDotFontFamily
+                                    } else {
+                                        null
+                                    },
                                     fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
                                     fontSize = 25.sp,
                                     lineHeight = 29.sp

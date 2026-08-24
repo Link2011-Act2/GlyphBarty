@@ -27,14 +27,15 @@
     <string name="about_updates_title">What\'s new</string>
     <string name="about_updates_body">• Fixed an issue where the UI mode could switch unexpectedly\n• Fixed issues with the “Respond only during media playback” option</string>
     <string name="about_update_check_button">Check for updates</string>
+    <string name="about_update_not_checked">Not checked yet</string>
     <string name="about_update_checking">Checking GitHub Releases…</string>
-    <string name="about_update_latest">You are using the latest version.</string>
+    <string name="about_update_latest">Up to date</string>
     <string name="about_update_available">New version available: %1$s</string>
     <string name="about_update_check_failed">Could not check updates: %1$s</string>
     <string name="about_update_test_mode_title">Test: show latest Release</string>
     <string name="about_update_test_mode_desc">Temporarily treats the latest GitHub Release as an update even when it is not newer.</string>
     <string name="about_update_ignore_interval_test_title">Test: ignore daily check limit</string>
-    <string name="about_update_ignore_interval_test_desc">Temporarily checks GitHub Releases every time the app opens or this screen is shown.</string>
+    <string name="about_update_ignore_interval_test_desc">Temporarily ignores the daily limit for automatic GitHub Releases checks.</string>
     <string name="update_screen_title">Update available</string>
     <string name="update_release_notes_title">Release notes</string>
     <string name="update_release_notes_empty">No release notes were provided for this version.</string>
@@ -65,6 +66,8 @@
     <string name="about_debug_share_chooser">Share log</string>
     <string name="about_debug_empty">No log available</string>
     <string name="about_debug_clear">Clear log</string>
+    <string name="about_debug_clear_dialog_title">Clear the log?</string>
+    <string name="about_debug_clear_dialog_message">All app log entries available for sharing will be deleted. This action cannot be undone.</string>
 
     <!-- Settings Screen -->
     <string name="settings_screen_title">App settings</string>

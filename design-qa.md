@@ -54,6 +54,66 @@ final result: passed
 
 ---
 
+# Design QA — About screen lower-section redesign
+
+- Source visual truth: `C:\Users\wwwri\.codex\generated_images\01a03217-a826-7240-98d4-8f4a27c4a30e\exec-06ca4bd3-a0d8-4c0f-900b-7d914941bd3e.png`
+- Implementation screenshots:
+  - Top state: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-redesign-final-top.png`
+  - Lower state: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-redesign-final-bottom.png`
+- Combined comparison evidence:
+  - Full views: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-redesign-comparison-final.png`
+  - Focused lower region: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-redesign-comparison-focused-final.png`
+- Device viewport: 1224 × 2720 px at 480 dpi, approximately 408 × 907 dp at 3× density
+- Source pixels: 853 × 1844 px; implementation pixels: 1224 × 2720 px
+- Density normalization: the source and both implementation captures were proportionally scaled to a common 1024 px comparison height. The focused lower-region crops were proportionally scaled to 1200 px height.
+- State: Japanese, light theme, Nothing-like UI, internal-development build, update not checked
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the selected direction and the explicit icon-free adjustment.
+
+- Fonts and typography: the existing Nothing-style display type remains confined to the preserved version mosaic. The redesigned information and action areas use the app's normal UI typography with clear section-title, body, and action hierarchy. No NType or NDot was added to Material 3-only content.
+- Spacing and layout rhythm: `最新情報` and `既知の問題` use 22 dp cards with consistent 20 dp content padding. The final support/log/license group uses compact, evenly divided rows rather than the taller first implementation.
+- Colors and visual tokens: cards use the existing `surfaceContainerHigh`, gutters use the screen surface, dividers use `outlineVariant`, and update state uses the active theme primary color. No hard-coded red accent was added.
+- Image quality and asset fidelity: the lower redesign contains no raster assets. The existing app icon and upper mosaic were intentionally preserved. Decorative status and row icons from the concept were omitted at the user's request; no substitute glyphs or custom-drawn assets were introduced.
+- Copy and content: release notes, the real known-issue text, update status, support, log sharing/clearing, and open-source licenses remain available. Japanese and English update-status/short-action strings are aligned.
+
+## Comparison History
+
+1. The first coded pass used a full-width update button before a status existed and expanded each utility row with a description.
+   - Finding: P2 — the update action and utilities were more vertically prominent than the selected release-first concept.
+   - Fix: added a truthful `未確認` status beside the compact update button and converted support, debug log, and licenses to compact text-and-action rows.
+2. The generated concept used leading status and utility icons.
+   - User constraint: no icons.
+   - Fix: removed all lower-section icons and chevrons, then retained affordance through explicit text actions and grouped dividers.
+3. The checked update state initially wrapped a long success sentence.
+   - Finding: P2 — the status competed with the update button at this phone width.
+   - Fix: shortened the localized success state to `最新バージョンです` / `Up to date`.
+
+## Primary Interactions Tested
+
+- Scrolled from the preserved version mosaic through the complete redesigned lower section.
+- Ran the update check and confirmed the status changed from `未確認` to the latest-version result.
+- Confirmed log share/clear enablement still follows whether an app log exists.
+- Confirmed the screen compiles and installs on the connected A069 test device without a layout crash.
+
+## Implementation Checklist
+
+- [x] Preserve the existing connected version mosaic.
+- [x] Make release information the first lower-section destination.
+- [x] Keep known issues readable as a dedicated card.
+- [x] Group support, logs, and licenses into an icon-free compact list.
+- [x] Preserve all existing actions and saved behavior.
+- [x] Verify Japanese light-theme rendering on the physical device.
+
+## Follow-up Polish
+
+The generated direction compresses the whole page into one illustrative viewport, while the production screen keeps accessible Android text sizing and scrolls. This is an intentional implementation constraint rather than a fidelity defect.
+
+final result: passed
+
+---
+
 # Design QA — About screen refinement
 
 - Source visual truth:
@@ -103,5 +163,54 @@ The reference, sketch, and full-device implementation were reviewed together at 
 ## Follow-up Polish
 
 No blocking polish remains. The bridges are decorative overlays; the underlying cards retain independent click targets and ripple clipping.
+
+final result: passed
+
+---
+
+# Design QA — About actions aligned to Settings
+
+- Structural source visual truth: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-settings.png`
+- Earlier implementation: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-redesign-final-bottom.png`
+- Final implementation screenshots:
+  - Top: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-settings-style-top.png`
+  - Actions: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-settings-style-bottom.png`
+  - Checked update state: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-settings-style-update.png`
+- Combined comparison: `C:\Users\wwwri\Desktop\glyphvisualizer\artifacts\glyph-about-settings-style-comparison.png`
+- Device viewport: 1224 × 2720 px at 480 dpi, approximately 408 × 907 dp at 3× density
+- State: Japanese, Nothing-like UI, update unchecked and checked states
+
+## Findings
+
+No actionable P0, P1, or P2 issues remain for the requested Settings alignment and button clarity.
+
+- Fonts and typography: section labels now use the same Sans Serif, bold, theme-primary treatment as Settings categories. Card titles and descriptions reuse Settings typography hierarchy.
+- Spacing and layout rhythm: lower content now uses `SettingsItemSurface`, `SettingsGroupPosition`, and `SettingsDividerGap`, matching Settings card radii, inner junctions, padding, and grouping.
+- Colors and visual tokens: primary actions use Material theme buttons, so Nothing mode receives its active Nothing colors and Material 3 mode receives its configured theme color. Log clearing remains outlined as a secondary action.
+- Image and asset fidelity: no lower-section icons, custom glyphs, or new image assets were added. The existing app icon and version mosaic remain unchanged.
+- Copy and content: each utility restores its explanatory description and places the action inside an unmistakable button. Japanese and English license labels were restored to the explicit `ライセンス一覧を表示` / `Show licenses` wording.
+
+## Comparison History
+
+1. The earlier icon-free list used plain trailing text actions.
+   - Finding: P1 — actions could be read as labels, so the tappable target was unclear.
+   - Fix: replaced trailing text actions with full-width filled buttons; debug share and clear use paired filled/outlined buttons.
+2. The earlier lower group lacked the Settings page's category hierarchy.
+   - Finding: P2 — the section felt like a separate design language despite matching colors.
+   - Fix: added the existing `情報` category label and reused Settings card primitives for all lower content.
+3. The update action was outlined and visually similar to passive card borders.
+   - Finding: P2 — the primary action did not stand out enough.
+   - Fix: changed it to the same filled primary treatment used by the other main actions.
+
+## Primary Interactions Tested
+
+- Update check changed from `未確認` to `最新バージョンです`.
+- Scrolled through the Settings-shaped information group without clipping or horizontal overflow.
+- Confirmed log share/clear enabled states remain tied to log availability.
+- Installed and rendered the build on the connected A069 device without a layout crash.
+
+## Follow-up Polish
+
+No blocking polish remains. The explicit buttons intentionally make these cards taller than standard navigation-only Settings rows.
 
 final result: passed

@@ -1,29 +1,72 @@
-*.iml
+# OS-generated files
 .DS_Store
+Thumbs.db
+Desktop.ini
 
-# Android Studio / IntelliJ
+# Android Studio / IntelliJ / editors
 /.idea/
+/.vscode/
+*.iml
+**/captures/
 
-# Local machine settings
+# Local machine and signing settings
 /local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+/keystore.properties
+/signing.properties
+/secrets.properties
+/credentials.properties
+/app/google-services.json
+/service-account*.json
+.env
+.env.*
+!.env.example
 
-# Build tools and caches
+# Gradle / Kotlin caches and build outputs
 /.gradle/
 /.gradle-temp/
 /.kotlin/
-/build/
-/app/build/
+**/build/
 /app/release/
-/captures/
-.externalNativeBuild/
-.cxx/
+**/.externalNativeBuild/
+**/.cxx/
+*.hprof
+hs_err_pid*.log
+*.log
+
+# Packaged Android outputs
+*.apk
+*.aab
+*.ap_
+/APK/
+
+# Local QA captures
+# Files already tracked under artifacts/ remain tracked.
+/artifacts/
+/design-qa.md
+
+# Local AI / automation tool state
+/.agents/
+/.codex/
+
+# Generic local caches and editor backups
+/.cache/
+**/__pycache__/
+*.py[cod]
+*.swp
+*.swo
+*~
 
 # Local scratch / extracted SDK artifacts
 /.tmp/
 /.tmp_sdk/
 /com/
 /classes.jar
-/APK/
 /デザイン/
 /app/libs/_aar_tmp/
 /app/libs/*_javap.txt

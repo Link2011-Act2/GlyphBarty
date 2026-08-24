@@ -24,17 +24,18 @@
     <string name="about_dev_channel_desc_unknown">このチャネルの説明は未登録です。</string>
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d\nビルド番号: %3$s</string>
-    <string name="about_updates_title">アップデート情報</string>
+    <string name="about_updates_title">最新情報</string>
     <string name="about_updates_body">・UIモードが勝手に切り替わる問題を修正\n・「メディア再生中のみ」のバグを修正</string>
     <string name="about_update_check_button">アップデートを確認</string>
+    <string name="about_update_not_checked">未確認</string>
     <string name="about_update_checking">GitHub Releases を確認しています…</string>
-    <string name="about_update_latest">最新バージョンを使用しています。</string>
+    <string name="about_update_latest">最新バージョンです</string>
     <string name="about_update_available">新しいバージョンがあります: %1$s</string>
     <string name="about_update_check_failed">アップデートを確認できませんでした: %1$s</string>
     <string name="about_update_test_mode_title">テスト: 最新 Release を表示</string>
     <string name="about_update_test_mode_desc">一時的に、GitHub の最新 Release を新しいアップデートとして扱います。</string>
     <string name="about_update_ignore_interval_test_title">テスト: 1日1回制限を無視</string>
-    <string name="about_update_ignore_interval_test_desc">一時的に、アプリ起動時やこの画面の表示時に毎回 GitHub Releases を確認します。</string>
+    <string name="about_update_ignore_interval_test_desc">一時的に、GitHub Releases の自動確認で1日1回の制限を無視します。</string>
     <string name="update_screen_title">アップデートがあります</string>
     <string name="update_release_notes_title">リリースノート</string>
     <string name="update_release_notes_empty">このバージョンのリリースノートはありません。</string>
@@ -65,6 +66,8 @@
     <string name="about_debug_share_chooser">ログを共有</string>
     <string name="about_debug_empty">ログなし</string>
     <string name="about_debug_clear">ログを消去</string>
+    <string name="about_debug_clear_dialog_title">ログを消去しますか？</string>
+    <string name="about_debug_clear_dialog_message">共有用のアプリログがすべて削除されます。この操作は元に戻せません。</string>
 
     <!-- Settings Screen -->
     <string name="settings_screen_title">アプリの設定</string>

@@ -48,6 +48,10 @@ import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
+import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.isUpdateCheckIntervalIgnoredForTesting
+import jp.linkserver.glyphvisualizer.update.setShowLatestReleaseForTestingEnabled
+import jp.linkserver.glyphvisualizer.update.setUpdateCheckIntervalIgnoredForTesting
 
 private enum class MeterStyleMode {
     HIDDEN,
@@ -104,6 +108,12 @@ fun SettingsScreen(
     var localSpectrumMeterEnabled by rememberSaveable { mutableStateOf(spectrumMeterEnabled) }
     var localNativeMeterViewEnabled by rememberSaveable { mutableStateOf(nativeMeterViewEnabled) }
     var localAutomaticUpdateCheckEnabled by rememberSaveable { mutableStateOf(automaticUpdateCheckEnabled) }
+    var localShowLatestForTesting by rememberSaveable {
+        mutableStateOf(isShowLatestReleaseForTestingEnabled(context))
+    }
+    var localIgnoreCheckIntervalForTesting by rememberSaveable {
+        mutableStateOf(isUpdateCheckIntervalIgnoredForTesting(context))
+    }
     var localMediaPlaybackOnlyEnabled by rememberSaveable { mutableStateOf(mediaPlaybackOnlyEnabled) }
     var localExperimentalVisualizerStabilizationEnabled by rememberSaveable {
         mutableStateOf(experimentalVisualizerStabilizationEnabled)
@@ -410,7 +420,31 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_experimental_features_desc),
                         onClick = onExperimentalFeatures,
                         nothingStyle = localNothingStyleEnabled,
-                        position = SettingsGroupPosition.Single
+                        position = SettingsGroupPosition.Top
+                    )
+                    SettingsDividerGap()
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.about_update_test_mode_title),
+                        description = stringResource(R.string.about_update_test_mode_desc),
+                        checked = localShowLatestForTesting,
+                        onCheckedChange = { enabled ->
+                            localShowLatestForTesting = enabled
+                            setShowLatestReleaseForTestingEnabled(context, enabled)
+                        },
+                        nothingStyle = localNothingStyleEnabled,
+                        position = SettingsGroupPosition.Middle
+                    )
+                    SettingsDividerGap()
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.about_update_ignore_interval_test_title),
+                        description = stringResource(R.string.about_update_ignore_interval_test_desc),
+                        checked = localIgnoreCheckIntervalForTesting,
+                        onCheckedChange = { enabled ->
+                            localIgnoreCheckIntervalForTesting = enabled
+                            setUpdateCheckIntervalIgnoredForTesting(context, enabled)
+                        },
+                        nothingStyle = localNothingStyleEnabled,
+                        position = SettingsGroupPosition.Bottom
                     )
                 }
             }
