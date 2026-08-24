@@ -1,5 +1,9 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -149,6 +153,9 @@ fun SettingsScreen(
     var notificationAccessGranted by remember {
         mutableStateOf(MediaSessionPlaybackGate.hasNotificationAccess(context))
     }
+    var appNotificationsEnabled by remember {
+        mutableStateOf(areAppNotificationsEnabled(context))
+    }
     val mediaPlaybackOnlyDescription = if (intDevBuild) {
         val permissionStatus = if (notificationAccessGranted) {
             stringResource(R.string.settings_media_playback_only_permission_status_granted)
@@ -161,10 +168,12 @@ fun SettingsScreen(
     }
 
     DisposableEffect(lifecycleOwner, context, intDevBuild) {
-        if (!intDevBuild) return@DisposableEffect onDispose {}
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                notificationAccessGranted = MediaSessionPlaybackGate.hasNotificationAccess(context)
+                appNotificationsEnabled = areAppNotificationsEnabled(context)
+                if (intDevBuild) {
+                    notificationAccessGranted = MediaSessionPlaybackGate.hasNotificationAccess(context)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -276,6 +285,28 @@ fun SettingsScreen(
                     },
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Top
+                )
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.settings_notifications_title),
+                    description = stringResource(
+                        if (appNotificationsEnabled) {
+                            R.string.settings_notifications_desc_enabled
+                        } else {
+                            R.string.settings_notifications_desc_disabled
+                        }
+                    ),
+                    onClick = {
+                        if (!openAppNotificationSettings(context)) {
+                            Toast.makeText(
+                                context,
+                                R.string.settings_notifications_open_failed,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsEntry(
@@ -464,6 +495,21 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
+}
+
+private fun areAppNotificationsEnabled(context: Context): Boolean {
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+    return manager.areNotificationsEnabled()
+}
+
+private fun openAppNotificationSettings(context: Context): Boolean {
+    return runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            }
+        )
+    }.isSuccess
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

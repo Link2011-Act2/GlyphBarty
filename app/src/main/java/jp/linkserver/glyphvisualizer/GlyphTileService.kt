@@ -72,7 +72,8 @@ class GlyphTileService : TileService() {
                 matrixSmoothMotionEnabled = resolved.matrixSmoothMotionEnabled,
                 outputGamma = resolved.outputGamma,
                 oscilloscopeAutoTimeAxisEnabled = resolved.oscilloscopeAutoTimeAxisEnabled,
-                turnOffWhenBackDown = resolved.turnOffWhenBackDown
+                turnOffWhenBackDown = resolved.turnOffWhenBackDown,
+                startSource = VisualizerStartSource.QUICK_SETTINGS
             )
         }
 

@@ -98,6 +98,10 @@
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
     <string name="settings_ui_mode_material">Material 3</string>
+    <string name="settings_notifications_title">通知</string>
+    <string name="settings_notifications_desc_enabled">有効です。開始できなかった場合など、重要なお知らせに使用します。</string>
+    <string name="settings_notifications_desc_disabled">無効です。開始失敗通知を受け取るには、通知を有効にしてください。</string>
+    <string name="settings_notifications_open_failed">通知設定を開けませんでした。</string>
     <string name="base_indicator_title">ベースインジケーター</string>
     <string name="base_indicator_desc">赤いLEDを低音に応じて点灯させます</string>
     <string name="recording_light_included_title">録画ライトをGlyphに含める</string>
@@ -177,6 +181,7 @@
     <string name="import_export_dialog_title">インポート / エクスポート</string>
     <string name="import_export_dialog_message">パラメータの読み込みまたは書き出しを選択してください。</string>
     <string name="dialog_cancel">キャンセル</string>
+    <string name="dialog_ok">OK</string>
 
     <!-- OSS Licenses Screen -->
     <string name="oss_screen_title">オープンソースライセンス</string>
@@ -210,6 +215,9 @@
     <string name="status_media_projection_data_missing">MediaProjection のデータが見つかりませんでした。</string>
     <string name="status_visualizer_retrying">通常モードの開始を再試行しています (%1$d/%2$d)…</string>
     <string name="status_visualizer_try_media_projection">通常モードを利用できませんでした。必要であれば MediaProjection を試してください。</string>
+    <string name="spatial_audio_warning_title">開始に失敗しました</string>
+    <string name="spatial_audio_warning_message">%1$s を検出しました。空間オーディオが有効だと通常モードを開始できない場合があります。Nothing Xで無効にしてから、もう一度お試しください。</string>
+    <string name="spatial_audio_warning_message_generic">空間オーディオが有効なため、通常モードを開始できない可能性があります。端末またはイヤホンの設定で空間オーディオを無効にしてから、もう一度お試しください。</string>
     <string name="status_capture_stopped_ready">キャプチャを停止しました。次のセッションを開始できます。</string>
     <string name="status_output_mix_listening">通常モードで出力ミックスを監視しています。</string>
     <string name="status_output_mix_start_failed">通常モードをこの端末で開始できませんでした: %1$s</string>
@@ -240,6 +248,12 @@
     <string name="notification_mode_visualizer">通常</string>
     <string name="notification_mode_media_projection">MediaProjection</string>
     <string name="notification_channel_name">Glyph Visualizer</string>
+    <string name="notification_alert_channel_name">重要な開始エラー</string>
+    <string name="notification_alert_channel_description">アプリ外からキャプチャを開始できなかった場合にお知らせします</string>
+    <string name="notification_permission_dialog_title">通知を許可しますか？</string>
+    <string name="notification_permission_dialog_message">アプリを開始できなかった場合など、重要なお知らせを表示するために通知を使用します。</string>
+    <string name="notification_permission_dialog_confirm">許可する</string>
+    <string name="notification_permission_dialog_dismiss">今はしない</string>
 
     <string name="hero_title">Glyph Interface</string>
     <string name="hero_subtitle">再生音に連動するライブピークスタイルのビジュアライザー。</string>

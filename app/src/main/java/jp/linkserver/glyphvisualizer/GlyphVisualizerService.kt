@@ -1,13 +1,16 @@
 package jp.linkserver.glyphvisualizer
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -36,12 +39,19 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+enum class VisualizerStartSource {
+    APP,
+    QUICK_SETTINGS
+}
+
 class GlyphVisualizerService : Service() {
     companion object {
         private const val TAG = "GlyphVisualizerSvc"
         private const val DEBUG_UI_VISIBILITY_LOGS = false
         private const val CHANNEL_ID = "glyph_visualizer"
         private const val NOTIFICATION_ID = 42
+        private const val ALERT_CHANNEL_ID = "glyph_visualizer_alerts"
+        private const val ALERT_NOTIFICATION_ID = 43
 
         private const val ACTION_START_VISUALIZER = "jp.linkserver.glyphvisualizer.action.START_VISUALIZER"
         private const val ACTION_START_MEDIA_PROJECTION = "jp.linkserver.glyphvisualizer.action.START_MEDIA_PROJECTION"
@@ -83,6 +93,7 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
             "extra_oscilloscope_auto_time_axis_enabled"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
+        private const val EXTRA_START_SOURCE = "extra_start_source"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
         private const val ACTIVE_MODE_VISUALIZER = "VISUALIZER"
@@ -129,7 +140,8 @@ class GlyphVisualizerService : Service() {
             turnOffWhenBackDown: Boolean,
             outputGamma: Float = 1.8f,
             oscilloscopeAutoTimeAxisEnabled: Boolean = false,
-            recordingLightIncluded: Boolean = false
+            recordingLightIncluded: Boolean = false,
+            startSource: VisualizerStartSource = VisualizerStartSource.APP
         ) {
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_START_VISUALIZER
@@ -161,6 +173,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
                 putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
                 putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
+                putExtra(EXTRA_START_SOURCE, startSource.name)
             }
             try {
                 context.startForegroundService(intent)
@@ -385,6 +398,7 @@ class GlyphVisualizerService : Service() {
     private val powerManager by lazy { getSystemService(Context.POWER_SERVICE) as PowerManager }
     private var visualizerStartRequestId = 0
     private var visualizerStartActionAtMs = 0L
+    private var visualizerStartSource = VisualizerStartSource.APP
     private var audioDeviceCallbackRegistered = false
     private var lastAudioRouteSignature: String? = null
     private var suppressRouteRestartUntilMs = 0L
@@ -501,6 +515,12 @@ class GlyphVisualizerService : Service() {
                     val actionReceivedAt = SystemClock.elapsedRealtime()
                     visualizerStartRequestId += 1
                     visualizerStartActionAtMs = actionReceivedAt
+                    visualizerStartSource = intent.getStringExtra(EXTRA_START_SOURCE)
+                        ?.let { savedName ->
+                            VisualizerStartSource.entries.firstOrNull { it.name == savedName }
+                        }
+                        ?: VisualizerStartSource.APP
+                    clearSpatialAudioWarning()
                     sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                     noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                     dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
@@ -554,7 +574,7 @@ class GlyphVisualizerService : Service() {
                     applyGlyphControllerSettings()
                     AppLogger.i(
                         TAG,
-                        "ACTION_START_VISUALIZER received: requestId=$visualizerStartRequestId glyphMode=$glyphMode btLikely=${
+                        "ACTION_START_VISUALIZER received: requestId=$visualizerStartRequestId source=$visualizerStartSource glyphMode=$glyphMode btLikely=${
                             AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
                         } musicActive=${AudioRouteDiagnostics.isMusicActive(this)}"
                     )
@@ -859,9 +879,19 @@ class GlyphVisualizerService : Service() {
                     rightWaveformSamples
                 )
             },
-            onStartFailed = {
+            onStartFailed = { failureReason ->
                 val maxAttempts = visualizerStartMaxAttempts()
-                if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
+                val unrecoverableSpatializerConflict =
+                    failureReason == OutputMixVisualizer.StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
+                if (requestId == visualizerStartRequestId && unrecoverableSpatializerConflict) {
+                    AppLogger.e(
+                        TAG,
+                        "Visualizer async start hit unrecoverable Framework Spatializer conflict: requestId=$requestId attempt=$attempt elapsedSinceActionMs=${
+                            if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
+                        }"
+                    )
+                    finishVisualizerStartFailure(showSpatialAudioWarning = true)
+                } else if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
                     val nextAttempt = attempt + 1
                     val retryMs = visualizerRetryDelayMs(attempt)
                     AppLogger.w(
@@ -875,19 +905,16 @@ class GlyphVisualizerService : Service() {
                         { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
                         retryMs
                     )
-                } else {
+                } else if (requestId == visualizerStartRequestId) {
                     AppLogger.e(
                         TAG,
                         "Visualizer async start exhausted retries: requestId=$requestId attempts=$attempt elapsedSinceActionMs=${
                             if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
                         }"
                     )
-                    val msg = getString(R.string.status_visualizer_try_media_projection)
-                    val logMsg = getString(R.string.status_visualizer_try_media_projection)
-                    AppLogger.e(TAG, logMsg)
-                    stopCapture(msg)
-                    safeStopForeground()
-                    stopSelf()
+                    finishVisualizerStartFailure(
+                        showSpatialAudioWarning = false
+                    )
                 }
             },
             onSignalStalled = {
@@ -1314,6 +1341,103 @@ class GlyphVisualizerService : Service() {
         notifyTile()
     }
 
+    private fun finishVisualizerStartFailure(showSpatialAudioWarning: Boolean) {
+        val productName = if (showSpatialAudioWarning) {
+            AudioRouteDiagnostics.nothingOrCmfBluetoothOutputProductName(this)
+        } else {
+            null
+        }
+        val message = if (showSpatialAudioWarning) {
+            spatialAudioWarningMessage(productName)
+        } else {
+            getString(R.string.status_visualizer_try_media_projection)
+        }
+
+        if (showSpatialAudioWarning) {
+            val showInApp =
+                visualizerStartSource == VisualizerStartSource.APP && CaptureUiStore.isUiVisible()
+            val notificationShown = if (showInApp) {
+                false
+            } else {
+                showSpatialAudioWarningNotification(productName)
+            }
+            CaptureUiStore.update {
+                it.copy(
+                    logMessage = message,
+                    pendingSpatialAudioWarning = if (showInApp || !notificationShown) {
+                        SpatialAudioWarning(nothingOrCmfProductName = productName)
+                    } else {
+                        null
+                    }
+                )
+            }
+            AppLogger.w(
+                TAG,
+                "Framework Spatializer warning dispatched after unrecoverable Visualizer(0) creation failure: nothingOrCmfProductName=$productName source=$visualizerStartSource notificationShown=$notificationShown"
+            )
+        }
+
+        AppLogger.e(TAG, message)
+        stopCapture(message)
+        safeStopForeground()
+        stopSelf()
+    }
+
+    private fun clearSpatialAudioWarning() {
+        CaptureUiStore.update { it.copy(pendingSpatialAudioWarning = null) }
+        getSystemService(NotificationManager::class.java)?.cancel(ALERT_NOTIFICATION_ID)
+    }
+
+    private fun showSpatialAudioWarningNotification(productName: String?): Boolean {
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            AppLogger.w(TAG, "Spatial Audio warning notification skipped: notification permission missing")
+            return false
+        }
+        val manager = getSystemService(NotificationManager::class.java) ?: return false
+        if (!manager.areNotificationsEnabled()) {
+            AppLogger.w(TAG, "Spatial Audio warning notification skipped: notifications disabled")
+            return false
+        }
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            manager.getNotificationChannel(ALERT_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        ) {
+            AppLogger.w(TAG, "Spatial Audio warning notification skipped: alert channel disabled")
+            return false
+        }
+
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            this,
+            ALERT_NOTIFICATION_ID,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val message = spatialAudioWarningMessage(productName)
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle(getString(R.string.spatial_audio_warning_title))
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setAutoCancel(true)
+            .setContentIntent(openAppPendingIntent)
+            .build()
+        manager.notify(ALERT_NOTIFICATION_ID, notification)
+        return true
+    }
+
+    private fun spatialAudioWarningMessage(nothingOrCmfProductName: String?): String {
+        return if (nothingOrCmfProductName != null) {
+            getString(R.string.spatial_audio_warning_message, nothingOrCmfProductName)
+        } else {
+            getString(R.string.spatial_audio_warning_message_generic)
+        }
+    }
+
     private fun notifyTile() {
         try {
             GlyphTileService.refresh(this)
@@ -1639,12 +1763,19 @@ class GlyphVisualizerService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
+        val serviceChannel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
-        manager.createNotificationChannel(channel)
+        val alertChannel = NotificationChannel(
+            ALERT_CHANNEL_ID,
+            getString(R.string.notification_alert_channel_name),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = getString(R.string.notification_alert_channel_description)
+        }
+        manager.createNotificationChannels(listOf(serviceChannel, alertChannel))
     }
 }
 

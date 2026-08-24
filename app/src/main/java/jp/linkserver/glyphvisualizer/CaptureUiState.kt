@@ -61,7 +61,12 @@ data class CaptureUiState(
     val nothingStyleEnabled: Boolean = false,
     val experimentalMainUiEnabled: Boolean = true,
     val turnOffWhenBackDown: Boolean = false,
-    val logMessage: String? = null
+    val logMessage: String? = null,
+    val pendingSpatialAudioWarning: SpatialAudioWarning? = null
+)
+
+data class SpatialAudioWarning(
+    val nothingOrCmfProductName: String? = null
 )
 
 enum class RecordingLightBehavior {
@@ -131,6 +136,8 @@ object CaptureUiStore {
     fun shouldPublishLiveUiFrames(): Boolean {
         return uiVisible
     }
+
+    fun isUiVisible(): Boolean = uiVisible
 
     fun publishLiveFrame(
         level: Float,

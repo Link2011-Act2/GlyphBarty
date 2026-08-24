@@ -955,6 +955,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPhone1GlyphDebugPermissionRequestFromManual by mutableStateOf(false)
     private var showPhone1GlyphDebugPermissionDialog by mutableStateOf(false)
     private var showOpenReelPermissionDialog by mutableStateOf(false)
+    private var showNotificationPermissionExplanationDialog by mutableStateOf(false)
 
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
@@ -988,6 +989,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         pendingStartMode = null
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        AppLogger.i("MainActivity", "Notification permission result: granted=$granted")
     }
 
     private val exportParametersLauncher = registerForActivityResult(
@@ -1107,6 +1114,9 @@ class MainActivity : ComponentActivity() {
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)
         val initialSetupPending = !SettingsPreferences.hasCompletedInitialSetup(this)
+        if (!initialSetupPending) {
+            offerNotificationPermissionIfNeeded()
+        }
         val savedDeviceProfile = GlyphDeviceCatalog.effectiveUiProfile(
             actualProfile = deviceProfile,
             phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
@@ -1136,7 +1146,9 @@ class MainActivity : ComponentActivity() {
             } else {
                 resolvedLatencySettings.copy(
                     statusText = getString(R.string.status_preparing_glyph_session),
-                    glyphMode = normalizedMode
+                    glyphMode = normalizedMode,
+                    logMessage = current.logMessage,
+                    pendingSpatialAudioWarning = current.pendingSpatialAudioWarning
                 )
             }
         }
@@ -1155,6 +1167,9 @@ class MainActivity : ComponentActivity() {
             GlyphBartyTheme(nothingStyle = uiState.nothingStyleEnabled) {
                 GlyphVisualizerApp(
                     initialSetupPending = initialSetupPending,
+                    onInitialSetupCompleted = {
+                        offerNotificationPermissionIfNeeded()
+                    },
                     statusText = uiState.statusText,
                     isCapturing = uiState.isCapturing,
                     heroTitle = effectivePresentation.heroTitle,
@@ -1740,6 +1755,51 @@ class MainActivity : ComponentActivity() {
                         showPhone1GlyphDebugPermissionDialog = false
                     }
                 )
+                if (
+                    showNotificationPermissionExplanationDialog &&
+                    uiState.pendingSpatialAudioWarning == null
+                ) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            dismissNotificationPermissionExplanation()
+                        },
+                        title = {
+                            Text(stringResource(R.string.notification_permission_dialog_title))
+                        },
+                        text = {
+                            Text(stringResource(R.string.notification_permission_dialog_message))
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { requestNotificationPermission() }) {
+                                Text(stringResource(R.string.notification_permission_dialog_confirm))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { dismissNotificationPermissionExplanation() }) {
+                                Text(stringResource(R.string.notification_permission_dialog_dismiss))
+                            }
+                        }
+                    )
+                }
+                uiState.pendingSpatialAudioWarning?.let { warning ->
+                    AlertDialog(
+                        onDismissRequest = { dismissSpatialAudioWarning() },
+                        title = {
+                            Text(stringResource(R.string.spatial_audio_warning_title))
+                        },
+                        text = {
+                            val message = warning.nothingOrCmfProductName?.let { productName ->
+                                stringResource(R.string.spatial_audio_warning_message, productName)
+                            } ?: stringResource(R.string.spatial_audio_warning_message_generic)
+                            Text(message)
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { dismissSpatialAudioWarning() }) {
+                                Text(stringResource(R.string.dialog_ok))
+                            }
+                        }
+                    )
+                }
                 if (showOpenReelPermissionDialog) {
                     AlertDialog(
                         onDismissRequest = {
@@ -1798,6 +1858,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun offerNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            SettingsPreferences.markNotificationPermissionPromptShown(this)
+            return
+        }
+        if (!SettingsPreferences.hasShownNotificationPermissionPrompt(this)) {
+            showNotificationPermissionExplanationDialog = true
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        showNotificationPermissionExplanationDialog = false
+        SettingsPreferences.markNotificationPermissionPromptShown(this)
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun dismissNotificationPermissionExplanation() {
+        showNotificationPermissionExplanationDialog = false
+        SettingsPreferences.markNotificationPermissionPromptShown(this)
+    }
+
+    private fun dismissSpatialAudioWarning() {
+        CaptureUiStore.update { it.copy(pendingSpatialAudioWarning = null) }
     }
 
     private fun defaultParameterState(): CaptureUiState {
@@ -2271,7 +2357,8 @@ class MainActivity : ComponentActivity() {
                 uiState.turnOffWhenBackDown,
                 uiState.outputGamma,
                 uiState.oscilloscopeAutoTimeAxisEnabled,
-                recordingLightIncluded = uiState.recordingLightIncluded
+                recordingLightIncluded = uiState.recordingLightIncluded,
+                startSource = VisualizerStartSource.APP
             )
             AppLogger.i(
                 "MainActivity",
@@ -2305,6 +2392,7 @@ class MainActivity : ComponentActivity() {
 private fun GlyphVisualizerApp(
     statusText: String,
     initialSetupPending: Boolean,
+    onInitialSetupCompleted: () -> Unit,
     isCapturing: Boolean,
     heroTitle: String,
     level: Float,
@@ -2539,6 +2627,7 @@ private fun GlyphVisualizerApp(
                             SettingsPreferences.save(context, updated)
                             SettingsPreferences.markInitialSetupCompleted(context)
                             screen = Screen.MAIN
+                            onInitialSetupCompleted()
                         }
                     )
                     Screen.MAIN, Screen.DETAILS -> if (
@@ -9721,6 +9810,7 @@ private fun GlyphVisualizerPreview() {
             onStopClick = {},
             logMessage = null,
             initialSetupPending = false,
+            onInitialSetupCompleted = {},
             onDismissLog = {},
             showPhone1GlyphDebugPermissionDialog = false,
             onDismissPhone1GlyphDebugPermissionDialog = {}

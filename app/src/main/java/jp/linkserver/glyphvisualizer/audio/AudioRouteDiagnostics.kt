@@ -20,6 +20,27 @@ internal object AudioRouteDiagnostics {
         return isBluetoothOutputLikelyConnected(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS))
     }
 
+    fun isFrameworkSpatializerEnabled(context: Context): Boolean {
+        val audioManager = context.getSystemService(AudioManager::class.java) ?: return false
+        return runCatching { audioManager.spatializer.isEnabled }.getOrDefault(false)
+    }
+
+    fun nothingOrCmfBluetoothOutputProductName(context: Context): String? {
+        val audioManager = context.getSystemService(AudioManager::class.java) ?: return null
+        val activeProductName = activePlaybackDevices(audioManager)
+            .orEmpty()
+            .asSequence()
+            .filter { device -> playbackDeviceType(device)?.let(::isBluetoothDeviceType) == true }
+            .map { device -> playbackDeviceName(device).trim() }
+            .firstOrNull(::isNothingOrCmfProductName)
+        if (activeProductName != null) return activeProductName
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .asSequence()
+            .filter { device -> device.isSink && isBluetoothDeviceType(device.type) }
+            .map { device -> device.productName?.toString()?.trim().orEmpty() }
+            .firstOrNull(::isNothingOrCmfProductName)
+    }
+
     fun outputSignature(context: Context): String {
         val audioManager = context.getSystemService(AudioManager::class.java) ?: return "audioManager=null"
         return outputSignature(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS))
@@ -69,6 +90,8 @@ internal object AudioRouteDiagnostics {
         }
 
         val bluetoothLikelyConnected = isBluetoothOutputLikelyConnected(outputs)
+        val spatializerEnabled = runCatching { audioManager.spatializer.isEnabled }.getOrDefault(false)
+        val spatializerAvailable = runCatching { audioManager.spatializer.isAvailable }.getOrDefault(false)
 
         return buildString {
             append("model=")
@@ -85,6 +108,10 @@ internal object AudioRouteDiagnostics {
             append(audioManager.isBluetoothScoOn)
             append(", bluetoothOutputLikelyConnected=")
             append(bluetoothLikelyConnected)
+            append(", frameworkSpatializerEnabled=")
+            append(spatializerEnabled)
+            append(", frameworkSpatializerAvailable=")
+            append(spatializerAvailable)
             append(", communicationDevice=")
             append(communicationDevice)
             append(", outputs=[")
@@ -149,13 +176,20 @@ internal object AudioRouteDiagnostics {
     }
 
     private fun isBluetoothDeviceTypes(types: List<Int>): Boolean {
-        return types.any {
-            it == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                it == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                it == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                it == AudioDeviceInfo.TYPE_BLE_BROADCAST
-        }
+        return types.any(::isBluetoothDeviceType)
+    }
+
+    private fun isBluetoothDeviceType(type: Int): Boolean {
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+            type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+            type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+            type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+    }
+
+    private fun isNothingOrCmfProductName(productName: String): Boolean {
+        return productName.contains("nothing", ignoreCase = true) ||
+            productName.contains("cmf", ignoreCase = true)
     }
 
     private fun activePlaybackDevices(audioManager: AudioManager): List<Any>? {

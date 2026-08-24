@@ -15,6 +15,18 @@ import kotlin.math.sqrt
 class OutputMixVisualizer(
     private val context: Context
 ) {
+    enum class StartFailureReason {
+        OTHER,
+        VISUALIZER_CREATION_FAILED,
+        UNRECOVERABLE_SPATIALIZER_CONFLICT
+    }
+
+    private class VisualizerCreationFailedException(
+        cause: Throwable?,
+        val unrecoverableSpatializerConflict: Boolean
+    ) :
+        RuntimeException("Visualizer(0) creation failed", cause)
+
     companion object {
         private const val TAG = "OutputMixVisualizer"
         private const val BLUETOOTH_PREPARE_DELAY_MS = 80L
@@ -62,7 +74,7 @@ class OutputMixVisualizer(
             leftWaveformSamples: FloatArray,
             rightWaveformSamples: FloatArray
         ) -> Unit,
-        onStartFailed: () -> Unit = {},
+        onStartFailed: (reason: StartFailureReason) -> Unit = {},
         onSignalStalled: () -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
@@ -105,34 +117,49 @@ class OutputMixVisualizer(
 
                     var instance: Visualizer? = null
                     var lastError: Throwable? = null
+                    var unrecoverableSpatializerConflict = false
                     val initAttempts = when {
                         experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 8
                         experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 6
                         bluetoothLikelyConnected && musicActive -> 5
                         else -> 3
                     }
-                    repeat(initAttempts) {
-                        if (instance != null || !isRunning || Thread.currentThread().isInterrupted) return@repeat
+                    for (attemptIndex in 0 until initAttempts) {
+                        if (!isRunning || Thread.currentThread().isInterrupted) break
                         try {
                             instance = Visualizer(0)
                             AppLogger.i(
                                 TAG,
-                                "Visualizer(0) init attempt ${it + 1}/$initAttempts succeeded at ${SystemClock.elapsedRealtime() - startAt}ms"
+                                "Visualizer(0) init attempt ${attemptIndex + 1}/$initAttempts succeeded at ${SystemClock.elapsedRealtime() - startAt}ms"
                             )
+                            break
                         } catch (e: Throwable) {
                             lastError = e
-                            AppLogger.w(TAG, "Visualizer(0) init attempt ${it + 1}/$initAttempts failed", e)
+                            AppLogger.w(TAG, "Visualizer(0) init attempt ${attemptIndex + 1}/$initAttempts failed", e)
+                            if (isUnrecoverableSpatializerCreationFailure(e)) {
+                                unrecoverableSpatializerConflict = true
+                                AppLogger.e(
+                                    TAG,
+                                    "Visualizer(0) error -3 occurred while Framework Spatializer is enabled; aborting startup retries. ${AudioRouteDiagnostics.snapshot(context)}"
+                                )
+                                break
+                            }
                             val retryDelayMs = when {
-                                experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 450L * (it + 1)
-                                experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 280L * (it + 1)
-                                bluetoothLikelyConnected && musicActive -> 220L * (it + 1)
-                                else -> 120L * (it + 1)
+                                experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 450L * (attemptIndex + 1)
+                                experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 280L * (attemptIndex + 1)
+                                bluetoothLikelyConnected && musicActive -> 220L * (attemptIndex + 1)
+                                else -> 120L * (attemptIndex + 1)
                             }
                             Thread.sleep(retryDelayMs)
                         }
                     }
                     if (!isRunning || Thread.currentThread().isInterrupted) return@thread
-                    if (instance == null) throw lastError ?: RuntimeException("Visualizer init failed")
+                    if (instance == null) {
+                        throw VisualizerCreationFailedException(
+                            cause = lastError,
+                            unrecoverableSpatializerConflict = unrecoverableSpatializerConflict
+                        )
+                    }
                     val vis = instance!!
                     val captureSize = Visualizer.getCaptureSizeRange()[1]
                     try {
@@ -362,7 +389,16 @@ class OutputMixVisualizer(
                             if (activeStarted) {
                                 onCrashed()
                             } else {
-                                onStartFailed()
+                                onStartFailed(
+                                    when {
+                                        error is VisualizerCreationFailedException &&
+                                            error.unrecoverableSpatializerConflict ->
+                                            StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
+                                        error is VisualizerCreationFailedException ->
+                                            StartFailureReason.VISUALIZER_CREATION_FAILED
+                                        else -> StartFailureReason.OTHER
+                                    }
+                                )
                             }
                         }
                     }
@@ -410,6 +446,19 @@ class OutputMixVisualizer(
         val musicActive: Boolean,
         val remoteSubmixPresent: Boolean
     )
+
+    private fun isUnrecoverableSpatializerCreationFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        var visualizerNoInit = false
+        while (current != null) {
+            if (current.message?.contains("error: -3", ignoreCase = true) == true) {
+                visualizerNoInit = true
+                break
+            }
+            current = current.cause
+        }
+        return visualizerNoInit && AudioRouteDiagnostics.isFrameworkSpatializerEnabled(context)
+    }
 
     private fun captureRouteProbe(): RouteProbe {
         return RouteProbe(

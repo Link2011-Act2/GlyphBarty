@@ -10,6 +10,8 @@ object SettingsPreferences {
     private const val EXPORT_FORMAT = "glyph_barty_parameters"
     private const val EXPORT_VERSION = 2
     private const val KEY_INITIAL_SETUP_COMPLETED = "initial_setup_completed"
+    private const val KEY_NOTIFICATION_PERMISSION_PROMPT_SHOWN =
+        "notification_permission_prompt_shown"
     private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
     private const val KEY_DEBUG_DEVICE_PROFILE_OVERRIDE = "debug_device_profile_override"
 
@@ -216,6 +218,18 @@ object SettingsPreferences {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_INITIAL_SETUP_COMPLETED, true)
+            .apply()
+    }
+
+    fun hasShownNotificationPermissionPrompt(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NOTIFICATION_PERMISSION_PROMPT_SHOWN, false)
+    }
+
+    fun markNotificationPermissionPromptShown(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_NOTIFICATION_PERMISSION_PROMPT_SHOWN, true)
             .apply()
     }
 
