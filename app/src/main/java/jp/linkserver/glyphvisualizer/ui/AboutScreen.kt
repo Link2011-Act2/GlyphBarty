@@ -86,13 +86,6 @@ fun AboutScreen(
     val simpleVersion = channelInfo.first
     val channelName = remember(versionName) { detectReleaseChannel(versionName) }
 
-    val channelLabel = when {
-        channelName.equals("IntDev", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_intdev)
-        channelName.equals("Beta", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_beta)
-        channelName.equals("Stable", ignoreCase = true) ||
-            channelName.equals("Release", ignoreCase = true) -> stringResource(R.string.about_dev_channel_value_stable)
-        else -> stringResource(R.string.about_dev_channel_value_unknown)
-    }
     val channelDescResId = when {
         channelName.equals("IntDev", ignoreCase = true) -> R.string.about_dev_channel_desc_intdev
         channelName.equals("Beta", ignoreCase = true) -> R.string.about_dev_channel_desc_beta
@@ -174,7 +167,6 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
             AboutOverviewMosaic(
-                channelLabel = channelLabel,
                 channelName = channelName,
                 versionName = versionName,
                 simpleVersion = simpleVersion,
@@ -465,7 +457,6 @@ private fun AboutSettingsActionCardContent(
 
 @Composable
 private fun AboutOverviewMosaic(
-    channelLabel: String,
     channelName: String,
     versionName: String,
     simpleVersion: String,
@@ -534,8 +525,8 @@ private fun AboutOverviewMosaic(
                         Text(
                             text = stringResource(
                                 R.string.about_overview_release_line,
-                                channelLabel,
-                                versionName
+                                versionName,
+                                versionCode
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -622,8 +613,7 @@ private fun AboutOverviewMosaic(
                                 Text(
                                     text = stringResource(
                                         R.string.about_overview_version_value,
-                                        simpleVersion,
-                                        versionCode
+                                        simpleVersion
                                     ),
                                     fontFamily = if (nothingStyleEnabled) {
                                         NothingDotFontFamily

@@ -97,6 +97,8 @@ fun SettingsScreen(
     onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,
     experimentalMainUiEnabled: Boolean,
     onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,
+    detailedHomeEnabled: Boolean,
+    onDetailedHomeEnabledChanged: (Boolean) -> Unit,
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
@@ -105,6 +107,8 @@ fun SettingsScreen(
     val openFailedText = stringResource(R.string.about_language_open_failed)
     val nothingLabel = stringResource(R.string.settings_ui_mode_nothing)
     val materialLabel = stringResource(R.string.settings_ui_mode_material)
+    val compactHomeLabel = stringResource(R.string.settings_home_screen_compact)
+    val detailedHomeLabel = stringResource(R.string.settings_home_screen_detailed)
     var localMediaProjectionEnabled by rememberSaveable { mutableStateOf(mediaProjectionEnabled) }
     var localGlyphMeterPreviewEnabled by rememberSaveable { mutableStateOf(glyphMeterPreviewEnabled) }
     var localMeterVisibleEnabled by rememberSaveable { mutableStateOf(meterVisibleEnabled) }
@@ -131,8 +135,12 @@ fun SettingsScreen(
     var localLegacyUiEnabled by rememberSaveable {
         mutableStateOf(!experimentalMainUiEnabled)
     }
+    var localDetailedHomeEnabled by rememberSaveable {
+        mutableStateOf(detailedHomeEnabled)
+    }
     var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showHomeScreenDialog by rememberSaveable { mutableStateOf(false) }
     var showMeterStyleDialog by rememberSaveable { mutableStateOf(false) }
     val meterStyleMode = when {
         !localMeterVisibleEnabled -> MeterStyleMode.HIDDEN
@@ -216,6 +224,9 @@ fun SettingsScreen(
     LaunchedEffect(experimentalMainUiEnabled) {
         localLegacyUiEnabled = !experimentalMainUiEnabled
     }
+    LaunchedEffect(detailedHomeEnabled) {
+        localDetailedHomeEnabled = detailedHomeEnabled
+    }
     LaunchedEffect(nothingStyleEnabled) {
         localNothingStyleEnabled = nothingStyleEnabled
     }
@@ -230,6 +241,19 @@ fun SettingsScreen(
                 localNothingStyleEnabled = checked
                 onNothingStyleEnabledChanged(checked)
                 showUiModeDialog = false
+            }
+        )
+    }
+    if (showHomeScreenDialog) {
+        HomeScreenDialog(
+            detailedHomeEnabled = localDetailedHomeEnabled,
+            compactLabel = compactHomeLabel,
+            detailedLabel = detailedHomeLabel,
+            onDismiss = { showHomeScreenDialog = false },
+            onOptionSelected = { enabled ->
+                localDetailedHomeEnabled = enabled
+                onDetailedHomeEnabledChanged(enabled)
+                showHomeScreenDialog = false
             }
         )
     }
@@ -306,14 +330,6 @@ fun SettingsScreen(
                         }
                     },
                     nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Middle
-                )
-                SettingsDividerGap()
-                SettingsEntry(
-                    title = stringResource(R.string.settings_ui_mode_title),
-                    description = if (localNothingStyleEnabled) nothingLabel else materialLabel,
-                    onClick = { showUiModeDialog = true },
-                    nothingStyle = localNothingStyleEnabled,
                     position = if (showAutoEnablePhone1GlyphDebugOnStart) {
                         SettingsGroupPosition.Middle
                     } else {
@@ -334,6 +350,63 @@ fun SettingsScreen(
                         position = SettingsGroupPosition.Bottom
                     )
                 }
+            }
+
+            SettingsCategory(
+                title = stringResource(R.string.settings_category_display)
+            ) {
+                SettingsEntry(
+                    title = stringResource(R.string.settings_ui_mode_title),
+                    description = if (localNothingStyleEnabled) nothingLabel else materialLabel,
+                    onClick = { showUiModeDialog = true },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Top
+                )
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.settings_home_screen_title),
+                    description = if (localDetailedHomeEnabled) {
+                        detailedHomeLabel
+                    } else {
+                        compactHomeLabel
+                    },
+                    onClick = { showHomeScreenDialog = true },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle,
+                    enabled = !localLegacyUiEnabled
+                )
+                SettingsDividerGap()
+                SettingsToggleEntry(
+                    title = stringResource(R.string.settings_experimental_main_ui_title),
+                    description = stringResource(R.string.settings_experimental_main_ui_desc),
+                    checked = localLegacyUiEnabled,
+                    onCheckedChange = { checked ->
+                        localLegacyUiEnabled = checked
+                        onExperimentalMainUiEnabledChanged(!checked)
+                    },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle
+                )
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.settings_meter_style_title),
+                    description = meterStyleSummary,
+                    onClick = { showMeterStyleDialog = true },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle
+                )
+                SettingsDividerGap()
+                SettingsToggleEntry(
+                    title = stringResource(R.string.settings_native_meter_view_title),
+                    description = stringResource(R.string.settings_native_meter_view_desc),
+                    checked = localNativeMeterViewEnabled,
+                    onCheckedChange = { checked ->
+                        localNativeMeterViewEnabled = checked
+                        onNativeMeterViewEnabledChanged(checked)
+                    },
+                    nothingStyle = localNothingStyleEnabled,
+                    position = SettingsGroupPosition.Bottom
+                )
             }
 
             SettingsCategory(
@@ -384,42 +457,6 @@ fun SettingsScreen(
                     onCheckedChange = { checked ->
                         localMediaProjectionEnabled = checked
                         onMediaProjectionEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Bottom
-                )
-            }
-
-            SettingsCategory(
-                title = stringResource(R.string.settings_category_display)
-            ) {
-                SettingsToggleEntry(
-                    title = stringResource(R.string.settings_experimental_main_ui_title),
-                    description = stringResource(R.string.settings_experimental_main_ui_desc),
-                    checked = localLegacyUiEnabled,
-                    onCheckedChange = { checked ->
-                        localLegacyUiEnabled = checked
-                        onExperimentalMainUiEnabledChanged(!checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Top
-                )
-                SettingsDividerGap()
-                SettingsEntry(
-                    title = stringResource(R.string.settings_meter_style_title),
-                    description = meterStyleSummary,
-                    onClick = { showMeterStyleDialog = true },
-                    nothingStyle = localNothingStyleEnabled,
-                    position = SettingsGroupPosition.Middle
-                )
-                SettingsDividerGap()
-                SettingsToggleEntry(
-                    title = stringResource(R.string.settings_native_meter_view_title),
-                    description = stringResource(R.string.settings_native_meter_view_desc),
-                    checked = localNativeMeterViewEnabled,
-                    onCheckedChange = { checked ->
-                        localNativeMeterViewEnabled = checked
-                        onNativeMeterViewEnabledChanged(checked)
                     },
                     nothingStyle = localNothingStyleEnabled,
                     position = SettingsGroupPosition.Bottom
@@ -593,6 +630,42 @@ private fun UiModeDialog(
                     label = materialLabel,
                     selected = !selectedNothingStyle,
                     onClick = { onOptionSelected(false) }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.dialog_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun HomeScreenDialog(
+    detailedHomeEnabled: Boolean,
+    compactLabel: String,
+    detailedLabel: String,
+    onDismiss: () -> Unit,
+    onOptionSelected: (Boolean) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResource(R.string.settings_home_screen_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                UiModeOption(
+                    label = compactLabel,
+                    selected = !detailedHomeEnabled,
+                    onClick = { onOptionSelected(false) }
+                )
+                UiModeOption(
+                    label = detailedLabel,
+                    selected = detailedHomeEnabled,
+                    onClick = { onOptionSelected(true) }
                 )
             }
         },

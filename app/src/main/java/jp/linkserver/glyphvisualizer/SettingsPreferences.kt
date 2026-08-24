@@ -14,6 +14,7 @@ object SettingsPreferences {
         "notification_permission_prompt_shown"
     private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
     private const val KEY_DEBUG_DEVICE_PROFILE_OVERRIDE = "debug_device_profile_override"
+    private const val KEY_DETAILED_HOME_ENABLED = "detailed_home_enabled"
 
     fun defaultParameters(): CaptureUiState = CaptureUiState()
 
@@ -64,6 +65,7 @@ object SettingsPreferences {
             autoEnablePhone1GlyphDebugOnStart = state.autoEnablePhone1GlyphDebugOnStart,
             nothingStyleEnabled = state.nothingStyleEnabled,
             experimentalMainUiEnabled = state.experimentalMainUiEnabled,
+            detailedHomeEnabled = state.detailedHomeEnabled,
             turnOffWhenBackDown = state.turnOffWhenBackDown
         ))
     }
@@ -140,6 +142,10 @@ object SettingsPreferences {
                 "experimental_main_ui_enabled",
                 defaults.experimentalMainUiEnabled
             ),
+            detailedHomeEnabled = prefs.getBoolean(
+                KEY_DETAILED_HOME_ENABLED,
+                defaults.detailedHomeEnabled
+            ),
             turnOffWhenBackDown = prefs.getBoolean("turn_off_when_back_down", defaults.turnOffWhenBackDown),
         ))
     }
@@ -195,6 +201,7 @@ object SettingsPreferences {
             .putBoolean("auto_enable_phone1_glyph_debug_on_start", parameters.autoEnablePhone1GlyphDebugOnStart)
             .putBoolean("nothing_style_enabled", parameters.nothingStyleEnabled)
             .putBoolean("experimental_main_ui_enabled", parameters.experimentalMainUiEnabled)
+            .putBoolean(KEY_DETAILED_HOME_ENABLED, parameters.detailedHomeEnabled)
             .putBoolean("turn_off_when_back_down", parameters.turnOffWhenBackDown)
             .apply()
     }

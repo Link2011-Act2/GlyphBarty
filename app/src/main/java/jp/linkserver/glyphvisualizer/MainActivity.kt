@@ -114,6 +114,8 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -123,6 +125,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1141,7 +1144,9 @@ class MainActivity : ComponentActivity() {
                     mainScreenUiIsolationEnabled = resolvedLatencySettings.mainScreenUiIsolationEnabled,
                     automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
                     phone4bEmulationEnabled = resolvedLatencySettings.phone4bEmulationEnabled,
-                    debugDeviceProfileOverride = resolvedLatencySettings.debugDeviceProfileOverride
+                    debugDeviceProfileOverride = resolvedLatencySettings.debugDeviceProfileOverride,
+                    experimentalMainUiEnabled = resolvedLatencySettings.experimentalMainUiEnabled,
+                    detailedHomeEnabled = resolvedLatencySettings.detailedHomeEnabled
                 )
             } else {
                 resolvedLatencySettings.copy(
@@ -1228,6 +1233,7 @@ class MainActivity : ComponentActivity() {
                     autoEnablePhone1GlyphDebugOnStart = uiState.autoEnablePhone1GlyphDebugOnStart,
                     nothingStyleEnabled = uiState.nothingStyleEnabled,
                     experimentalMainUiEnabled = uiState.experimentalMainUiEnabled,
+                    detailedHomeEnabled = uiState.detailedHomeEnabled,
                     turnOffWhenBackDown = uiState.turnOffWhenBackDown,
                     onSensitivityChanged = { newValue ->
                         CaptureUiStore.update { it.copy(sensitivity = newValue) }
@@ -1722,6 +1728,10 @@ class MainActivity : ComponentActivity() {
                     },
                     onExperimentalMainUiEnabledChanged = { newValue ->
                         CaptureUiStore.update { it.copy(experimentalMainUiEnabled = newValue) }
+                        SettingsPreferences.save(this, CaptureUiStore.state)
+                    },
+                    onDetailedHomeEnabledChanged = { newValue ->
+                        CaptureUiStore.update { it.copy(detailedHomeEnabled = newValue) }
                         SettingsPreferences.save(this, CaptureUiStore.state)
                     },
                     onResetParametersClick = {
@@ -2450,6 +2460,7 @@ private fun GlyphVisualizerApp(
     autoEnablePhone1GlyphDebugOnStart: Boolean,
     nothingStyleEnabled: Boolean,
     experimentalMainUiEnabled: Boolean,
+    detailedHomeEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
     onSensitivityChanged: (Float) -> Unit,
     onNoiseGateChanged: (Float) -> Unit,
@@ -2490,6 +2501,7 @@ private fun GlyphVisualizerApp(
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     onNothingStyleEnabledChanged: (Boolean) -> Unit,
     onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,
+    onDetailedHomeEnabledChanged: (Boolean) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     onResetParametersClick: () -> Unit,
     onExportParametersClick: () -> Unit,
@@ -2510,6 +2522,8 @@ private fun GlyphVisualizerApp(
     var screen by rememberSaveable {
         mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
     }
+    var settingsReturnScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+    var selectedDetailsTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
     var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
@@ -2521,7 +2535,10 @@ private fun GlyphVisualizerApp(
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
             screen == Screen.EXPERIMENTAL -> screen = Screen.SETTINGS
-            screen == Screen.LATENCY && experimentalMainUiEnabled -> screen = Screen.DETAILS
+            screen == Screen.SETTINGS -> screen = settingsReturnScreen
+            screen == Screen.LATENCY && experimentalMainUiEnabled -> {
+                screen = if (detailedHomeEnabled) Screen.MAIN else Screen.DETAILS
+            }
             else -> screen = Screen.MAIN
         }
     }
@@ -2631,7 +2648,9 @@ private fun GlyphVisualizerApp(
                         }
                     )
                     Screen.MAIN, Screen.DETAILS -> if (
-                        targetScreen == Screen.MAIN && experimentalMainUiEnabled
+                        targetScreen == Screen.MAIN &&
+                        experimentalMainUiEnabled &&
+                        !detailedHomeEnabled
                     ) {
                         ExperimentalMainScreenContent(
                             heroTitle = heroTitle,
@@ -2661,7 +2680,10 @@ private fun GlyphVisualizerApp(
                             onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
                             onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                             onOpenDetails = { screen = Screen.DETAILS },
-                            onOpenSettings = { screen = Screen.SETTINGS }
+                            onOpenSettings = {
+                                settingsReturnScreen = targetScreen
+                                screen = Screen.SETTINGS
+                            }
                         )
                     } else {
                         MainScreenContent(
@@ -2750,9 +2772,13 @@ private fun GlyphVisualizerApp(
                         logMessage = logMessage,
                         onDismissLog = onDismissLog,
                         onOpenMenu = { drawerOpen = true },
-                        onOpenSettings = { screen = Screen.SETTINGS },
+                        onOpenSettings = {
+                            settingsReturnScreen = targetScreen
+                            screen = Screen.SETTINGS
+                        },
                         onOpenLatency = if (
-                            targetScreen == Screen.DETAILS && experimentalMainUiEnabled
+                            experimentalMainUiEnabled &&
+                            (targetScreen == Screen.DETAILS || detailedHomeEnabled)
                         ) {
                             { screen = Screen.LATENCY }
                         } else {
@@ -2764,7 +2790,12 @@ private fun GlyphVisualizerApp(
                             { screen = Screen.MAIN }
                         } else {
                             null
-                        }
+                        },
+                        experimentalDetailsAsHome = targetScreen == Screen.MAIN &&
+                            experimentalMainUiEnabled &&
+                            detailedHomeEnabled,
+                        initialExperimentalDetailsTab = selectedDetailsTab,
+                        onExperimentalDetailsTabChanged = { selectedDetailsTab = it }
                     )
                     }
                     Screen.LATENCY -> LatencyScreenContent(
@@ -2779,16 +2810,25 @@ private fun GlyphVisualizerApp(
                         onLatencyMsChangeFinished = onLatencyMsChangeFinished,
                         onLatencyAutoSwitchChanged = onLatencyAutoSwitchChanged,
                         onOpenMenu = { drawerOpen = true },
-                        onOpenSettings = { screen = Screen.SETTINGS },
+                        onOpenSettings = {
+                            settingsReturnScreen = Screen.LATENCY
+                            screen = Screen.SETTINGS
+                        },
                         experimentalStyle = experimentalMainUiEnabled,
                         onBack = if (experimentalMainUiEnabled) {
-                            { screen = Screen.DETAILS }
+                            {
+                                screen = if (detailedHomeEnabled) {
+                                    Screen.MAIN
+                                } else {
+                                    Screen.DETAILS
+                                }
+                            }
                         } else {
                             null
                         }
                     )
                     Screen.SETTINGS -> SettingsScreen(
-                        onBack = { screen = Screen.MAIN },
+                        onBack = { screen = settingsReturnScreen },
                         onAbout = { screen = Screen.ABOUT },
                         onExperimentalFeatures = { screen = Screen.EXPERIMENTAL },
                         mediaProjectionEnabled = mediaProjectionEnabled,
@@ -2826,6 +2866,8 @@ private fun GlyphVisualizerApp(
                         onAutoEnablePhone1GlyphDebugOnStartChanged = onAutoEnablePhone1GlyphDebugOnStartChanged,
                         experimentalMainUiEnabled = experimentalMainUiEnabled,
                         onExperimentalMainUiEnabledChanged = onExperimentalMainUiEnabledChanged,
+                        detailedHomeEnabled = detailedHomeEnabled,
+                        onDetailedHomeEnabledChanged = onDetailedHomeEnabledChanged,
                         nothingStyleEnabled = nothingStyleEnabled,
                         onNothingStyleEnabledChanged = onNothingStyleEnabledChanged
                     )
@@ -2882,6 +2924,9 @@ private fun GlyphVisualizerApp(
                 nothingStyleEnabled = nothingStyleEnabled,
                 onDismiss = { drawerOpen = false },
                 onNavigate = { destination ->
+                    if (destination == Screen.SETTINGS) {
+                        settingsReturnScreen = screen
+                    }
                     screen = destination
                     drawerOpen = false
                 }
@@ -3971,6 +4016,9 @@ private fun ExperimentalDetailsScreenContent(
     spectrumMeterEnabled: Boolean,
     nativeMeterViewEnabled: Boolean,
     nothingStyleEnabled: Boolean,
+    isHome: Boolean,
+    initialTab: ExperimentalDetailsTab,
+    onTabChanged: (ExperimentalDetailsTab) -> Unit,
     onResetParametersClick: () -> Unit,
     onExportParametersClick: () -> Unit,
     onImportParametersClick: () -> Unit,
@@ -4038,8 +4086,14 @@ private fun ExperimentalDetailsScreenContent(
     )
 
     val detailsTabs = ExperimentalDetailsTab.entries
-    val pagerState = rememberPagerState(pageCount = { detailsTabs.size })
+    val pagerState = rememberPagerState(
+        initialPage = initialTab.ordinal,
+        pageCount = { detailsTabs.size }
+    )
     val selectedTab = detailsTabs[pagerState.currentPage]
+    LaunchedEffect(selectedTab) {
+        onTabChanged(selectedTab)
+    }
     val coroutineScope = rememberCoroutineScope()
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
@@ -4166,16 +4220,20 @@ private fun ExperimentalDetailsScreenContent(
                     actionIconContentColor = contentColor
                 ),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_back)
-                        )
+                    if (!isHome) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.cd_back)
+                            )
+                        }
                     }
                 },
                 title = {
                     Text(
-                        text = stringResource(R.string.experimental_home_details),
+                        text = stringResource(
+                            if (isHome) R.string.app_name else R.string.experimental_home_details
+                        ),
                         fontFamily = displayFont,
                         fontSize = 25.sp
                     )
@@ -4239,7 +4297,9 @@ private fun ExperimentalDetailsScreenContent(
                                 nativeMeterViewEnabled = nativeMeterViewEnabled,
                                 recordingLightIncluded = recordingLightIncluded,
                                 reverseDirection = reverseDirection,
+                                mediaProjectionEnabled = mediaProjectionEnabled,
                                 onStartClick = onStartVisualizerClick,
+                                onStartProjectionClick = onStartProjectionClick,
                                 onStopClick = onStopClick,
                                 onOpenPattern = { showPatternSheet = true },
                                 onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
@@ -4284,7 +4344,6 @@ private fun ExperimentalDetailsScreenContent(
                                 glyphMode = glyphMode,
                                 isMatrixDevice = isMatrixDevice,
                                 glyphRenderMode = glyphRenderMode,
-                                mediaProjectionEnabled = mediaProjectionEnabled,
                                 nothingStyleEnabled = nothingStyleEnabled,
                                 onOpenLatency = onOpenLatency,
                                 onReverseDirectionChanged = onReverseDirectionChanged,
@@ -4293,8 +4352,7 @@ private fun ExperimentalDetailsScreenContent(
                                 onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
                                 onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                                 onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
-                                onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
-                                onStartProjectionClick = onStartProjectionClick
+                                onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged
                             )
                         }
 
@@ -4426,7 +4484,9 @@ private fun ExperimentalDetailsLiveTab(
     nativeMeterViewEnabled: Boolean,
     recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
+    mediaProjectionEnabled: Boolean,
     onStartClick: () -> Unit,
+    onStartProjectionClick: () -> Unit,
     onStopClick: () -> Unit,
     onOpenPattern: () -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
@@ -4520,6 +4580,16 @@ private fun ExperimentalDetailsLiveTab(
                         )
                     }
                 }
+            }
+            if (mediaProjectionEnabled) {
+                SettingsDividerGap()
+                SettingsEntry(
+                    title = stringResource(R.string.button_media_projection),
+                    description = stringResource(R.string.button_media_projection_hint),
+                    onClick = onStartProjectionClick,
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Middle
+                )
             }
             SettingsDividerGap()
             SettingsEntry(
@@ -4811,19 +4881,58 @@ private fun ExperimentalDetailsTuneTab(
                     modifier = Modifier.weight(1f),
                     onClick = onResetClick
                 ) {
-                    Text(stringResource(R.string.settings_reset_button))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Restore,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_reset_button),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
                 TextButton(
                     modifier = Modifier.weight(1f),
                     onClick = onImportClick
                 ) {
-                    Text(stringResource(R.string.settings_import_button))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_import_button),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
                 TextButton(
                     modifier = Modifier.weight(1f),
                     onClick = onExportClick
                 ) {
-                    Text(stringResource(R.string.settings_export_button))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileUpload,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_export_button),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -4881,7 +4990,6 @@ private fun ExperimentalDetailsSystemTab(
     glyphMode: String,
     isMatrixDevice: Boolean,
     glyphRenderMode: GlyphPatternRenderMode?,
-    mediaProjectionEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     onOpenLatency: () -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
@@ -4890,8 +4998,7 @@ private fun ExperimentalDetailsSystemTab(
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
-    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
-    onStartProjectionClick: () -> Unit
+    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ExperimentalDetailsSectionTitle(
@@ -4904,15 +5011,6 @@ private fun ExperimentalDetailsSystemTab(
             nothingStyle = nothingStyleEnabled,
             position = SettingsGroupPosition.Single
         )
-        if (mediaProjectionEnabled) {
-            SettingsEntry(
-                title = stringResource(R.string.button_media_projection),
-                description = stringResource(R.string.button_media_projection_hint),
-                onClick = onStartProjectionClick,
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Single
-            )
-        }
     }
 
     val toggles = buildList {
@@ -5219,10 +5317,13 @@ private fun MainScreenContent(
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLatency: (() -> Unit)? = null,
-    onBackToExperimental: (() -> Unit)? = null
+    onBackToExperimental: (() -> Unit)? = null,
+    experimentalDetailsAsHome: Boolean = false,
+    initialExperimentalDetailsTab: ExperimentalDetailsTab,
+    onExperimentalDetailsTabChanged: (ExperimentalDetailsTab) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val experimentalDetailsStyle = onBackToExperimental != null
+    val experimentalDetailsStyle = experimentalDetailsAsHome || onBackToExperimental != null
     if (experimentalDetailsStyle) {
         ExperimentalDetailsScreenContent(
             heroTitle = heroTitle,
@@ -5256,6 +5357,9 @@ private fun MainScreenContent(
             spectrumMeterEnabled = spectrumMeterEnabled,
             nativeMeterViewEnabled = nativeMeterViewEnabled,
             nothingStyleEnabled = nothingStyleEnabled,
+            isHome = experimentalDetailsAsHome,
+            initialTab = initialExperimentalDetailsTab,
+            onTabChanged = onExperimentalDetailsTabChanged,
             onResetParametersClick = onResetParametersClick,
             onExportParametersClick = onExportParametersClick,
             onImportParametersClick = onImportParametersClick,
@@ -5284,7 +5388,7 @@ private fun MainScreenContent(
             onStopClick = onStopClick,
             onOpenSettings = onOpenSettings,
             onOpenLatency = onOpenLatency ?: {},
-            onBack = onBackToExperimental ?: onOpenMenu
+            onBack = onBackToExperimental ?: {}
         )
         return
     }
@@ -9734,6 +9838,7 @@ private fun GlyphVisualizerPreview() {
             autoEnablePhone1GlyphDebugOnStart = true,
             nothingStyleEnabled = false,
             experimentalMainUiEnabled = true,
+            detailedHomeEnabled = false,
             turnOffWhenBackDown = false,
             onSensitivityChanged = {},
             onNoiseGateChanged = {},
@@ -9774,6 +9879,7 @@ private fun GlyphVisualizerPreview() {
             onMediaProjectionEnabledChanged = {},
             onNothingStyleEnabledChanged = {},
             onExperimentalMainUiEnabledChanged = {},
+            onDetailedHomeEnabledChanged = {},
             onTurnOffWhenBackDownChanged = {},
             onResetParametersClick = {},
             onExportParametersClick = {},

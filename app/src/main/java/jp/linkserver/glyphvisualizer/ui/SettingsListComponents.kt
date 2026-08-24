@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ fun SettingsItemSurface(
     nothingStyle: Boolean,
     position: SettingsGroupPosition,
     onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
     containerColor: Color? = null,
     content: @Composable () -> Unit
 ) {
@@ -57,6 +59,7 @@ fun SettingsItemSurface(
     if (onClick != null) {
         Surface(
             onClick = onClick,
+            enabled = enabled,
             modifier = modifier,
             shape = shape,
             color = color,
@@ -116,7 +119,8 @@ fun SettingsEntry(
     onClick: () -> Unit,
     nothingStyle: Boolean,
     position: SettingsGroupPosition,
-    containerColor: Color? = null
+    containerColor: Color? = null,
+    enabled: Boolean = true
 ) {
     val chevronTint = if (nothingStyle) {
         if (isSystemInDarkTheme()) Color(0xFFEDEDED) else Color(0xFF1A1A1A)
@@ -128,11 +132,13 @@ fun SettingsEntry(
         nothingStyle = nothingStyle,
         position = position,
         onClick = onClick,
+        enabled = enabled,
         containerColor = containerColor
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .alpha(if (enabled) 1f else 0.38f)
                 .padding(
                     horizontal = 22.dp,
                     vertical = 18.dp

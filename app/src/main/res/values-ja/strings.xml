@@ -7,11 +7,11 @@
     <string name="about_version_label" translatable="false">%1$s  v%2$s (%3$d)</string>
     <string name="about_simple_version_title">バージョン</string>
     <string name="about_simple_version_value" translatable="false">v%1$s</string>
-    <string name="about_overview_release_line">%1$s  v%2$s</string>
+    <string name="about_overview_release_line" translatable="false">v%1$s (%2$d)</string>
     <string name="about_overview_channel_title">チャネル</string>
     <string name="about_overview_build_title">ビルド</string>
     <string name="about_overview_version_title">バージョン</string>
-    <string name="about_overview_version_value">v%1$s (%2$d)</string>
+    <string name="about_overview_version_value" translatable="false">v%1$s</string>
     <string name="about_dev_channel_title">開発チャネル</string>
     <string name="about_dev_channel_dialog_title">開発チャネル: %1$s</string>
     <string name="about_dev_channel_value_intdev">内部検証版</string>
@@ -98,6 +98,9 @@
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
     <string name="settings_ui_mode_material">Material 3</string>
+    <string name="settings_home_screen_title">ホーム画面</string>
+    <string name="settings_home_screen_compact">簡易</string>
+    <string name="settings_home_screen_detailed">詳細</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_desc_enabled">有効です。開始できなかった場合など、重要なお知らせに使用します。</string>
     <string name="settings_notifications_desc_disabled">無効です。開始失敗通知を受け取るには、通知を有効にしてください。</string>

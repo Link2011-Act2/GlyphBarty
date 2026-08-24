@@ -7,11 +7,11 @@
     <string name="about_version_label" translatable="false">%1$s  v%2$s (%3$d)</string>
     <string name="about_simple_version_title">Version</string>
     <string name="about_simple_version_value" translatable="false">v%1$s</string>
-    <string name="about_overview_release_line">%1$s  v%2$s</string>
+    <string name="about_overview_release_line" translatable="false">v%1$s (%2$d)</string>
     <string name="about_overview_channel_title">Channel</string>
     <string name="about_overview_build_title">Build</string>
     <string name="about_overview_version_title">Version</string>
-    <string name="about_overview_version_value">v%1$s (%2$d)</string>
+    <string name="about_overview_version_value" translatable="false">v%1$s</string>
     <string name="about_dev_channel_title">Development channel</string>
     <string name="about_dev_channel_dialog_title">Development channel: %1$s</string>
     <string name="about_dev_channel_value_intdev">Internal dev</string>
@@ -98,6 +98,9 @@
     <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
     <string name="settings_ui_mode_nothing">Nothing-like</string>
     <string name="settings_ui_mode_material">Material 3</string>
+    <string name="settings_home_screen_title">Home screen</string>
+    <string name="settings_home_screen_compact">Compact</string>
+    <string name="settings_home_screen_detailed">Detailed</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_desc_enabled">Enabled. Used for important alerts, such as startup failures.</string>
     <string name="settings_notifications_desc_disabled">Disabled. Enable notifications to receive startup failure alerts.</string>

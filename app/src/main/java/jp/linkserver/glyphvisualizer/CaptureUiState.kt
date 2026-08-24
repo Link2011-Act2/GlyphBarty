@@ -60,6 +60,7 @@ data class CaptureUiState(
     val autoEnablePhone1GlyphDebugOnStart: Boolean = true,
     val nothingStyleEnabled: Boolean = false,
     val experimentalMainUiEnabled: Boolean = true,
+    val detailedHomeEnabled: Boolean = false,
     val turnOffWhenBackDown: Boolean = false,
     val logMessage: String? = null,
     val pendingSpatialAudioWarning: SpatialAudioWarning? = null
