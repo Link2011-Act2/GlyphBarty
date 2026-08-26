@@ -301,6 +301,9 @@ class GlyphVisualizerService : Service() {
             oscilloscopeAutoTimeAxisEnabled: Boolean = false,
             recordingLightIncluded: Boolean? = null
         ) {
+            if (!CaptureUiStore.state.isCapturing) {
+                return
+            }
             val intent = Intent(context, GlyphVisualizerService::class.java).apply {
                 action = ACTION_UPDATE_SENSITIVITY
                 putExtra(EXTRA_SENSITIVITY, sensitivity)
@@ -689,6 +692,11 @@ class GlyphVisualizerService : Service() {
             }
 
             ACTION_UPDATE_SENSITIVITY -> {
+                if (!CaptureUiStore.state.isCapturing) {
+                    AppLogger.i(TAG, "Discarding settings update because capture is no longer active")
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
                 noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
                 dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
@@ -1068,6 +1076,16 @@ class GlyphVisualizerService : Service() {
                     leftWaveformSamples,
                     rightWaveformSamples
                 )
+            },
+            onCaptureFailed = { error ->
+                AppLogger.e(TAG, "MediaProjection audio capture stopped unexpectedly", error)
+                val status = getString(
+                    R.string.status_media_projection_service_start_failed,
+                    error.message ?: getString(R.string.status_unknown_error)
+                )
+                stopCapture(status)
+                safeStopForeground()
+                stopSelf()
             }
         )
         if (!started) {

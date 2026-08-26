@@ -113,10 +113,10 @@ fun AboutScreen(
                     showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
                 )
             }
-            markUpdateCheckFinished(context)
             checkingUpdates = false
             result
                 .onSuccess { updateInfo ->
+                    markUpdateCheckFinished(context)
                     if (updateInfo != null) {
                         updateStatus = context.getString(R.string.about_update_available, updateInfo.tagName)
                         onUpdateAvailable(updateInfo)
@@ -632,53 +632,53 @@ private fun AboutOverviewMosaic(
                 val horizontalBridgeStart = (squareSize - bridgeLength) * 0.5f
                 val verticalBridgeStart = (squareSize - bridgeLength) * 0.5f
 
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = horizontalBridgeStart,
-                                y = -gap - bridgeOverlap
-                            )
-                            .width(bridgeLength)
-                            .height(gap + bridgeOverlap * 2f)
-                            .background(cardColor)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = horizontalBridgeStart - gap * 0.5f,
-                                y = -gap
-                            )
-                            .size(gap)
-                            .background(gutterColor, CircleShape)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = horizontalBridgeStart + bridgeLength - gap * 0.5f,
-                                y = -gap
-                            )
-                            .size(gap)
-                            .background(gutterColor, CircleShape)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = squareSize - bridgeOverlap,
-                                y = verticalBridgeStart
-                            )
-                            .width(gap + bridgeOverlap * 2f)
-                            .height(bridgeLength)
-                            .background(cardColor)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = squareSize,
-                                y = verticalBridgeStart - gap * 0.5f
-                            )
-                            .size(gap)
-                            .background(gutterColor, CircleShape)
-                    )
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = horizontalBridgeStart,
+                            y = -gap - bridgeOverlap
+                        )
+                        .width(bridgeLength)
+                        .height(gap + bridgeOverlap * 2f)
+                        .background(cardColor)
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = horizontalBridgeStart - gap * 0.5f,
+                            y = -gap
+                        )
+                        .size(gap)
+                        .background(gutterColor, CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = horizontalBridgeStart + bridgeLength - gap * 0.5f,
+                            y = -gap
+                        )
+                        .size(gap)
+                        .background(gutterColor, CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = squareSize - bridgeOverlap,
+                            y = verticalBridgeStart
+                        )
+                        .width(gap + bridgeOverlap * 2f)
+                        .height(bridgeLength)
+                        .background(cardColor)
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(
+                            x = squareSize,
+                            y = verticalBridgeStart - gap * 0.5f
+                        )
+                        .size(gap)
+                        .background(gutterColor, CircleShape)
+                )
                 Box(
                     modifier = Modifier
                         .offset(

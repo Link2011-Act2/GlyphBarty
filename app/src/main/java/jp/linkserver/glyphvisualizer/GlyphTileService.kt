@@ -42,6 +42,16 @@ class GlyphTileService : TileService() {
             GlyphVisualizerService.stop(this)
         } else {
             val s = SettingsPreferences.load(this)
+            val effectiveProfile = GlyphDeviceCatalog.effectiveUiProfile(
+                actualProfile = GlyphDeviceCatalog.currentProfile(),
+                phone4bEmulationEnabled = s.phone4bEmulationEnabled,
+                debugDeviceProfileOverride = s.debugDeviceProfileOverride
+            )
+            Phone1GlyphDebugHelper.autoEnableOnStartIfPossible(
+                context = this,
+                profile = effectiveProfile,
+                autoEnableOnStart = s.autoEnablePhone1GlyphDebugOnStart
+            )
             val resolved = s.withResolvedLatency(AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this))
             GlyphVisualizerService.startVisualizer(
                 context = this,

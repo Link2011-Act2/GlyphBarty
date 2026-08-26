@@ -2,6 +2,7 @@ package jp.linkserver.glyphvisualizer
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.widget.Toast
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import java.util.Locale
 import rikka.shizuku.Shizuku
@@ -9,93 +10,207 @@ import rikka.sui.Sui
 
 object Phone1GlyphDebugHelper {
     private const val TAG = "Phone1GlyphDebug"
+    private const val AUTO_ENABLE_PERMISSION_REQUEST_CODE = 1402
     private val PHONE1_GLYPH_DEBUG_COMMAND = arrayOf(
         "sh",
         "-c",
         "settings put global nt_glyph_interface_debug_enable 1"
     )
 
+    private val autoEnablePermissionLock = Any()
+    private var pendingAutoEnableContext: Context? = null
+    private val autoEnablePermissionListener: Shizuku.OnRequestPermissionResultListener =
+        Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode != AUTO_ENABLE_PERMISSION_REQUEST_CODE) {
+                return@OnRequestPermissionResultListener
+            }
+
+            val context = synchronized(autoEnablePermissionLock) {
+                pendingAutoEnableContext.also {
+                    pendingAutoEnableContext = null
+                }
+            }
+            runCatching {
+                Shizuku.removeRequestPermissionResultListener(autoEnablePermissionListener)
+            }.onFailure { error ->
+                AppLogger.w(TAG, "Failed to remove automatic permission listener", error)
+            }
+
+            AppLogger.i(
+                TAG,
+                "Automatic permission result received grantResult=$grantResult pending=${context != null}"
+            )
+            if (grantResult == PackageManager.PERMISSION_GRANTED && context != null) {
+                val settings = SettingsPreferences.load(context)
+                val effectiveProfile = GlyphDeviceCatalog.effectiveUiProfile(
+                    actualProfile = GlyphDeviceCatalog.currentProfile(),
+                    phone4bEmulationEnabled = settings.phone4bEmulationEnabled,
+                    debugDeviceProfileOverride = settings.debugDeviceProfileOverride
+                )
+                if (shouldAutoEnableOnStart(
+                        profile = effectiveProfile,
+                        autoEnableOnStart = settings.autoEnablePhone1GlyphDebugOnStart
+                    )
+                ) {
+                    enableAutomatically(context)
+                } else {
+                    AppLogger.i(
+                        TAG,
+                        "Skipping automatic enable after permission result because eligibility changed"
+                    )
+                }
+            }
+        }
+
     fun supports(profile: GlyphDeviceProfile): Boolean {
         return profile == GlyphDeviceProfile.PHONE1
     }
 
-    private fun initializeBackend(context: Context) {
-        runCatching {
-            Sui.init(context.packageName)
-            AppLogger.i(TAG, "Sui.init completed for package=${context.packageName}")
-        }.onFailure { error ->
-            AppLogger.w(TAG, "Sui.init failed", error)
+    data class BackendStatus(
+        val suiAvailable: Boolean,
+        val apiAvailable: Boolean,
+        val permissionGranted: Boolean
+    )
+
+    internal enum class AutoEnableBackendAction {
+        ENABLE,
+        REQUEST_PERMISSION,
+        SKIP
+    }
+
+    internal fun shouldAutoEnableOnStart(
+        profile: GlyphDeviceProfile,
+        autoEnableOnStart: Boolean
+    ): Boolean {
+        return autoEnableOnStart && supports(profile)
+    }
+
+    internal fun resolveAutoEnableBackendAction(
+        backendStatus: BackendStatus
+    ): AutoEnableBackendAction = when {
+        backendStatus.permissionGranted -> AutoEnableBackendAction.ENABLE
+        backendStatus.apiAvailable -> AutoEnableBackendAction.REQUEST_PERMISSION
+        else -> AutoEnableBackendAction.SKIP
+    }
+
+    fun autoEnableOnStartIfPossible(
+        context: Context,
+        profile: GlyphDeviceProfile,
+        autoEnableOnStart: Boolean
+    ) {
+        if (!shouldAutoEnableOnStart(profile, autoEnableOnStart)) {
+            return
+        }
+
+        val applicationContext = context.applicationContext
+        AppLogger.i(TAG, "Attempting automatic Phone (1) glyph debug enable")
+        val backendStatus = backendStatus()
+        when (resolveAutoEnableBackendAction(backendStatus)) {
+            AutoEnableBackendAction.ENABLE -> enableAutomatically(applicationContext)
+            AutoEnableBackendAction.REQUEST_PERMISSION -> requestAutomaticPermission(applicationContext)
+            AutoEnableBackendAction.SKIP -> AppLogger.i(
+                TAG,
+                "Skipping automatic enable because the Shizuku API binder is unavailable; suiDetected=${backendStatus.suiAvailable}"
+            )
         }
     }
 
-    fun isSuiAvailable(context: Context): Boolean {
-        initializeBackend(context)
-        return runCatching { Sui.isSui() }
+    private fun requestAutomaticPermission(context: Context) {
+        val shouldRequest = synchronized(autoEnablePermissionLock) {
+            if (pendingAutoEnableContext != null) {
+                false
+            } else {
+                pendingAutoEnableContext = context
+                true
+            }
+        }
+        if (!shouldRequest) {
+            AppLogger.i(TAG, "Automatic permission request is already pending")
+            return
+        }
+
+        runCatching {
+            Shizuku.addRequestPermissionResultListener(autoEnablePermissionListener)
+            check(requestPermission(AUTO_ENABLE_PERMISSION_REQUEST_CODE)) {
+                "Shizuku API became unavailable before requesting permission"
+            }
+        }.onFailure { error ->
+            synchronized(autoEnablePermissionLock) {
+                pendingAutoEnableContext = null
+            }
+            runCatching {
+                Shizuku.removeRequestPermissionResultListener(autoEnablePermissionListener)
+            }
+            AppLogger.w(TAG, "Automatic Shizuku permission request failed", error)
+        }
+    }
+
+    private fun enableAutomatically(context: Context) {
+        val result = enableGlyphDebug()
+        if (result.isSuccess) {
+            AppLogger.i(TAG, "Automatic Phone (1) glyph debug enable completed successfully")
+            Toast.makeText(
+                context,
+                context.getString(R.string.phone1_glyph_debug_success),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            AppLogger.w(
+                TAG,
+                "Automatic Phone (1) glyph debug enable failed",
+                result.exceptionOrNull()
+            )
+        }
+    }
+
+    fun backendStatus(): BackendStatus {
+        // ShizukuProvider initializes Sui once when this app process is created.
+        val suiAvailable = runCatching { Sui.isSui() }
             .onFailure { error -> AppLogger.w(TAG, "Sui.isSui failed", error) }
             .getOrDefault(false)
-            .also { AppLogger.i(TAG, "Sui availability=$it") }
-    }
-
-    fun isShizukuAvailable(context: Context): Boolean {
-        initializeBackend(context)
-        return runCatching { Shizuku.pingBinder() }
+        val apiAvailable = runCatching { Shizuku.pingBinder() }
             .onFailure { error -> AppLogger.w(TAG, "Shizuku.pingBinder failed", error) }
             .getOrDefault(false)
-            .also { AppLogger.i(TAG, "Shizuku availability=$it") }
-    }
+        val permissionGranted = apiAvailable && runCatching {
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        }
+            .onFailure { error -> AppLogger.w(TAG, "Shizuku.checkSelfPermission failed", error) }
+            .getOrDefault(false)
 
-    fun isBackendAvailable(context: Context): Boolean {
-        val shizukuAvailable = isShizukuAvailable(context)
-        val suiAvailable = isSuiAvailable(context)
-        val available = shizukuAvailable || suiAvailable
         AppLogger.i(
             TAG,
-            "Backend availability=$available suiAvailable=$suiAvailable shizukuAvailable=$shizukuAvailable"
+            "Backend status suiAvailable=$suiAvailable apiAvailable=$apiAvailable permissionGranted=$permissionGranted"
         )
-        return available
+        return BackendStatus(
+            suiAvailable = suiAvailable,
+            apiAvailable = apiAvailable,
+            permissionGranted = permissionGranted
+        )
     }
 
-    fun hasPermission(context: Context): Boolean {
-        val shizukuAvailable = isShizukuAvailable(context)
-        if (!shizukuAvailable) {
-            AppLogger.i(TAG, "Permission availability=false because Shizuku binder is unavailable")
+    fun requestPermission(requestCode: Int): Boolean {
+        AppLogger.i(TAG, "requestPermission called requestCode=$requestCode")
+        val apiAvailable = runCatching { Shizuku.pingBinder() }
+            .onFailure { error -> AppLogger.w(TAG, "Shizuku.pingBinder failed before permission request", error) }
+            .getOrDefault(false)
+        if (!apiAvailable) {
+            AppLogger.i(TAG, "Skipping permission request because Shizuku is unavailable")
             return false
         }
-
-        val granted = runCatching {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        }.onFailure { error ->
-            AppLogger.w(TAG, "Shizuku.checkSelfPermission failed", error)
-        }.getOrDefault(false)
-
-        AppLogger.i(
-            TAG,
-            "Permission availability=$granted suiAvailable=${isSuiAvailable(context)} shizukuAvailable=$shizukuAvailable"
-        )
-        return granted
+        AppLogger.i(TAG, "Requesting Shizuku API permission requestCode=$requestCode")
+        Shizuku.requestPermission(requestCode)
+        return true
     }
 
-    fun requestPermission(context: Context, requestCode: Int) {
-        AppLogger.i(TAG, "requestPermission called requestCode=$requestCode")
-        if (isShizukuAvailable(context)) {
-            AppLogger.i(TAG, "Requesting Shizuku permission requestCode=$requestCode")
-            Shizuku.requestPermission(requestCode)
-        } else {
-            AppLogger.i(TAG, "Skipping permission request because Shizuku is unavailable")
-        }
-    }
-
-    fun enableGlyphDebug(context: Context): Result<Unit> {
+    fun enableGlyphDebug(): Result<Unit> {
         return runCatching {
-            initializeBackend(context)
-            val backendAvailable = isBackendAvailable(context)
-            val permissionGranted = hasPermission(context)
+            val backendStatus = backendStatus()
             AppLogger.i(
                 TAG,
-                "enableGlyphDebug started backendAvailable=$backendAvailable permissionGranted=$permissionGranted"
+                "enableGlyphDebug started apiAvailable=${backendStatus.apiAvailable} permissionGranted=${backendStatus.permissionGranted}"
             )
-            check(backendAvailable) { "Shizuku or Sui is unavailable" }
-            check(permissionGranted) { "Shizuku permission is unavailable" }
+            check(backendStatus.apiAvailable) { "Shizuku or Sui is unavailable" }
+            check(backendStatus.permissionGranted) { "Shizuku API permission is unavailable" }
 
             AppLogger.i(
                 TAG,

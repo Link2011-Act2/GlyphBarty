@@ -216,6 +216,10 @@ class MainActivity : ComponentActivity() {
             "pending_open_reel_settings_launched"
         private const val STATE_PENDING_OPEN_REEL_MODE =
             "pending_open_reel_mode"
+        private const val STATE_PENDING_START_MODE =
+            "pending_start_mode"
+        private const val STATE_PENDING_EXPORT_CONTENT =
+            "pending_export_content"
     }
 
     private val parameterSyncHandler = Handler(Looper.getMainLooper())
@@ -243,7 +247,6 @@ class MainActivity : ComponentActivity() {
     private var pendingOpenReelPermissionRequest = false
     private var pendingOpenReelPermissionSettingsLaunched = false
     private var pendingOpenReelGlyphMode: String? = null
-    private var pendingPhone1GlyphDebugPermissionRequestFromManual by mutableStateOf(false)
     private var showPhone1GlyphDebugPermissionDialog by mutableStateOf(false)
     private var showOpenReelPermissionDialog by mutableStateOf(false)
     private var showNotificationPermissionExplanationDialog by mutableStateOf(false)
@@ -251,15 +254,13 @@ class MainActivity : ComponentActivity() {
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
             if (requestCode == PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE) {
-                val fromManual = pendingPhone1GlyphDebugPermissionRequestFromManual
                 AppLogger.i(
                     "Phone1GlyphDebug",
-                    "Permission result received requestCode=$requestCode grantResult=$grantResult fromManual=$fromManual"
+                    "Manual permission result received requestCode=$requestCode grantResult=$grantResult"
                 )
-                pendingPhone1GlyphDebugPermissionRequestFromManual = false
                 if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                    enablePhone1GlyphDebug(manual = fromManual)
-                } else if (fromManual) {
+                    enablePhone1GlyphDebug()
+                } else {
                     showPhone1GlyphDebugPermissionDialog = true
                 }
             }
@@ -400,6 +401,12 @@ class MainActivity : ComponentActivity() {
             pendingOpenReelPermissionRequest
         ) ?: false
         pendingOpenReelGlyphMode = savedInstanceState?.getString(STATE_PENDING_OPEN_REEL_MODE)
+        pendingStartMode = savedInstanceState
+            ?.getString(STATE_PENDING_START_MODE)
+            ?.let { savedMode ->
+                runCatching { CaptureMode.valueOf(savedMode) }.getOrNull()
+            }
+        pendingExportContent = savedInstanceState?.getString(STATE_PENDING_EXPORT_CONTENT)
         CaptureUiStore.setUiVisible(true)
         enableEdgeToEdge()
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
@@ -1039,7 +1046,7 @@ class MainActivity : ComponentActivity() {
                         requestModeStart(CaptureMode.MEDIA_PROJECTION)
                     },
                     onEnablePhone1GlyphDebugClick = {
-                        requestPhone1GlyphDebug(manual = true)
+                        requestPhone1GlyphDebug()
                     },
                     onStopClick = {
                         GlyphVisualizerService.stop(this)
@@ -1436,6 +1443,12 @@ class MainActivity : ComponentActivity() {
         pendingOpenReelGlyphMode?.let {
             outState.putString(STATE_PENDING_OPEN_REEL_MODE, it)
         }
+        pendingStartMode?.let {
+            outState.putString(STATE_PENDING_START_MODE, it.name)
+        }
+        pendingExportContent?.let {
+            outState.putString(STATE_PENDING_EXPORT_CONTENT, it)
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -1520,13 +1533,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun silentlyEnablePhone1GlyphDebugIfPossible() {
-        if (
-            Phone1GlyphDebugHelper.supports(currentEffectiveUiDeviceProfile()) &&
-            CaptureUiStore.state.autoEnablePhone1GlyphDebugOnStart
-        ) {
-            AppLogger.i("Phone1GlyphDebug", "Attempting silent Phone (1) glyph debug enable on mode start")
-            requestPhone1GlyphDebug(manual = false)
-        }
+        Phone1GlyphDebugHelper.autoEnableOnStartIfPossible(
+            context = this,
+            profile = currentEffectiveUiDeviceProfile(),
+            autoEnableOnStart = CaptureUiStore.state.autoEnablePhone1GlyphDebugOnStart
+        )
     }
 
     private fun currentEffectiveUiDeviceProfile(): GlyphDeviceProfile {
@@ -1538,67 +1549,55 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun requestPhone1GlyphDebug(manual: Boolean) {
+    private fun requestPhone1GlyphDebug() {
         val effectiveUiProfile = currentEffectiveUiDeviceProfile()
         val debugAllowed = Phone1GlyphDebugHelper.supports(effectiveUiProfile)
         AppLogger.i(
             "Phone1GlyphDebug",
-            "requestPhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed actualProfile=$deviceProfile effectiveUiProfile=$effectiveUiProfile"
+            "Manual debug request debugAllowed=$debugAllowed actualProfile=$deviceProfile effectiveUiProfile=$effectiveUiProfile"
         )
         if (!debugAllowed) {
             AppLogger.i("Phone1GlyphDebug", "Skipping debug request because debug controls are not allowed")
             return
         }
-        val hasPermission = Phone1GlyphDebugHelper.hasPermission(this)
-        val shizukuAvailable = Phone1GlyphDebugHelper.isShizukuAvailable(this)
-        val backendAvailable = Phone1GlyphDebugHelper.isBackendAvailable(this)
+        val backendStatus = Phone1GlyphDebugHelper.backendStatus()
         AppLogger.i(
             "Phone1GlyphDebug",
-            "Debug request state hasPermission=$hasPermission shizukuAvailable=$shizukuAvailable backendAvailable=$backendAvailable"
+            "Manual debug request state suiAvailable=${backendStatus.suiAvailable} apiAvailable=${backendStatus.apiAvailable} permissionGranted=${backendStatus.permissionGranted}"
         )
         when {
-            hasPermission -> enablePhone1GlyphDebug(manual)
-            shizukuAvailable -> {
-                AppLogger.i(
-                    "Phone1GlyphDebug",
-                    if (manual) {
-                        "Manual request will ask Shizuku permission"
-                    } else {
-                        "Automatic request will ask Shizuku permission"
-                    }
-                )
-                pendingPhone1GlyphDebugPermissionRequestFromManual = manual
+            backendStatus.permissionGranted -> enablePhone1GlyphDebug()
+            backendStatus.apiAvailable -> {
+                AppLogger.i("Phone1GlyphDebug", "Manual request will ask Shizuku API permission")
                 runCatching {
-                    Phone1GlyphDebugHelper.requestPermission(this, PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE)
+                    check(
+                        Phone1GlyphDebugHelper.requestPermission(
+                            PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE
+                        )
+                    ) { "Shizuku API became unavailable before requesting permission" }
                 }.onFailure {
                     AppLogger.w("Phone1GlyphDebug", "Shizuku permission request failed", it)
-                    pendingPhone1GlyphDebugPermissionRequestFromManual = false
-                    if (manual) {
-                        showPhone1GlyphDebugPermissionDialog = true
-                    }
-                }
-            }
-            !backendAvailable -> {
-                AppLogger.i("Phone1GlyphDebug", "No Shizuku/Sui backend available; showing dialog only for manual flow")
-                if (manual) {
                     showPhone1GlyphDebugPermissionDialog = true
                 }
             }
-            else -> Unit
+            else -> {
+                AppLogger.i("Phone1GlyphDebug", "No Shizuku/Sui backend available for manual request")
+                showPhone1GlyphDebugPermissionDialog = true
+            }
         }
     }
 
-    private fun enablePhone1GlyphDebug(manual: Boolean) {
+    private fun enablePhone1GlyphDebug() {
         val debugAllowed = Phone1GlyphDebugHelper.supports(currentEffectiveUiDeviceProfile())
         AppLogger.i(
             "Phone1GlyphDebug",
-            "enablePhone1GlyphDebug manual=$manual debugAllowed=$debugAllowed"
+            "Manual enablePhone1GlyphDebug debugAllowed=$debugAllowed"
         )
         if (!debugAllowed) {
             AppLogger.i("Phone1GlyphDebug", "Skipping enable because debug controls are not allowed")
             return
         }
-        val result = Phone1GlyphDebugHelper.enableGlyphDebug(this)
+        val result = Phone1GlyphDebugHelper.enableGlyphDebug()
         if (result.isSuccess) {
             AppLogger.i("Phone1GlyphDebug", "enablePhone1GlyphDebug completed successfully")
             Toast.makeText(
@@ -1613,7 +1612,7 @@ class MainActivity : ComponentActivity() {
                 result.exceptionOrNull()
             )
         }
-        if (manual && result.isFailure) {
+        if (result.isFailure) {
             showPhone1GlyphDebugPermissionDialog = true
         }
     }
@@ -1873,8 +1872,8 @@ private fun GlyphVisualizerApp(
                     showLatestForTesting = showLatestForTesting
                 )
             }
-            markUpdateCheckFinished(context)
             result.onSuccess { updateInfo ->
+                markUpdateCheckFinished(context)
                 if (
                     updateInfo != null &&
                     (showLatestForTesting || !isUpdateNotificationDismissed(context, updateInfo.tagName))
