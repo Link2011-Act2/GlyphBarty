@@ -57,7 +57,7 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 9
+        versionCode = 10
         versionName = appVersionName
         buildConfigField("String", "BUILD_NUMBER", "\"$generatedBuildNumber\"")
 
