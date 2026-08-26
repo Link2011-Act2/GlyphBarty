@@ -1,6 +1,7 @@
 package jp.linkserver.glyphvisualizer
 
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
+import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixProfileEmulator
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import org.junit.Test
 
@@ -99,5 +100,58 @@ class ExampleUnitTest {
                 debugDeviceProfileOverride = null
             )
         )
+    }
+
+    @Test
+    fun effectiveOutputProfile_activatesSupportedProfileEmulations() {
+        assertEquals(
+            GlyphDeviceProfile.PHONE4B,
+            GlyphDeviceCatalog.effectiveOutputProfile(
+                actualProfile = GlyphDeviceProfile.PHONE4A,
+                phone4bEmulationEnabled = false,
+                debugDeviceProfileOverride = GlyphDeviceProfile.PHONE4B
+            )
+        )
+        assertEquals(
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
+            GlyphDeviceCatalog.effectiveOutputProfile(
+                actualProfile = GlyphDeviceProfile.PHONE3_MATRIX,
+                phone4bEmulationEnabled = false,
+                debugDeviceProfileOverride = GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+            )
+        )
+    }
+
+    @Test
+    fun effectiveOutputProfile_ignoresUnsupportedHardwareMappings() {
+        assertEquals(
+            GlyphDeviceProfile.PHONE3_MATRIX,
+            GlyphDeviceCatalog.effectiveOutputProfile(
+                actualProfile = GlyphDeviceProfile.PHONE3_MATRIX,
+                phone4bEmulationEnabled = false,
+                debugDeviceProfileOverride = GlyphDeviceProfile.PHONE4B
+            )
+        )
+    }
+
+    @Test
+    fun phone4aProFrame_isCenteredAndRoundedInsidePhone3Matrix() {
+        val sourceLength = GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+        val physicalLength = 25
+        val source = IntArray(sourceLength * sourceLength) { 255 }
+        val destination = IntArray(physicalLength * physicalLength)
+
+        GlyphMatrixProfileEmulator.copyPhone4aProFrameIntoCenteredRegion(
+            source = source,
+            physicalMatrixLength = physicalLength,
+            destination = destination
+        )
+
+        assertEquals(137, destination.count { it == 255 })
+        assertEquals(255, destination[12 * physicalLength + 12])
+        assertEquals(0, destination[6 * physicalLength + 6])
+        assertEquals(255, destination[10 * physicalLength + 6])
+        assertEquals(0, destination[5 * physicalLength + 12])
+        assertEquals(0, destination[19 * physicalLength + 12])
     }
 }

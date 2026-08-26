@@ -31,6 +31,7 @@ import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
+import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
@@ -483,17 +484,31 @@ class GlyphVisualizerService : Service() {
         AppLogger.init(this)
         createNotificationChannel()
         val savedSettings = SettingsPreferences.load(this)
+        val actualDeviceProfile = GlyphDeviceCatalog.currentProfile()
+        val outputDeviceProfile = GlyphDeviceCatalog.effectiveOutputProfile(
+            actualProfile = actualDeviceProfile,
+            phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
+            debugDeviceProfileOverride = savedSettings.debugDeviceProfileOverride
+        )
         glyphController = if (GlyphDeviceCatalog.currentOrFallback().controllerFamily == GlyphControllerFamily.MATRIX) {
-            GlyphMatrixController(this) { status ->
-                CaptureUiStore.update { it.copy(statusText = status) }
-            }
+            GlyphMatrixController(
+                context = this,
+                onStatusChanged = { status ->
+                    CaptureUiStore.update { it.copy(statusText = status) }
+                },
+                initialPhone4aProEmulationEnabled =
+                    actualDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
+                        outputDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+            )
         } else {
             GlyphLightController(
                 context = this,
                 onStatusChanged = { status ->
                     CaptureUiStore.update { it.copy(statusText = status) }
                 },
-                initialPhone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled
+                initialPhone4bEmulationEnabled =
+                    actualDeviceProfile == GlyphDeviceProfile.PHONE4A &&
+                        outputDeviceProfile == GlyphDeviceProfile.PHONE4B
             )
         }
         audioPlaybackVisualizer = AudioPlaybackVisualizer(this)
@@ -1288,8 +1303,16 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun applyGlyphControllerSettings() {
+        val savedSettings = SettingsPreferences.load(this)
+        val actualDeviceProfile = GlyphDeviceCatalog.currentProfile()
+        val outputDeviceProfile = GlyphDeviceCatalog.effectiveOutputProfile(
+            actualProfile = actualDeviceProfile,
+            phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
+            debugDeviceProfileOverride = savedSettings.debugDeviceProfileOverride
+        )
         glyphController.setPhone4bEmulationEnabled(
-            SettingsPreferences.loadPhone4bEmulationEnabled(this)
+            actualDeviceProfile == GlyphDeviceProfile.PHONE4A &&
+                outputDeviceProfile == GlyphDeviceProfile.PHONE4B
         )
         glyphController.setReverseDirection(reverseDirection)
         glyphController.setGlyphMode(glyphMode)

@@ -244,6 +244,24 @@ object GlyphDeviceCatalog {
             ?: effectiveProfile(actualProfile, phone4bEmulationEnabled)
     }
 
+    fun effectiveOutputProfile(
+        actualProfile: GlyphDeviceProfile,
+        phone4bEmulationEnabled: Boolean,
+        debugDeviceProfileOverride: GlyphDeviceProfile?
+    ): GlyphDeviceProfile {
+        return when {
+            actualProfile == GlyphDeviceProfile.PHONE4A &&
+                (phone4bEmulationEnabled || debugDeviceProfileOverride == GlyphDeviceProfile.PHONE4B) ->
+                GlyphDeviceProfile.PHONE4B
+
+            actualProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
+                debugDeviceProfileOverride == GlyphDeviceProfile.PHONE4A_PRO_MATRIX ->
+                GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+
+            else -> actualProfile
+        }
+    }
+
     fun presentationForProfile(profile: GlyphDeviceProfile): GlyphDevicePresentation {
         return entries.firstOrNull { it.definition.profile == profile }
             ?.definition

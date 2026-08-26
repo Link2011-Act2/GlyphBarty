@@ -5899,7 +5899,8 @@ private fun ExperimentalScreenContent(
     var showDeviceProfileDialog by rememberSaveable { mutableStateOf(false) }
     val isActualPhone4a = actualDeviceProfile == GlyphDeviceProfile.PHONE4A
     val isActualPhone4b = actualDeviceProfile == GlyphDeviceProfile.PHONE4B
-    val emulatedOnPhone4a = isActualPhone4a && phone4bEmulationEnabled
+    val emulatedOnPhone4a = isActualPhone4a &&
+        (phone4bEmulationEnabled || debugDeviceProfileOverride == GlyphDeviceProfile.PHONE4B)
     val automaticDeviceProfile = GlyphDeviceCatalog.effectiveProfile(
         actualProfile = actualDeviceProfile,
         phone4bEmulationEnabled = phone4bEmulationEnabled
@@ -6064,61 +6065,7 @@ private fun ExperimentalScreenContent(
                     return@Column
                 }
 
-                if (isActualPhone4a) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.experimental_phone4b_emulation_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = stringResource(R.string.experimental_phone4b_emulation_desc),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (isCapturing) {
-                                    Text(
-                                        text = stringResource(R.string.experimental_phone4b_emulation_stop_first),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            }
-                            Switch(
-                                checked = phone4bEmulationEnabled,
-                                onCheckedChange = onPhone4bEmulationEnabledChanged,
-                                enabled = !isCapturing
-                            )
-                        }
-                    }
-                }
-
                 if (!showProbeControls) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        Text(
-                            text = stringResource(R.string.experimental_phone4b_probe_requires_emulation),
-                            modifier = Modifier.padding(20.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                     return@Column
                 }
 

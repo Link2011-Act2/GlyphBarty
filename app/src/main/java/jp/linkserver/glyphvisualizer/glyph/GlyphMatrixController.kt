@@ -23,7 +23,8 @@ import kotlin.math.sin
 
 class GlyphMatrixController(
     private val context: Context,
-    private val onStatusChanged: (String) -> Unit
+    private val onStatusChanged: (String) -> Unit,
+    private val initialPhone4aProEmulationEnabled: Boolean = false
 ) : GlyphOutputController {
 
     companion object {
@@ -78,6 +79,7 @@ class GlyphMatrixController(
     private var allBrightnessMin = 0f
     private var allBrightnessMax = 1f
     private var lastAllBrightnessUpdateMs = 0L
+    private var physicalMatrixLength = 0
     private var matrixLength = 0
     private var pendingLevel = -1f
     private var lastRenderAt = 0L
@@ -101,8 +103,10 @@ class GlyphMatrixController(
     private var matrixTurnedOffForSilence = false
     private var matrixReleasedForSilence = false
     private var matrixProfile = GlyphDeviceProfile.PHONE3_MATRIX
+    private var phone4aProEmulatedOnPhone3 = false
     
     private var lastSentFrameBuffer = IntArray(0)
+    private var physicalFrameBuffer = IntArray(0)
     private var cachedMaxPixelsByColumn: IntArray? = null
     private var cachedMaxPixelsLength = -1
     private var normalizedSpectrumBands = FloatArray(0)
@@ -143,7 +147,7 @@ class GlyphMatrixController(
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
             val currentDevice = GlyphDeviceCatalog.currentOrNull()
-            matrixProfile = when (currentDevice?.profile) {
+            val actualMatrixProfile = when (currentDevice?.profile) {
                 GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
                 GlyphDeviceProfile.PHONE3_MATRIX -> GlyphDeviceProfile.PHONE3_MATRIX
                 else -> {
@@ -152,12 +156,26 @@ class GlyphMatrixController(
                 }
             }
 
-            matrixLength = Common.getDeviceMatrixLength()
-            if (matrixLength <= 0) {
+            physicalMatrixLength = Common.getDeviceMatrixLength()
+            if (physicalMatrixLength <= 0) {
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_length_unavailable))
                 return
             }
+            phone4aProEmulatedOnPhone3 = initialPhone4aProEmulationEnabled &&
+                actualMatrixProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
+                physicalMatrixLength >= GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+            matrixProfile = if (phone4aProEmulatedOnPhone3) {
+                GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+            } else {
+                actualMatrixProfile
+            }
+            matrixLength = if (phone4aProEmulatedOnPhone3) {
+                GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+            } else {
+                physicalMatrixLength
+            }
             frameBuffer = IntArray(matrixLength * matrixLength)
+            physicalFrameBuffer = IntArray(physicalMatrixLength * physicalMatrixLength)
 
             val targetDeviceCode = currentDevice.matrixSpec?.sdkDeviceId ?: return
             val registered = glyphMatrixManager.register(targetDeviceCode)
@@ -1464,23 +1482,24 @@ class GlyphMatrixController(
         }
         lastRenderedMode = renderMode
 
+        val deviceFrame = frameForPhysicalDevice()
         if (experimentalPerformanceOptimizationsEnabled) {
-            if (lastSentFrameBuffer.size != frameBuffer.size) {
-                lastSentFrameBuffer = IntArray(frameBuffer.size)
+            if (lastSentFrameBuffer.size != deviceFrame.size) {
+                lastSentFrameBuffer = IntArray(deviceFrame.size)
             }
-        } else if (lastSentFrameBuffer.size != frameBuffer.size) {
-            lastSentFrameBuffer = frameBuffer.copyOf()
-        } else if (lastSentFrameBuffer.contentEquals(frameBuffer)) {
+        } else if (lastSentFrameBuffer.size != deviceFrame.size) {
+            lastSentFrameBuffer = deviceFrame.copyOf()
+        } else if (lastSentFrameBuffer.contentEquals(deviceFrame)) {
             // フレームの変更がなければSDKへの転送をスキップし、処理を軽量化する
             return
         } else {
-            frameBuffer.copyInto(lastSentFrameBuffer)
+            deviceFrame.copyInto(lastSentFrameBuffer)
         }
 
         try {
-            glyphMatrixManager.setAppMatrixFrame(frameBuffer)
+            glyphMatrixManager.setAppMatrixFrame(deviceFrame)
             if (experimentalPerformanceOptimizationsEnabled) {
-                frameBuffer.copyInto(lastSentFrameBuffer)
+                deviceFrame.copyInto(lastSentFrameBuffer)
             }
             failureCount = 0
         } catch (error: GlyphException) {
@@ -1613,6 +1632,20 @@ class GlyphMatrixController(
         for (y in 0 until matrixLength) {
             frameBuffer[y * matrixLength + x] = COLOR_OFF
         }
+    }
+
+    private fun frameForPhysicalDevice(): IntArray {
+        if (!phone4aProEmulatedOnPhone3) return frameBuffer
+        val requiredSize = physicalMatrixLength * physicalMatrixLength
+        if (physicalFrameBuffer.size != requiredSize) {
+            physicalFrameBuffer = IntArray(requiredSize)
+        }
+        GlyphMatrixProfileEmulator.copyPhone4aProFrameIntoCenteredRegion(
+            source = frameBuffer,
+            physicalMatrixLength = physicalMatrixLength,
+            destination = physicalFrameBuffer
+        )
+        return physicalFrameBuffer
     }
 
     private fun computeSpectrumRenderSignature(renderLevel: Float, centerLowToHigh: Boolean): Long {
@@ -1881,9 +1914,8 @@ class GlyphMatrixController(
                 25, 25, 25, 23, 23, 21, 21, 19, 17, 15, 11, 7
             )
             // Phone (4a) Pro: 端=5, 2番目=9, 3-4番目=11, 5番目〜中央=13
-            GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> intArrayOf(
-                5, 9, 11, 11, 13, 13, 13, 13, 13, 11, 11, 9, 5
-            )
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX ->
+                GlyphMatrixProfileEmulator.phone4aProColumnHeights()
             else -> IntArray(length) { length }
         }
 
