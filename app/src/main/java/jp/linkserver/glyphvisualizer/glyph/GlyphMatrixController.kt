@@ -46,7 +46,7 @@ class GlyphMatrixController(
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
         private const val ALL_BRIGHTNESS_MIN_LIGHT_MATRIX = 60
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
-        private const val FRAME_INTERVAL_SMOOTH_MS = 12L // allow higher effective fps when callbacks are uneven
+        private const val FRAME_INTERVAL_SMOOTH_MS = 16L // allow higher effective fps when callbacks are uneven
         private const val FRAME_INTERVAL_REDUCED_MS = 33L // ~30fps
         private const val SPECTROGRAM_REFERENCE_MATRIX_LENGTH = 25
         private const val SPECTROGRAM_REFERENCE_SHIFT_INTERVAL_MS = FRAME_INTERVAL_REDUCED_MS
