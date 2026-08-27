@@ -1468,7 +1468,9 @@ class GlyphLightController(
         resetSpectrumMarkerTracking()
         resetBaseIndicators()
         silenceStartedAt = 0L
-        sessionReleasedForSilence = false
+        // Keep sessionReleasedForSilence intact. A capture-only restart calls turnOff()
+        // without reopening a session, so clearing it here would prevent updateLevel()
+        // from entering reopenSessionAfterSilence() when audio returns.
         if (previewDeviceProfile != null) {
             mirrorOffPreviewFrameToListener()
             return

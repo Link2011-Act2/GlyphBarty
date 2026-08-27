@@ -881,6 +881,19 @@ private fun GlyphLightsFrameContent(
                     )
                 }
 
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    GlyphLightDevicePreview(
+                        profile = frame.physicalDeviceProfile,
+                        brightness = brightness,
+                        modifier = Modifier.fillMaxWidth(0.76f)
+                    )
+                }
+
                 lightChannelGroups(frame.physicalDeviceProfile, brightness.size).forEach { group ->
                     GlyphChannelGroupRow(
                         group = group,
