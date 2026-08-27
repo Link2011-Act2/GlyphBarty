@@ -122,6 +122,7 @@ import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsScreenContent
 import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsSummary
 import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsTab
 import jp.linkserver.glyphvisualizer.ui.ExperimentalMainScreenContent
+import jp.linkserver.glyphvisualizer.ui.GlyphInterfaceInspectorScreen
 import jp.linkserver.glyphvisualizer.ui.LightweightMeterCanvas
 import jp.linkserver.glyphvisualizer.ui.LightweightMeterBar
 import jp.linkserver.glyphvisualizer.ui.MeterCanvas
@@ -194,6 +195,7 @@ private enum class Screen {
     LATENCY,
     SETTINGS,
     EXPERIMENTAL,
+    GLYPH_INSPECTOR,
     ABOUT,
     UPDATE,
     OSS
@@ -1821,6 +1823,7 @@ private fun GlyphVisualizerApp(
             screen == Screen.UPDATE -> screen = Screen.ABOUT
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
+            screen == Screen.GLYPH_INSPECTOR -> screen = Screen.EXPERIMENTAL
             screen == Screen.EXPERIMENTAL -> screen = Screen.SETTINGS
             screen == Screen.SETTINGS -> screen = settingsReturnScreen
             screen == Screen.LATENCY && experimentalMainUiEnabled -> {
@@ -2169,7 +2172,14 @@ private fun GlyphVisualizerApp(
                         nothingStyleEnabled = nothingStyleEnabled,
                         onPhone4bEmulationEnabledChanged = onPhone4bEmulationEnabledChanged,
                         onDebugDeviceProfileOverrideChanged = onDebugDeviceProfileOverrideChanged,
+                        onOpenGlyphInspector = { screen = Screen.GLYPH_INSPECTOR },
                         onBack = { screen = Screen.SETTINGS }
+                    )
+                    Screen.GLYPH_INSPECTOR -> GlyphInterfaceInspectorScreen(
+                        containerBrush = containerBrush,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        initialDeviceProfile = deviceProfile,
+                        onBack = { screen = Screen.EXPERIMENTAL }
                     )
                     Screen.ABOUT -> AboutScreen(
                         onBack = { screen = Screen.SETTINGS },
@@ -3169,6 +3179,7 @@ private fun ExperimentalScreenContent(
     nothingStyleEnabled: Boolean,
     onPhone4bEmulationEnabledChanged: (Boolean) -> Unit,
     onDebugDeviceProfileOverrideChanged: (GlyphDeviceProfile?) -> Unit,
+    onOpenGlyphInspector: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -3290,6 +3301,14 @@ private fun ExperimentalScreenContent(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                SettingsEntry(
+                    title = stringResource(R.string.glyph_inspector_title),
+                    description = stringResource(R.string.glyph_inspector_entry_desc),
+                    onClick = onOpenGlyphInspector,
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Single
+                )
+
                 val profileSummary = if (debugDeviceProfileOverride == null) {
                     stringResource(
                         R.string.experimental_device_profile_automatic,

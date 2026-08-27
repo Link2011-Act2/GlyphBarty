@@ -26,7 +26,9 @@ class GlyphMatrixController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
     private val initialPhone4aProEmulationEnabled: Boolean = false,
-    private val ownerHandler: Handler? = null
+    private val ownerHandler: Handler? = null,
+    private val previewDeviceProfile: GlyphDeviceProfile? = null,
+    private val previewFrameListener: ((GlyphPreviewFrame.Matrix) -> Unit)? = null
 ) : GlyphOutputController {
 
     companion object {
@@ -103,6 +105,7 @@ class GlyphMatrixController(
     private var matrixTurnedOffForSilence = false
     private var matrixReleasedForSilence = false
     private var matrixProfile = GlyphDeviceProfile.PHONE3_MATRIX
+    private var physicalMatrixProfile = GlyphDeviceProfile.PHONE3_MATRIX
     private var phone4aProEmulatedOnPhone3 = false
     
     private var lastSentFrameBuffer = IntArray(0)
@@ -154,6 +157,27 @@ class GlyphMatrixController(
         }
     }
 
+    init {
+        previewDeviceProfile?.let { profile ->
+            require(
+                profile == GlyphDeviceProfile.PHONE3_MATRIX ||
+                    profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+            )
+            matrixProfile = profile
+            physicalMatrixProfile = profile
+            matrixLength = if (profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX) {
+                GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+            } else {
+                25
+            }
+            physicalMatrixLength = matrixLength
+            frameBuffer = IntArray(matrixLength * matrixLength)
+            physicalFrameBuffer = IntArray(matrixLength * matrixLength)
+            isSessionOpen = true
+            isBound = true
+        }
+    }
+
     private fun runOnOwnerThread(action: () -> Unit) {
         val handler = ownerHandler
         if (handler == null || Looper.myLooper() == handler.looper) {
@@ -175,6 +199,7 @@ class GlyphMatrixController(
                 return
             }
         }
+        physicalMatrixProfile = actualMatrixProfile
 
         physicalMatrixLength = Common.getDeviceMatrixLength()
         if (physicalMatrixLength <= 0) {
@@ -235,6 +260,7 @@ class GlyphMatrixController(
     }
 
     override fun bind() {
+        if (previewDeviceProfile != null) return
         if (isBound) return
         isBound = true
         glyphMatrixManager.init(callback)
@@ -242,6 +268,10 @@ class GlyphMatrixController(
     }
 
     override fun unbind() {
+        if (previewDeviceProfile != null) {
+            turnOff()
+            return
+        }
         releaseSession()
         if (isBound) {
             glyphMatrixManager.unInit()
@@ -499,6 +529,11 @@ class GlyphMatrixController(
         }
         val maxBand = rawSpectrumPeak
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
+        if (previewDeviceProfile != null && activity < SILENCE_ACTIVITY_THRESHOLD) {
+            frameBuffer.fill(COLOR_OFF)
+            submitMatrixFrame(frameBuffer)
+            return
+        }
         val openReelPlayback = if (renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
             MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         } else {
@@ -642,6 +677,13 @@ class GlyphMatrixController(
                 )
             }
             if (renderSignature != null && renderSignature == lastRenderSignature) {
+                if (lastSentFrameBuffer.isNotEmpty()) {
+                    if (previewDeviceProfile != null) {
+                        submitMatrixFrame(lastSentFrameBuffer)
+                    } else {
+                        mirrorMatrixPreviewFrame(lastSentFrameBuffer)
+                    }
+                }
                 return
             }
             lastRenderSignature = renderSignature ?: Long.MIN_VALUE
@@ -1490,10 +1532,29 @@ class GlyphMatrixController(
     }
 
     private fun submitMatrixFrame(deviceFrame: IntArray) {
+        if (previewDeviceProfile != null) {
+            if (lastSentFrameBuffer.size != deviceFrame.size) {
+                lastSentFrameBuffer = deviceFrame.copyOf()
+            } else {
+                deviceFrame.copyInto(lastSentFrameBuffer)
+            }
+            previewFrameListener?.invoke(
+                GlyphPreviewFrame.Matrix(
+                    deviceProfile = matrixProfile,
+                    physicalDeviceProfile = physicalMatrixProfile,
+                    glyphMode = glyphMode,
+                    timestampMs = SystemClock.elapsedRealtime(),
+                    matrixSize = physicalMatrixLength,
+                    pixels = deviceFrame.copyOf()
+                )
+            )
+            return
+        }
         if (
             lastSentFrameBuffer.size == deviceFrame.size &&
             lastSentFrameBuffer.contentEquals(deviceFrame)
         ) {
+            mirrorMatrixPreviewFrame(deviceFrame)
             return
         }
 
@@ -1504,6 +1565,7 @@ class GlyphMatrixController(
             } else {
                 deviceFrame.copyInto(lastSentFrameBuffer)
             }
+            mirrorMatrixPreviewFrame(deviceFrame)
             failureCount = 0
         } catch (error: GlyphException) {
             invalidateLastSentFrame()
@@ -1539,8 +1601,22 @@ class GlyphMatrixController(
         lastRenderSignature = Long.MIN_VALUE
         lastRenderedMode = null
         resetPatternVisualState()
+        if (previewDeviceProfile != null) {
+            previewFrameListener?.invoke(
+                GlyphPreviewFrame.Matrix(
+                    deviceProfile = matrixProfile,
+                    physicalDeviceProfile = physicalMatrixProfile,
+                    glyphMode = glyphMode,
+                    timestampMs = SystemClock.elapsedRealtime(),
+                    matrixSize = physicalMatrixLength,
+                    pixels = IntArray(physicalMatrixLength * physicalMatrixLength)
+                )
+            )
+            return
+        }
         try {
             glyphMatrixManager.turnOff()
+            mirrorOffMatrixPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff ignored", error)
         }
@@ -1566,6 +1642,7 @@ class GlyphMatrixController(
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
+            mirrorOffMatrixPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff during silence release failed", error)
         }
@@ -1582,10 +1659,31 @@ class GlyphMatrixController(
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
+            mirrorOffMatrixPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff during silence blackout failed", error)
         }
         matrixTurnedOffForSilence = true
+    }
+
+    private fun mirrorMatrixPreviewFrame(deviceFrame: IntArray, force: Boolean = false) {
+        if (physicalMatrixLength <= 0) return
+        GlyphPreviewFrameStore.publishMatrix(
+            deviceProfile = matrixProfile,
+            physicalDeviceProfile = physicalMatrixProfile,
+            glyphMode = glyphMode,
+            matrixSize = physicalMatrixLength,
+            pixels = deviceFrame,
+            force = force
+        )
+    }
+
+    private fun mirrorOffMatrixPreviewFrame() {
+        if (physicalMatrixLength <= 0) return
+        mirrorMatrixPreviewFrame(
+            deviceFrame = IntArray(physicalMatrixLength * physicalMatrixLength),
+            force = true
+        )
     }
 
     private fun currentDeviceCode(): String {
@@ -1919,30 +2017,7 @@ class GlyphMatrixController(
             return cachedMaxPixelsByColumn!!
         }
 
-        val profile = when (deviceProfile) {
-            // Phone (3)
-            GlyphDeviceProfile.PHONE3_MATRIX -> intArrayOf(
-                7, 11, 15, 17, 19, 21, 21, 23, 23, 25, 25, 25, 25,
-                25, 25, 25, 23, 23, 21, 21, 19, 17, 15, 11, 7
-            )
-            // Phone (4a) Pro: 端=5, 2番目=9, 3-4番目=11, 5番目〜中央=13
-            GlyphDeviceProfile.PHONE4A_PRO_MATRIX ->
-                GlyphMatrixProfileEmulator.phone4aProColumnHeights()
-            else -> IntArray(length) { length }
-        }
-
-        val out = if (length == profile.size) {
-            profile
-        } else {
-            val arr = IntArray(length)
-            for (i in 0 until length) {
-                val src = if (length <= 1) (profile.lastIndex / 2f) else i * (profile.lastIndex.toFloat() / (length - 1f))
-                val srcIdx = src.roundToInt().coerceIn(0, profile.lastIndex)
-                val scaled = (profile[srcIdx] * (length / profile.size.toFloat())).roundToInt().coerceAtLeast(1)
-                arr[i] = if (scaled % 2 == 0) (scaled - 1).coerceAtLeast(1) else scaled
-            }
-            arr
-        }
+        val out = GlyphMatrixPreviewGeometry.columnHeights(deviceProfile, length)
 
         cachedMaxPixelsLength = length
         cachedMaxPixelsByColumn = out

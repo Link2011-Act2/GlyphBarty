@@ -38,7 +38,10 @@ internal fun centerMeterDisplayLevel(
 class GlyphLightController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
-    initialPhone4bEmulationEnabled: Boolean = false
+    initialPhone4bEmulationEnabled: Boolean = false,
+    private val previewDeviceProfile: GlyphDeviceProfile? = null,
+    private val previewCenterCorrectionEnabled: Boolean? = null,
+    private val previewFrameListener: ((GlyphPreviewFrame.Lights) -> Unit)? = null
 ) : GlyphOutputController {
     companion object {
         private const val TAG = "GlyphLightController"
@@ -149,6 +152,7 @@ class GlyphLightController(
 
     private data class DeviceSpec(
         val profile: GlyphDeviceProfile,
+        val physicalProfile: GlyphDeviceProfile,
         val deviceId: String,
         val channelCount: Int,
         val cRange: IntRange,
@@ -219,6 +223,17 @@ class GlyphLightController(
     )
     // SDK 接続待ちの間に届いたレベルを保持し、接続後に再送する
     @Volatile private var pendingLevel: Float = -1f
+
+    init {
+        previewDeviceProfile?.let { profile ->
+            val spec = resolvePreviewDeviceSpec(profile)
+                ?: error("Lights preview is unavailable for $profile")
+            deviceSpec = spec
+            fullGlyphBrightness = IntArray(spec.channelCount)
+            isSessionOpen = true
+            isBound = true
+        }
+    }
 
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
@@ -298,6 +313,7 @@ class GlyphLightController(
     }
 
     override fun bind() {
+        if (previewDeviceProfile != null) return
         if (isBound) return
         isBound = true
         glyphManager.init(callback)
@@ -305,6 +321,10 @@ class GlyphLightController(
     }
 
     override fun unbind() {
+        if (previewDeviceProfile != null) {
+            turnOff()
+            return
+        }
         turnOff()
         closeSession()
         if (isBound) {
@@ -521,6 +541,10 @@ class GlyphLightController(
         }
 
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
+            if (previewDeviceProfile != null) {
+                deviceSpec?.let(::submitBlankFrame)
+                return
+            }
             if (silenceStartedAt <= 0L) silenceStartedAt = now
             if (!isSessionOpen) {
                 pendingLevel = level
@@ -1244,7 +1268,11 @@ class GlyphLightController(
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
             val pairCount = min(leftChannels.size, rightChannels.size)
             val totalSlots = 1 + pairCount
-            val displayLevel = centerMeterDisplayLevel(clamped, totalSlots, levelAutoScaleEnabled)
+            val displayLevel = centerMeterDisplayLevel(
+                clamped,
+                totalSlots,
+                previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
+            )
             val virtualSlots = displayLevel * totalSlots
             val fullSlots = virtualSlots.toInt().coerceIn(0, totalSlots)
             val edgeBrightness = if (binaryMode) {
@@ -1278,7 +1306,11 @@ class GlyphLightController(
         }
 
         val pairCount = channelRange.count() / 2
-        val displayLevel = centerMeterDisplayLevel(clamped, pairCount, levelAutoScaleEnabled)
+        val displayLevel = centerMeterDisplayLevel(
+            clamped,
+            pairCount,
+            previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
+        )
         val virtualPairs = displayLevel * pairCount
         val fullPairs = virtualPairs.toInt()
         val edgeBrightness = if (binaryMode) {
@@ -1324,7 +1356,11 @@ class GlyphLightController(
         if (count < 1) return
 
         val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
-        val displayLevel = centerMeterDisplayLevel(level, slots.size, levelAutoScaleEnabled)
+        val displayLevel = centerMeterDisplayLevel(
+            level,
+            slots.size,
+            previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
+        )
         val virtualSlots = displayLevel * slots.size
         val fullSlots = virtualSlots.toInt().coerceIn(0, slots.size)
         val edgeBrightness = if (binaryMode) {
@@ -1376,6 +1412,20 @@ class GlyphLightController(
     private fun isCenterDirectionReversed(): Boolean = reverseDirection
 
     private fun submitFrame(colors: IntArray) {
+        if (previewDeviceProfile != null) {
+            updateLastSentFrame(colors)
+            val spec = deviceSpec ?: return
+            previewFrameListener?.invoke(
+                GlyphPreviewFrame.Lights(
+                    deviceProfile = spec.profile,
+                    physicalDeviceProfile = spec.physicalProfile,
+                    glyphMode = glyphMode,
+                    timestampMs = SystemClock.elapsedRealtime(),
+                    brightness = colors.copyOf()
+                )
+            )
+            return
+        }
         try {
             glyphManager.setFrameColors(colors)
         } catch (error: Throwable) {
@@ -1383,6 +1433,11 @@ class GlyphLightController(
             throw error
         }
 
+        updateLastSentFrame(colors)
+        mirrorPreviewFrame(colors)
+    }
+
+    private fun updateLastSentFrame(colors: IntArray) {
         if (lastSentFrame.size != colors.size) {
             lastSentFrame = colors.copyOf()
         } else {
@@ -1414,8 +1469,13 @@ class GlyphLightController(
         resetBaseIndicators()
         silenceStartedAt = 0L
         sessionReleasedForSilence = false
+        if (previewDeviceProfile != null) {
+            mirrorOffPreviewFrameToListener()
+            return
+        }
         try {
             glyphManager.turnOff()
+            mirrorOffPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff ignored because session is not ready", error)
         }
@@ -1546,11 +1606,41 @@ class GlyphLightController(
         invalidateLastSentFrame()
         try {
             glyphManager.turnOff()
+            mirrorOffPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff during silence release failed", error)
         }
         closeSession()
         sessionReleasedForSilence = true
+    }
+
+    private fun mirrorPreviewFrame(colors: IntArray, force: Boolean = false) {
+        val spec = deviceSpec ?: return
+        GlyphPreviewFrameStore.publishLights(
+            deviceProfile = spec.profile,
+            physicalDeviceProfile = spec.physicalProfile,
+            glyphMode = glyphMode,
+            brightness = colors,
+            force = force
+        )
+    }
+
+    private fun mirrorOffPreviewFrame() {
+        val spec = deviceSpec ?: return
+        mirrorPreviewFrame(IntArray(frameChannelCount(spec)), force = true)
+    }
+
+    private fun mirrorOffPreviewFrameToListener() {
+        val spec = deviceSpec ?: return
+        previewFrameListener?.invoke(
+            GlyphPreviewFrame.Lights(
+                deviceProfile = spec.profile,
+                physicalDeviceProfile = spec.physicalProfile,
+                glyphMode = glyphMode,
+                timestampMs = SystemClock.elapsedRealtime(),
+                brightness = IntArray(frameChannelCount(spec))
+            )
+        )
     }
 
     private fun reopenSessionAfterSilence(): Boolean {
@@ -1603,9 +1693,33 @@ class GlyphLightController(
         }
         return DeviceSpec(
             profile = effectiveProfile,
+            physicalProfile = currentDevice.profile,
             deviceId = lightSpec.sdkDeviceId,
             channelCount = lightSpec.channelCount,
             cRange = cRange,
+            recordingLightChannel = recordingLightChannel,
+            aRange = lightSpec.aRange,
+            bRange = lightSpec.bRange,
+            cabRange = lightSpec.cabRange,
+            d1Range = lightSpec.d1Range,
+            d1CenterChannel = lightSpec.d1CenterChannel,
+            centerSupported = lightSpec.centerSupported
+        )
+    }
+
+    private fun resolvePreviewDeviceSpec(profile: GlyphDeviceProfile): DeviceSpec? {
+        val lightSpec = GlyphDeviceCatalog.definitionForProfile(profile)?.lightSpec ?: return null
+        val recordingLightChannel = when (profile) {
+            GlyphDeviceProfile.PHONE4A -> PHONE4A_RECORDING_LIGHT_CHANNEL
+            GlyphDeviceProfile.PHONE4B -> PHONE4B_RECORDING_LIGHT_CHANNEL
+            else -> null
+        }
+        return DeviceSpec(
+            profile = profile,
+            physicalProfile = profile,
+            deviceId = lightSpec.sdkDeviceId,
+            channelCount = lightSpec.channelCount,
+            cRange = lightSpec.cRange,
             recordingLightChannel = recordingLightChannel,
             aRange = lightSpec.aRange,
             bRange = lightSpec.bRange,

@@ -269,6 +269,10 @@ object GlyphDeviceCatalog {
             ?: fallback.presentation
     }
 
+    fun definitionForProfile(profile: GlyphDeviceProfile): GlyphDeviceDefinition? {
+        return entries.firstOrNull { it.definition.profile == profile }?.definition
+    }
+
     fun defaultGlyphModeForProfile(profile: GlyphDeviceProfile): String {
         return entries.firstOrNull { it.definition.profile == profile }
             ?.definition
