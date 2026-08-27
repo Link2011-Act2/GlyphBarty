@@ -904,7 +904,7 @@ class GlyphVisualizerService : Service() {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             publish()
         } else {
-            mainHandler.post(publish)
+            mainHandler.post { publish() }
         }
     }
 
@@ -2117,8 +2117,12 @@ class GlyphVisualizerService : Service() {
                 "Latency applied on route $reason. bluetooth=$bluetoothOutputActive latencyMs=$nextLatencyMs"
             )
             latencyMs = nextLatencyMs
-            pendingLevelFrames.clear()
-            mainHandler.removeCallbacks(latencyDrainRunnable)
+            if (usesMatrixOutputThread()) {
+                clearPendingMatrixFrames(clearLatest = false)
+            } else {
+                pendingLevelFrames.clear()
+                mainHandler.removeCallbacks(latencyDrainRunnable)
+            }
         }
         CaptureUiStore.update {
             it.copy(

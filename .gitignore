@@ -38,6 +38,7 @@ Desktop.ini
 *.hprof
 hs_err_pid*.log
 *.log
+.gradle-build-check/
 
 # Packaged Android outputs
 *.apk

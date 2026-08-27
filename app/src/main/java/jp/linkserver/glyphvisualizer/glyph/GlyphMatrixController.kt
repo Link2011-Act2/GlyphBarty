@@ -162,7 +162,7 @@ class GlyphMatrixController(
         if (handler == null || Looper.myLooper() == handler.looper) {
             action()
         } else {
-            handler.post(action)
+            handler.post { action() }
         }
     }
 
