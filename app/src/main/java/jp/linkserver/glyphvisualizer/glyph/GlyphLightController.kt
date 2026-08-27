@@ -1370,10 +1370,6 @@ class GlyphLightController(
     private fun isCenterDirectionReversed(): Boolean = reverseDirection
 
     private fun submitFrame(colors: IntArray) {
-        if (lastSentFrame.size == colors.size && lastSentFrame.contentEquals(colors)) {
-            return
-        }
-
         try {
             glyphManager.setFrameColors(colors)
         } catch (error: Throwable) {
