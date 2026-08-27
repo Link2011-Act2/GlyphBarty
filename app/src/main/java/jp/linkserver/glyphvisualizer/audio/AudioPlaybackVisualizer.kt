@@ -54,6 +54,7 @@ class AudioPlaybackVisualizer(
         smoothingProvider: () -> Float,
         smoothingBalanceProvider: () -> Float,
         experimentalPerformanceOptimizationsEnabled: Boolean,
+        dispatchLevelChangesOnMain: Boolean,
         onStateChanged: (String) -> Unit,
         onLevelChanged: (
             level: Float,
@@ -311,22 +312,34 @@ class AudioPlaybackVisualizer(
                         } else {
                             lastSpectrumAnalysis
                         }
-                        mainHandler.post {
+                        val waveformSamples = WaveformSampler.downsample(monoSamples)
+                        val leftWaveformSamples = WaveformSampler.downsample(leftSamples)
+                        val rightWaveformSamples = WaveformSampler.downsample(rightSamples)
+                        val deliveredLevel = displayedLevel
+                        val deliveredPeak = peakValue
+                        val deliveredLeft = displayedLeft
+                        val deliveredRight = displayedRight
+                        val deliverLevelChange = Runnable {
                             if (isSessionRunning(sessionId)) {
                                 onLevelChanged(
-                                    displayedLevel,
-                                    peakValue,
+                                    deliveredLevel,
+                                    deliveredPeak,
                                     lowEnergy,
                                     highEnergy,
-                                    displayedLeft,
-                                    displayedRight,
+                                    deliveredLeft,
+                                    deliveredRight,
                                     spectrumAnalysis.bands,
                                     spectrumAnalysis.rangePeak,
-                                    WaveformSampler.downsample(monoSamples),
-                                    WaveformSampler.downsample(leftSamples),
-                                    WaveformSampler.downsample(rightSamples)
+                                    waveformSamples,
+                                    leftWaveformSamples,
+                                    rightWaveformSamples
                                 )
                             }
+                        }
+                        if (dispatchLevelChangesOnMain) {
+                            mainHandler.post(deliverLevelChange)
+                        } else {
+                            deliverLevelChange.run()
                         }
                     }
                 } catch (_: InterruptedException) {

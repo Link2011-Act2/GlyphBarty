@@ -60,6 +60,7 @@ class OutputMixVisualizer(
         experimentalVisualizerStabilizationEnabled: Boolean,
         experimentalVisualizerSignalWatchdogEnabled: Boolean,
         experimentalPerformanceOptimizationsEnabled: Boolean,
+        dispatchLevelChangesOnMain: Boolean,
         onStateChanged: (String) -> Unit,
         onLevelChanged: (
             level: Float,
@@ -357,20 +358,27 @@ class OutputMixVisualizer(
                             lastSpectrumAnalysis
                         }
                         val downsampledWaveform = WaveformSampler.downsample(monoSamples)
-                        mainHandler.post {
+                        val deliveredLevel = displayedLevel
+                        val deliveredPeak = peakValue
+                        val deliverLevelChange = Runnable {
                             onLevelChanged(
-                                displayedLevel,
-                                peakValue,
+                                deliveredLevel,
+                                deliveredPeak,
                                 lowEnergy,
                                 highEnergy,
-                                displayedLevel,
-                                displayedLevel,
+                                deliveredLevel,
+                                deliveredLevel,
                                 spectrumAnalysis.bands,
                                 spectrumAnalysis.rangePeak,
                                 downsampledWaveform,
                                 downsampledWaveform,
                                 downsampledWaveform
                             )
+                        }
+                        if (dispatchLevelChangesOnMain) {
+                            mainHandler.post(deliverLevelChange)
+                        } else {
+                            deliverLevelChange.run()
                         }
 
                         try {

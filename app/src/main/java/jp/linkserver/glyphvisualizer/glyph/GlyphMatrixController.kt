@@ -3,6 +3,8 @@ package jp.linkserver.glyphvisualizer.glyph
 import android.content.ComponentName
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.nothing.ketchum.Common
 import com.nothing.ketchum.Glyph
@@ -24,7 +26,8 @@ import kotlin.math.sin
 class GlyphMatrixController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
-    private val initialPhone4aProEmulationEnabled: Boolean = false
+    private val initialPhone4aProEmulationEnabled: Boolean = false,
+    private val ownerHandler: Handler? = null
 ) : GlyphOutputController {
 
     companion object {
@@ -146,74 +149,92 @@ class GlyphMatrixController(
     private var pulseGridSeed = 0
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
-            invalidateLastSentFrame()
-            val currentDevice = GlyphDeviceCatalog.currentOrNull()
-            val actualMatrixProfile = when (currentDevice?.profile) {
-                GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
-                GlyphDeviceProfile.PHONE3_MATRIX -> GlyphDeviceProfile.PHONE3_MATRIX
-                else -> {
-                    onStatusChanged(context.getString(R.string.status_glyph_matrix_device_unsupported, Build.MODEL))
-                    return
-                }
-            }
-
-            physicalMatrixLength = Common.getDeviceMatrixLength()
-            if (physicalMatrixLength <= 0) {
-                onStatusChanged(context.getString(R.string.status_glyph_matrix_length_unavailable))
-                return
-            }
-            phone4aProEmulatedOnPhone3 = initialPhone4aProEmulationEnabled &&
-                actualMatrixProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
-                physicalMatrixLength >= GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
-            matrixProfile = if (phone4aProEmulatedOnPhone3) {
-                GlyphDeviceProfile.PHONE4A_PRO_MATRIX
-            } else {
-                actualMatrixProfile
-            }
-            matrixLength = if (phone4aProEmulatedOnPhone3) {
-                GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
-            } else {
-                physicalMatrixLength
-            }
-            frameBuffer = IntArray(matrixLength * matrixLength)
-            physicalFrameBuffer = IntArray(physicalMatrixLength * physicalMatrixLength)
-
-            val targetDeviceCode = currentDevice.matrixSpec?.sdkDeviceId ?: return
-            val registered = glyphMatrixManager.register(targetDeviceCode)
-            if (!registered) {
-                onStatusChanged(context.getString(R.string.status_glyph_matrix_registration_failed))
-                return
-            }
-
-            isSessionOpen = true
-            failureCount = 0
-            lastLitRows = -1
-            lastMatrixBrightness = -1
-            lastRenderSignature = Long.MIN_VALUE
-            lastRenderedMode = null
-            pulseGridSeed = ((SystemClock.elapsedRealtimeNanos() xor matrixLength.toLong()) and 0x7fffffffL).toInt()
-            silenceStartedAt = 0L
-            matrixTurnedOffForSilence = false
-            matrixReleasedForSilence = false
-            try {
-                glyphMatrixManager.setGlyphMatrixTimeout(true)
-            } catch (error: Throwable) {
-                AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed", error)
-            }
-            onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
-
-            val pending = pendingLevel
-            if (pending >= 0f) {
-                pendingLevel = -1f
-                updateLevel(pending)
-            }
+            runOnOwnerThread { handleServiceConnected() }
         }
 
         override fun onServiceDisconnected(componentName: ComponentName) {
-            invalidateLastSentFrame()
-            isSessionOpen = false
-            onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
+            runOnOwnerThread { handleServiceDisconnected() }
         }
+    }
+
+    private fun runOnOwnerThread(action: () -> Unit) {
+        val handler = ownerHandler
+        if (handler == null || Looper.myLooper() == handler.looper) {
+            action()
+        } else {
+            handler.post(action)
+        }
+    }
+
+    private fun handleServiceConnected() {
+        if (!isBound) return
+        invalidateLastSentFrame()
+        val currentDevice = GlyphDeviceCatalog.currentOrNull()
+        val actualMatrixProfile = when (currentDevice?.profile) {
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+            GlyphDeviceProfile.PHONE3_MATRIX -> GlyphDeviceProfile.PHONE3_MATRIX
+            else -> {
+                onStatusChanged(context.getString(R.string.status_glyph_matrix_device_unsupported, Build.MODEL))
+                return
+            }
+        }
+
+        physicalMatrixLength = Common.getDeviceMatrixLength()
+        if (physicalMatrixLength <= 0) {
+            onStatusChanged(context.getString(R.string.status_glyph_matrix_length_unavailable))
+            return
+        }
+        phone4aProEmulatedOnPhone3 = initialPhone4aProEmulationEnabled &&
+            actualMatrixProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
+            physicalMatrixLength >= GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+        matrixProfile = if (phone4aProEmulatedOnPhone3) {
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+        } else {
+            actualMatrixProfile
+        }
+        matrixLength = if (phone4aProEmulatedOnPhone3) {
+            GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
+        } else {
+            physicalMatrixLength
+        }
+        frameBuffer = IntArray(matrixLength * matrixLength)
+        physicalFrameBuffer = IntArray(physicalMatrixLength * physicalMatrixLength)
+
+        val targetDeviceCode = currentDevice.matrixSpec?.sdkDeviceId ?: return
+        val registered = glyphMatrixManager.register(targetDeviceCode)
+        if (!registered) {
+            onStatusChanged(context.getString(R.string.status_glyph_matrix_registration_failed))
+            return
+        }
+
+        isSessionOpen = true
+        failureCount = 0
+        lastLitRows = -1
+        lastMatrixBrightness = -1
+        lastRenderSignature = Long.MIN_VALUE
+        lastRenderedMode = null
+        pulseGridSeed = ((SystemClock.elapsedRealtimeNanos() xor matrixLength.toLong()) and 0x7fffffffL).toInt()
+        silenceStartedAt = 0L
+        matrixTurnedOffForSilence = false
+        matrixReleasedForSilence = false
+        try {
+            glyphMatrixManager.setGlyphMatrixTimeout(true)
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed", error)
+        }
+        onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
+
+        val pending = pendingLevel
+        if (pending >= 0f) {
+            pendingLevel = -1f
+            updateLevel(pending)
+        }
+    }
+
+    private fun handleServiceDisconnected() {
+        invalidateLastSentFrame()
+        isSessionOpen = false
+        onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
     }
 
     override fun bind() {

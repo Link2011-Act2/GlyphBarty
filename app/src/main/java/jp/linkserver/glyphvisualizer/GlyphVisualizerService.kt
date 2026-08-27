@@ -20,6 +20,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
@@ -36,6 +37,8 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -383,7 +386,9 @@ class GlyphVisualizerService : Service() {
     private var allBrightnessAutoScale = true
     private var autoScaleWindowSeconds = 30f
     private var autoScaleOffset = 0f
+    @Volatile
     private var latencyMs = 0f
+    @Volatile
     private var mediaPlaybackOnlyEnabled = false
     private var experimentalVisualizerStabilizationEnabled = false
     private var experimentalVisualizerSignalWatchdogEnabled = false
@@ -392,8 +397,11 @@ class GlyphVisualizerService : Service() {
     private var matrixSmoothMotionEnabled = false
     private var oscilloscopeAutoTimeAxisEnabled = false
     private var turnOffWhenBackDown = false
+    @Volatile
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var matrixOutputThread: HandlerThread? = null
+    private var matrixOutputHandler: Handler? = null
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     private var visualizerStartRequestId = 0
     private var visualizerStartActionAtMs = 0L
@@ -423,13 +431,59 @@ class GlyphVisualizerService : Service() {
         val leftWaveformSamples: FloatArray,
         val rightWaveformSamples: FloatArray
     )
+    private data class QueuedMatrixFrame(
+        val epoch: Long,
+        val frame: DelayedLevelFrame
+    )
+    private data class MatrixUiFrame(
+        val level: Float,
+        val peak: Float,
+        val spectrumBands: FloatArray,
+        val glyphPreviewLevel: Float,
+        val glyphPreviewSpectrumBands: FloatArray,
+        val mode: String,
+        val backDownSuppressed: Boolean
+    )
+    private data class GlyphControllerSettingsSnapshot(
+        val phone4bEmulationEnabled: Boolean,
+        val reverseDirection: Boolean,
+        val glyphMode: String,
+        val fillOtherGlyphLights: Boolean,
+        val binaryMode: Boolean,
+        val baseIndicatorEnabled: Boolean,
+        val recordingLightIncluded: Boolean,
+        val outputGamma: Float,
+        val smoothing: Float,
+        val smoothingBalance: Float,
+        val levelAutoScale: Boolean,
+        val spectrumAutoScale: Boolean,
+        val experimentalPerformanceOptimizationsEnabled: Boolean,
+        val matrixSmoothMotionEnabled: Boolean,
+        val allBrightnessAutoScale: Boolean,
+        val autoScaleWindowSeconds: Float,
+        val autoScaleOffset: Float
+    )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
     private var latestLevelFrame: DelayedLevelFrame? = null
+    private val matrixFrameLock = Any()
+    private val pendingMatrixFrames = ArrayDeque<QueuedMatrixFrame>()
+    private var latestMatrixLevelFrame: DelayedLevelFrame? = null
+    private var matrixFrameEpoch = 0L
+    private var matrixDrainScheduled = false
+    private val matrixLatencyDrainRunnable = Runnable { drainPendingMatrixFrames() }
+    private val matrixUiLock = Any()
+    private var latestMatrixUiFrame: MatrixUiFrame? = null
+    private var matrixUiPublishScheduled = false
+    private val matrixUiPublishRunnable = Runnable { drainLatestMatrixUiFrame() }
     private val glyphWarmupResyncRunnable = Runnable {
         if (CaptureUiStore.state.activeMode == ACTIVE_MODE_IDLE) return@Runnable
         applyGlyphControllerSettings()
-        latestLevelFrame?.let { renderLevelFrame(it) }
+        if (usesMatrixOutputThread()) {
+            replayLatestMatrixFrame()
+        } else {
+            latestLevelFrame?.let { renderLevelFrame(it) }
+        }
     }
     private val sensorManager by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     private var gravitySensor: Sensor? = null
@@ -465,10 +519,12 @@ class GlyphVisualizerService : Service() {
             if (nextSuppressed == isBackDownSuppressed) return
             isBackDownSuppressed = nextSuppressed
             if (isBackDownSuppressed) {
-                try {
-                    glyphController.turnOff()
-                } catch (error: Throwable) {
-                    AppLogger.w(TAG, "glyphController.turnOff failed while back-down suppressing", error)
+                runGlyphControllerCommand {
+                    try {
+                        turnOff()
+                    } catch (error: Throwable) {
+                        AppLogger.w(TAG, "glyphController.turnOff failed while back-down suppressing", error)
+                    }
                 }
             }
         }
@@ -486,22 +542,25 @@ class GlyphVisualizerService : Service() {
             phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
             debugDeviceProfileOverride = savedSettings.debugDeviceProfileOverride
         )
-        glyphController = if (GlyphDeviceCatalog.currentOrFallback().controllerFamily == GlyphControllerFamily.MATRIX) {
+        val usesMatrixController =
+            GlyphDeviceCatalog.currentOrFallback().controllerFamily == GlyphControllerFamily.MATRIX
+        if (usesMatrixController) {
+            matrixOutputThread = HandlerThread("glyph-matrix-output").also { it.start() }
+            matrixOutputHandler = Handler(requireNotNull(matrixOutputThread).looper)
+        }
+        glyphController = if (usesMatrixController) {
             GlyphMatrixController(
                 context = this,
-                onStatusChanged = { status ->
-                    CaptureUiStore.update { it.copy(statusText = status) }
-                },
+                onStatusChanged = ::publishGlyphControllerStatus,
                 initialPhone4aProEmulationEnabled =
                     actualDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
-                        outputDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+                        outputDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
+                ownerHandler = matrixOutputHandler
             )
         } else {
             GlyphLightController(
                 context = this,
-                onStatusChanged = { status ->
-                    CaptureUiStore.update { it.copy(statusText = status) }
-                },
+                onStatusChanged = ::publishGlyphControllerStatus,
                 initialPhone4bEmulationEnabled =
                     actualDeviceProfile == GlyphDeviceProfile.PHONE4A &&
                         outputDeviceProfile == GlyphDeviceProfile.PHONE4B
@@ -509,7 +568,7 @@ class GlyphVisualizerService : Service() {
         }
         audioPlaybackVisualizer = AudioPlaybackVisualizer(this)
         outputMixVisualizer = OutputMixVisualizer(this)
-        glyphController.bind()
+        runGlyphControllerCommand { bind() }
         CaptureUiStore.update {
             it.copy(phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled)
         }
@@ -794,10 +853,14 @@ class GlyphVisualizerService : Service() {
         } catch (error: Throwable) {
             AppLogger.w(TAG, "stopCapture failed in onDestroy", error)
         }
-        try {
-            glyphController.unbind()
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "glyphController.unbind failed in onDestroy", error)
+        if (usesMatrixOutputThread()) {
+            shutdownMatrixOutputThread()
+        } else {
+            try {
+                glyphController.unbind()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "glyphController.unbind failed in onDestroy", error)
+            }
         }
         try {
             sensorManager.unregisterListener(gravityListener)
@@ -807,11 +870,90 @@ class GlyphVisualizerService : Service() {
         mainHandler.removeCallbacks(restartVisualizerForRouteChangeRunnable)
         mainHandler.removeCallbacks(latencyDrainRunnable)
         mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
+        mainHandler.removeCallbacks(matrixUiPublishRunnable)
         pendingLevelFrames.clear()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun usesMatrixOutputThread(): Boolean = matrixOutputHandler != null
+
+    private fun runGlyphControllerCommand(action: GlyphOutputController.() -> Unit) {
+        val handler = matrixOutputHandler
+        if (handler == null || Looper.myLooper() == handler.looper) {
+            glyphController.action()
+            return
+        }
+        if (!handler.post {
+                try {
+                    glyphController.action()
+                } catch (error: Throwable) {
+                    AppLogger.e(TAG, "Matrix controller command failed", error)
+                }
+            }
+        ) {
+            AppLogger.w(TAG, "Matrix controller command rejected because output thread is stopping")
+        }
+    }
+
+    private fun publishGlyphControllerStatus(status: String) {
+        val publish = {
+            CaptureUiStore.update { it.copy(statusText = status) }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            publish()
+        } else {
+            mainHandler.post(publish)
+        }
+    }
+
+    private fun resetMediaPlaybackTracking() {
+        lastMediaPlaybackCheckAtMs = 0L
+        lastMediaPlaybackActive = false
+        mediaPlaybackResumeCandidateAtMs = 0L
+        mediaPlaybackSuppressed = false
+    }
+
+    private fun shutdownMatrixOutputThread() {
+        val handler = matrixOutputHandler ?: return
+        val thread = matrixOutputThread ?: return
+        clearPendingMatrixFrames(clearLatest = true)
+        clearPendingMatrixUiFrames()
+        val shutdownComplete = CountDownLatch(1)
+        val cleanupPosted = handler.post {
+            try {
+                glyphController.unbind()
+                resetMediaPlaybackTracking()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "glyphController.unbind failed in matrix output shutdown", error)
+            } finally {
+                shutdownComplete.countDown()
+                thread.quitSafely()
+            }
+        }
+        if (cleanupPosted) {
+            try {
+                if (!shutdownComplete.await(2L, TimeUnit.SECONDS)) {
+                    AppLogger.w(TAG, "Timed out waiting for Matrix session shutdown")
+                    thread.quitSafely()
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                thread.quitSafely()
+            }
+        } else {
+            AppLogger.w(TAG, "Matrix output cleanup was rejected because the thread already stopped")
+            thread.quitSafely()
+        }
+        try {
+            thread.join(500L)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        matrixOutputHandler = null
+        matrixOutputThread = null
+    }
 
     private fun startVisualizerMode(requestId: Int, attempt: Int) {
         if (requestId != visualizerStartRequestId) return
@@ -838,6 +980,7 @@ class GlyphVisualizerService : Service() {
             experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
             experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+            dispatchLevelChangesOnMain = !usesMatrixOutputThread(),
             onStateChanged = { status ->
                 val now = SystemClock.elapsedRealtime()
                 AppLogger.i(
@@ -1020,6 +1163,7 @@ class GlyphVisualizerService : Service() {
             smoothingProvider = { smoothing },
             smoothingBalanceProvider = { smoothingBalance },
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+            dispatchLevelChangesOnMain = !usesMatrixOutputThread(),
             onStateChanged = { status ->
                 CaptureUiStore.update {
                     it.copy(
@@ -1148,9 +1292,13 @@ class GlyphVisualizerService : Service() {
             leftWaveformSamples = leftWaveformSamples.copyOf(),
             rightWaveformSamples = rightWaveformSamples.copyOf()
         )
-        latestLevelFrame = frame
-        pendingLevelFrames.addLast(frame)
-        drainPendingLevelFrames()
+        if (usesMatrixOutputThread()) {
+            enqueueMatrixFrame(frame)
+        } else {
+            latestLevelFrame = frame
+            pendingLevelFrames.addLast(frame)
+            drainPendingLevelFrames()
+        }
     }
 
     private fun drainPendingLevelFrames(forceAll: Boolean = false) {
@@ -1164,6 +1312,111 @@ class GlyphVisualizerService : Service() {
             }
             pendingLevelFrames.removeFirst()
             renderLevelFrame(next)
+        }
+    }
+
+    private fun enqueueMatrixFrame(frame: DelayedLevelFrame) {
+        val handler = matrixOutputHandler ?: return
+        var shouldSchedule = false
+        synchronized(matrixFrameLock) {
+            pendingMatrixFrames.addLast(QueuedMatrixFrame(matrixFrameEpoch, frame))
+            latestMatrixLevelFrame = frame
+            if (!matrixDrainScheduled) {
+                matrixDrainScheduled = true
+                shouldSchedule = true
+            }
+        }
+        if (shouldSchedule && !handler.post(matrixLatencyDrainRunnable)) {
+            synchronized(matrixFrameLock) {
+                matrixDrainScheduled = false
+            }
+        }
+    }
+
+    private fun drainPendingMatrixFrames() {
+        val handler = matrixOutputHandler ?: return
+        val now = SystemClock.uptimeMillis()
+        var drainEpoch = 0L
+        var latestDueFrame: DelayedLevelFrame? = null
+        var nextDueAtMs: Long? = null
+        synchronized(matrixFrameLock) {
+            drainEpoch = matrixFrameEpoch
+            while (pendingMatrixFrames.isNotEmpty()) {
+                val next = pendingMatrixFrames.first()
+                if (next.epoch != drainEpoch) {
+                    pendingMatrixFrames.removeFirst()
+                    continue
+                }
+                if (next.frame.dueAtMs > now) break
+                latestDueFrame = pendingMatrixFrames.removeFirst().frame
+            }
+            if (latestDueFrame == null) {
+                nextDueAtMs = pendingMatrixFrames.firstOrNull()?.frame?.dueAtMs
+                if (nextDueAtMs == null) {
+                    matrixDrainScheduled = false
+                }
+            }
+        }
+
+        val frame = latestDueFrame
+        if (frame == null) {
+            nextDueAtMs?.let { dueAtMs ->
+                if (!handler.postAtTime(matrixLatencyDrainRunnable, dueAtMs)) {
+                    synchronized(matrixFrameLock) {
+                        if (matrixFrameEpoch == drainEpoch) matrixDrainScheduled = false
+                    }
+                }
+            }
+            return
+        }
+
+        val uiFrame = renderMatrixLevelFrame(frame)
+        val stillCurrent = synchronized(matrixFrameLock) {
+            matrixFrameEpoch == drainEpoch
+        }
+        if (stillCurrent && uiFrame != null) {
+            enqueueLatestMatrixUiFrame(uiFrame)
+        }
+
+        synchronized(matrixFrameLock) {
+            if (matrixFrameEpoch != drainEpoch) return
+            nextDueAtMs = pendingMatrixFrames.firstOrNull()?.frame?.dueAtMs
+            if (nextDueAtMs == null) {
+                matrixDrainScheduled = false
+            }
+        }
+        nextDueAtMs?.let { dueAtMs ->
+            if (!handler.postAtTime(matrixLatencyDrainRunnable, dueAtMs)) {
+                synchronized(matrixFrameLock) {
+                    if (matrixFrameEpoch == drainEpoch) matrixDrainScheduled = false
+                }
+            }
+        }
+    }
+
+    private fun clearPendingMatrixFrames(clearLatest: Boolean) {
+        matrixOutputHandler?.removeCallbacks(matrixLatencyDrainRunnable)
+        synchronized(matrixFrameLock) {
+            matrixFrameEpoch += 1L
+            pendingMatrixFrames.clear()
+            matrixDrainScheduled = false
+            if (clearLatest) latestMatrixLevelFrame = null
+        }
+    }
+
+    private fun replayLatestMatrixFrame() {
+        val handler = matrixOutputHandler ?: return
+        handler.post {
+            val (epoch, frame) = synchronized(matrixFrameLock) {
+                matrixFrameEpoch to latestMatrixLevelFrame
+            }
+            val uiFrame = frame?.let { renderMatrixLevelFrame(it) }
+            val stillCurrent = synchronized(matrixFrameLock) {
+                matrixFrameEpoch == epoch
+            }
+            if (stillCurrent && uiFrame != null) {
+                enqueueLatestMatrixUiFrame(uiFrame)
+            }
         }
     }
 
@@ -1235,6 +1488,154 @@ class GlyphVisualizerService : Service() {
         }
     }
 
+    private fun renderMatrixLevelFrame(frame: DelayedLevelFrame): MatrixUiFrame? {
+        val allowPausedMediaSession =
+            GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
+        val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
+        if (!mediaPlaybackActive) {
+            val enteringMediaPlaybackSuppression = !mediaPlaybackSuppressed
+            mediaPlaybackSuppressed = true
+            if (enteringMediaPlaybackSuppression) {
+                try {
+                    glyphController.suspendSession()
+                    AppLogger.i(TAG, "Glyph session suspended because no playing MediaSession is active")
+                } catch (error: Throwable) {
+                    AppLogger.w(TAG, "glyphController.suspendSession failed during media playback suppression", error)
+                }
+            }
+            return MatrixUiFrame(
+                level = 0f,
+                peak = 0f,
+                spectrumBands = FloatArray(frame.spectrumBands.size),
+                glyphPreviewLevel = 0f,
+                glyphPreviewSpectrumBands = FloatArray(0),
+                mode = frame.mode,
+                backDownSuppressed = false
+            )
+        }
+
+        mediaPlaybackSuppressed = false
+        val backDownSuppressed = isBackDownSuppressed
+        if (!backDownSuppressed) {
+            glyphController.updateAnalysis(
+                frame.lowEnergy,
+                frame.highEnergy,
+                frame.leftLevel,
+                frame.rightLevel,
+                frame.spectrumBands,
+                frame.phone4aBaseBandLevel,
+                frame.waveformSamples,
+                frame.leftWaveformSamples,
+                frame.rightWaveformSamples
+            )
+            glyphController.updateLevel(frame.level)
+        } else {
+            try {
+                glyphController.turnOff()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "glyphController.turnOff failed while back-down suppressing", error)
+            }
+        }
+
+        return MatrixUiFrame(
+            level = frame.level.coerceIn(0f, 1f),
+            peak = frame.peak,
+            spectrumBands = frame.spectrumBands,
+            glyphPreviewLevel = if (backDownSuppressed) 0f else glyphController.previewLevel().coerceIn(0f, 1f),
+            glyphPreviewSpectrumBands = if (backDownSuppressed) {
+                FloatArray(0)
+            } else {
+                glyphController.previewSpectrumBands()
+            },
+            mode = frame.mode,
+            backDownSuppressed = backDownSuppressed
+        )
+    }
+
+    private fun enqueueLatestMatrixUiFrame(frame: MatrixUiFrame) {
+        if (!CaptureUiStore.shouldPublishLiveUiFrames()) return
+        var shouldSchedule = false
+        synchronized(matrixUiLock) {
+            latestMatrixUiFrame = frame
+            if (!matrixUiPublishScheduled) {
+                matrixUiPublishScheduled = true
+                shouldSchedule = true
+            }
+        }
+        if (shouldSchedule && !mainHandler.post(matrixUiPublishRunnable)) {
+            synchronized(matrixUiLock) {
+                matrixUiPublishScheduled = false
+            }
+        }
+    }
+
+    private fun drainLatestMatrixUiFrame() {
+        if (!CaptureUiStore.shouldPublishLiveUiFrames()) {
+            synchronized(matrixUiLock) {
+                latestMatrixUiFrame = null
+                matrixUiPublishScheduled = false
+            }
+            return
+        }
+
+        val intervalMs = currentMatrixUiUpdateIntervalMs()
+        val now = SystemClock.uptimeMillis()
+        val remainingMs = intervalMs - (now - lastUiPublishAtMs)
+        if (remainingMs > 0L) {
+            mainHandler.postDelayed(matrixUiPublishRunnable, remainingMs)
+            return
+        }
+
+        val frame = synchronized(matrixUiLock) {
+            latestMatrixUiFrame.also { latestMatrixUiFrame = null }
+        }
+        if (frame != null) {
+            val useGlyphPreviewValues =
+                CaptureUiStore.state.glyphMeterPreviewEnabled && !frame.backDownSuppressed
+            val previewSpectrumBands = if (useGlyphPreviewValues) {
+                frame.glyphPreviewSpectrumBands
+            } else {
+                frame.spectrumBands
+            }
+            publishUiFrame(
+                level = if (useGlyphPreviewValues) frame.glyphPreviewLevel else frame.level,
+                peak = frame.peak,
+                spectrumBands = if (previewSpectrumBands.isNotEmpty()) {
+                    previewSpectrumBands
+                } else {
+                    frame.spectrumBands
+                },
+                mode = frame.mode
+            )
+        }
+
+        var hasPendingFrame = false
+        synchronized(matrixUiLock) {
+            hasPendingFrame = latestMatrixUiFrame != null
+            if (!hasPendingFrame) matrixUiPublishScheduled = false
+        }
+        if (hasPendingFrame) {
+            mainHandler.postDelayed(matrixUiPublishRunnable, currentMatrixUiUpdateIntervalMs())
+        }
+    }
+
+    private fun currentMatrixUiUpdateIntervalMs(): Long {
+        val uiState = CaptureUiStore.state
+        return if (uiState.lightweightMeterEnabled && uiState.meterVisibleEnabled) {
+            UI_PREVIEW_INTERVAL_MS.coerceAtLeast(LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS)
+        } else {
+            UI_PREVIEW_INTERVAL_MS
+        }
+    }
+
+    private fun clearPendingMatrixUiFrames() {
+        mainHandler.removeCallbacks(matrixUiPublishRunnable)
+        synchronized(matrixUiLock) {
+            latestMatrixUiFrame = null
+            matrixUiPublishScheduled = false
+        }
+    }
+
     private fun stopRunningCapture(clearStatus: Boolean, releaseGlyphSession: Boolean = false) {
         try {
             outputMixVisualizer.stop()
@@ -1246,7 +1647,19 @@ class GlyphVisualizerService : Service() {
         } catch (error: Throwable) {
             AppLogger.w(TAG, "audioPlaybackVisualizer.stop failed", error)
         }
-        if (releaseGlyphSession) {
+        if (usesMatrixOutputThread()) {
+            clearPendingMatrixFrames(clearLatest = true)
+            clearPendingMatrixUiFrames()
+            runGlyphControllerCommand {
+                try {
+                    if (releaseGlyphSession) releaseSession() else turnOff()
+                } catch (error: Throwable) {
+                    val operation = if (releaseGlyphSession) "releaseSession" else "turnOff"
+                    AppLogger.w(TAG, "glyphController.$operation failed", error)
+                }
+                resetMediaPlaybackTracking()
+            }
+        } else if (releaseGlyphSession) {
             try {
                 glyphController.releaseSession()
             } catch (error: Throwable) {
@@ -1305,10 +1718,9 @@ class GlyphVisualizerService : Service() {
         lastUiPublishAtMs = 0L
         publishUiFrameCallCount = 0
         lastPublishUiFrameCallLogAtMs = 0L
-        lastMediaPlaybackCheckAtMs = 0L
-        lastMediaPlaybackActive = false
-        mediaPlaybackResumeCandidateAtMs = 0L
-        mediaPlaybackSuppressed = false
+        if (!usesMatrixOutputThread()) {
+            resetMediaPlaybackTracking()
+        }
     }
 
     private fun applyGlyphControllerSettings() {
@@ -1319,25 +1731,44 @@ class GlyphVisualizerService : Service() {
             phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled,
             debugDeviceProfileOverride = savedSettings.debugDeviceProfileOverride
         )
-        glyphController.setPhone4bEmulationEnabled(
-            actualDeviceProfile == GlyphDeviceProfile.PHONE4A &&
-                outputDeviceProfile == GlyphDeviceProfile.PHONE4B
+        val snapshot = GlyphControllerSettingsSnapshot(
+            phone4bEmulationEnabled = actualDeviceProfile == GlyphDeviceProfile.PHONE4A &&
+                outputDeviceProfile == GlyphDeviceProfile.PHONE4B,
+            reverseDirection = reverseDirection,
+            glyphMode = glyphMode,
+            fillOtherGlyphLights = fillOtherGlyphLights,
+            binaryMode = binaryMode,
+            baseIndicatorEnabled = baseIndicatorEnabled,
+            recordingLightIncluded = recordingLightIncluded,
+            outputGamma = outputGamma,
+            smoothing = smoothing,
+            smoothingBalance = smoothingBalance,
+            levelAutoScale = levelAutoScale,
+            spectrumAutoScale = spectrumAutoScale,
+            experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+            matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+            allBrightnessAutoScale = allBrightnessAutoScale,
+            autoScaleWindowSeconds = autoScaleWindowSeconds,
+            autoScaleOffset = autoScaleOffset
         )
-        glyphController.setReverseDirection(reverseDirection)
-        glyphController.setGlyphMode(glyphMode)
-        glyphController.setFillOtherGlyphLightsEnabled(fillOtherGlyphLights)
-        glyphController.setBinaryMode(binaryMode)
-        glyphController.setBaseIndicatorEnabled(baseIndicatorEnabled)
-        glyphController.setRecordingLightIncluded(recordingLightIncluded)
-        glyphController.setOutputGamma(outputGamma)
-        glyphController.setSmoothing(smoothing, smoothingBalance)
-        glyphController.setLevelAutoScaleEnabled(levelAutoScale)
-        glyphController.setSpectrumAutoScaleEnabled(spectrumAutoScale)
-        glyphController.setExperimentalPerformanceOptimizationsEnabled(experimentalPerformanceOptimizationsEnabled)
-        glyphController.setMatrixSmoothMotionEnabled(matrixSmoothMotionEnabled)
-        glyphController.setAllBrightnessAutoScaleEnabled(allBrightnessAutoScale)
-        glyphController.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
-        glyphController.setAutoScaleOffset(autoScaleOffset)
+        runGlyphControllerCommand {
+            setPhone4bEmulationEnabled(snapshot.phone4bEmulationEnabled)
+            setReverseDirection(snapshot.reverseDirection)
+            setGlyphMode(snapshot.glyphMode)
+            setFillOtherGlyphLightsEnabled(snapshot.fillOtherGlyphLights)
+            setBinaryMode(snapshot.binaryMode)
+            setBaseIndicatorEnabled(snapshot.baseIndicatorEnabled)
+            setRecordingLightIncluded(snapshot.recordingLightIncluded)
+            setOutputGamma(snapshot.outputGamma)
+            setSmoothing(snapshot.smoothing, snapshot.smoothingBalance)
+            setLevelAutoScaleEnabled(snapshot.levelAutoScale)
+            setSpectrumAutoScaleEnabled(snapshot.spectrumAutoScale)
+            setExperimentalPerformanceOptimizationsEnabled(snapshot.experimentalPerformanceOptimizationsEnabled)
+            setMatrixSmoothMotionEnabled(snapshot.matrixSmoothMotionEnabled)
+            setAllBrightnessAutoScaleEnabled(snapshot.allBrightnessAutoScale)
+            setAutoScaleWindowSeconds(snapshot.autoScaleWindowSeconds)
+            setAutoScaleOffset(snapshot.autoScaleOffset)
+        }
         updateBackDownSensorState()
     }
 

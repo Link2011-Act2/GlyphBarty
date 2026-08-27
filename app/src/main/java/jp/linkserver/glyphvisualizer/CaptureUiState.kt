@@ -118,13 +118,17 @@ object CaptureUiStore {
         private set
     @Volatile
     private var uiVisible: Boolean = false
+    @Volatile
+    private var meterVisibleForPublishing: Boolean = state.meterVisibleEnabled
     private val mainHandler = Handler(Looper.getMainLooper())
     private val directMeterFrameListeners = mutableSetOf<(CaptureLiveFrame) -> Unit>()
     private var directMeterFrameDispatchCount = 0
     private var lastDirectMeterFrameDispatchLogAtMs = 0L
 
     fun update(transform: (CaptureUiState) -> CaptureUiState) {
-        state = transform(state)
+        val nextState = transform(state)
+        meterVisibleForPublishing = nextState.meterVisibleEnabled
+        state = nextState
     }
 
     fun setUiVisible(visible: Boolean) {
@@ -135,7 +139,7 @@ object CaptureUiStore {
     }
 
     fun shouldPublishLiveUiFrames(): Boolean {
-        return uiVisible && state.meterVisibleEnabled
+        return uiVisible && meterVisibleForPublishing
     }
 
     fun isUiVisible(): Boolean = uiVisible
