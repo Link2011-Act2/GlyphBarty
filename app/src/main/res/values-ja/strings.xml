@@ -424,6 +424,8 @@
     <string name="glyph_inspector_virtual_level_note">解析・AGC後にレンダラーへ入る値を再現します。ライブAGCの変更や実行は行いません。</string>
     <string name="glyph_inspector_reverse">点灯方向を反転</string>
     <string name="glyph_inspector_binary">輝度を2値化</string>
+    <string name="glyph_inspector_fill_other_lights">他のGlyphも点灯</string>
+    <string name="glyph_inspector_base_indicator">低音／ベースインジケーター</string>
     <string name="glyph_inspector_center_correction">2～4スロットのCenter補正</string>
     <string name="glyph_inspector_channel_labels">チャンネル表示</string>
     <string name="glyph_inspector_freeze">フレームを固定</string>

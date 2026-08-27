@@ -65,6 +65,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixPreviewGeometry
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPreviewFrame
 import jp.linkserver.glyphvisualizer.glyph.GlyphPreviewFrameStore
@@ -118,6 +119,8 @@ fun GlyphInterfaceInspectorScreen(
     var virtualTimestampMs by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
     var reverseDirection by rememberSaveable { mutableStateOf(false) }
     var binaryMode by rememberSaveable { mutableStateOf(false) }
+    var fillOtherGlyphLightsEnabled by rememberSaveable { mutableStateOf(false) }
+    var baseIndicatorEnabled by rememberSaveable { mutableStateOf(false) }
     var recordingLightIncluded by rememberSaveable { mutableStateOf(false) }
     var centerCorrectionEnabled by rememberSaveable { mutableStateOf(true) }
     var showChannelLabels by rememberSaveable { mutableStateOf(true) }
@@ -171,6 +174,8 @@ fun GlyphInterfaceInspectorScreen(
             level = virtualLevel,
             reverseDirection = reverseDirection,
             binaryMode = binaryMode,
+            fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
+            baseIndicatorEnabled = baseIndicatorEnabled,
             recordingLightIncluded = recordingLightIncluded,
             centerCorrectionEnabled = centerCorrectionEnabled,
             timestampMs = virtualTimestampMs
@@ -255,6 +260,8 @@ fun GlyphInterfaceInspectorScreen(
                     manualLevel = manualLevel,
                     reverseDirection = reverseDirection,
                     binaryMode = binaryMode,
+                    fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
+                    baseIndicatorEnabled = baseIndicatorEnabled,
                     recordingLightIncluded = recordingLightIncluded,
                     centerCorrectionEnabled = centerCorrectionEnabled,
                     showChannelLabels = showChannelLabels,
@@ -269,6 +276,8 @@ fun GlyphInterfaceInspectorScreen(
                     onManualLevelChanged = { manualLevel = it },
                     onReverseDirectionChanged = { reverseDirection = it },
                     onBinaryModeChanged = { binaryMode = it },
+                    onFillOtherGlyphLightsEnabledChanged = { fillOtherGlyphLightsEnabled = it },
+                    onBaseIndicatorEnabledChanged = { baseIndicatorEnabled = it },
                     onRecordingLightIncludedChanged = { recordingLightIncluded = it },
                     onCenterCorrectionEnabledChanged = { centerCorrectionEnabled = it },
                     onShowChannelLabelsChanged = { showChannelLabels = it },
@@ -307,6 +316,8 @@ private fun GlyphExactVirtualPreviewFrame(
     level: Float,
     reverseDirection: Boolean,
     binaryMode: Boolean,
+    fillOtherGlyphLightsEnabled: Boolean,
+    baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     centerCorrectionEnabled: Boolean,
     timestampMs: Long
@@ -340,12 +351,16 @@ private fun GlyphExactVirtualPreviewFrame(
         level,
         reverseDirection,
         binaryMode,
+        fillOtherGlyphLightsEnabled,
+        baseIndicatorEnabled,
         recordingLightIncluded,
         timestampMs
     ) {
         controller.setGlyphMode(glyphMode)
         controller.setReverseDirection(reverseDirection)
         controller.setBinaryMode(binaryMode)
+        controller.setFillOtherGlyphLightsEnabled(fillOtherGlyphLightsEnabled)
+        controller.setBaseIndicatorEnabled(baseIndicatorEnabled)
         controller.setRecordingLightIncluded(recordingLightIncluded)
         controller.setLevelAutoScaleEnabled(false)
         controller.setSpectrumAutoScaleEnabled(false)
@@ -398,6 +413,8 @@ private fun GlyphInspectorControls(
     manualLevel: Float,
     reverseDirection: Boolean,
     binaryMode: Boolean,
+    fillOtherGlyphLightsEnabled: Boolean,
+    baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     centerCorrectionEnabled: Boolean,
     showChannelLabels: Boolean,
@@ -409,6 +426,8 @@ private fun GlyphInspectorControls(
     onManualLevelChanged: (Float) -> Unit,
     onReverseDirectionChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
+    onFillOtherGlyphLightsEnabledChanged: (Boolean) -> Unit,
+    onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onCenterCorrectionEnabledChanged: (Boolean) -> Unit,
     onShowChannelLabelsChanged: (Boolean) -> Unit,
@@ -422,6 +441,15 @@ private fun GlyphInspectorControls(
         ?.controllerFamily == GlyphControllerFamily.LIGHTS
     val isPhone4Bar = selectedProfile == GlyphDeviceProfile.PHONE4A ||
         selectedProfile == GlyphDeviceProfile.PHONE4B
+    val supportsFillOtherGlyphLights = selectedProfile in setOf(
+        GlyphDeviceProfile.PHONE1,
+        GlyphDeviceProfile.PHONE2,
+        GlyphDeviceProfile.PHONE2A
+    )
+    val supportsBaseIndicator = isPhone4Bar
+    val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
+        !GlyphPatternRegistry.isAllBrightness(selectedGlyphMode) &&
+        pattern?.recipe?.renderMode != GlyphPatternRenderMode.CLASSIC
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -526,6 +554,22 @@ private fun GlyphInspectorControls(
                     enabled = !frozen,
                     onCheckedChange = onBinaryModeChanged
                 )
+                if (fillOtherGlyphLightsEnabledForMode) {
+                    GlyphInspectorToggleRow(
+                        title = stringResource(R.string.glyph_inspector_fill_other_lights),
+                        checked = fillOtherGlyphLightsEnabled,
+                        enabled = !frozen,
+                        onCheckedChange = onFillOtherGlyphLightsEnabledChanged
+                    )
+                }
+                if (supportsBaseIndicator) {
+                    GlyphInspectorToggleRow(
+                        title = stringResource(R.string.glyph_inspector_base_indicator),
+                        checked = baseIndicatorEnabled,
+                        enabled = !frozen,
+                        onCheckedChange = onBaseIndicatorEnabledChanged
+                    )
+                }
                 if (isPhone4Bar) {
                     GlyphInspectorToggleRow(
                         title = stringResource(R.string.glyph_inspector_include_recording_light),

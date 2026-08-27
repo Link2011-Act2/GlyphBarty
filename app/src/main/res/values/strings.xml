@@ -424,6 +424,8 @@
     <string name="glyph_inspector_virtual_level_note">This is the renderer input after analysis/AGC. The simulator does not change or run the live AGC.</string>
     <string name="glyph_inspector_reverse">Reverse direction</string>
     <string name="glyph_inspector_binary">Binary brightness</string>
+    <string name="glyph_inspector_fill_other_lights">Fill other Glyph lights</string>
+    <string name="glyph_inspector_base_indicator">Bass/base indicator</string>
     <string name="glyph_inspector_center_correction">2–4 slot Center correction</string>
     <string name="glyph_inspector_channel_labels">Channel labels</string>
     <string name="glyph_inspector_freeze">Freeze frame</string>
