@@ -30,6 +30,7 @@ To solve this, I created a "Better" Glyph visualizer that works on unsupported d
 * Nothing Phone (3a)
 * Nothing Phone (3a) Pro
 * Nothing Phone (3)
+* Nothing Phone (4b)
 * Nothing Phone (4a)
 * Nothing Phone (4a) Pro
 
@@ -65,16 +66,15 @@ Feel free to modify and use it as you wish.
 
 ## Screenshots
 
-### UI mode: Nothing-like (Experimental)
-<img width="200" alt="Screenshot_20260509-175528" src="https://github.com/user-attachments/assets/37540215-0de6-4538-9c0e-245998338871" />
-<img width="200" alt="Screenshot_20260509-175606" src="https://github.com/user-attachments/assets/9877e6e0-0596-4bde-906b-6f73447b3b72" />
-<img width="200" alt="Screenshot_20260509-175645" src="https://github.com/user-attachments/assets/1b65655c-fa0f-4adf-8b72-a45794762159" />
+### UI mode: Nothing-like
+<img width="200" alt="Screenshot_20260827-004135" src="https://github.com/user-attachments/assets/1d218638-f23f-4260-981e-8373c8572099" />
+<img width="200" alt="Screenshot_20260827-004137" src="https://github.com/user-attachments/assets/647e8ce5-7b30-4866-ab2b-e7c908e590e8" />
+<img width="200" alt="Screenshot_20260827-004141" src="https://github.com/user-attachments/assets/8f0cbad0-42d2-4c0b-9c39-63592ec9dc98" />
 
 ### UI mode: Material 3
-<img width="200" alt="Screenshot_20260509-180436" src="https://github.com/user-attachments/assets/bcacfab9-a186-4183-b900-7cc44fd8b3b3" />
-<img width="200" alt="Screenshot_20260509-180445" src="https://github.com/user-attachments/assets/f9ea9c16-6af0-400b-b1cd-bd8200beb254" />
-<img width="200" alt="Screenshot_20260509-180451" src="https://github.com/user-attachments/assets/045296bf-59f9-4fa0-b7fb-950326dd6f7a" />
-
+<img width="200" alt="Screenshot_20260827-010432" src="https://github.com/user-attachments/assets/9922b02b-6b4d-4ed1-a2a5-d9e877ae4d7f" />
+<img width="200" alt="Screenshot_20260827-010434" src="https://github.com/user-attachments/assets/9e9f03e3-c8f0-452e-b3cc-2c8e18d7e90d" />
+<img width="200" alt="Screenshot_20260827-010439" src="https://github.com/user-attachments/assets/e2b23462-dbb4-4cb8-acbe-9ec2b77fdd81" />
 
 
 
