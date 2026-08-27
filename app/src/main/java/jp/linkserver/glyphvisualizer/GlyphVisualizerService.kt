@@ -22,7 +22,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import android.service.quicksettings.TileService
 import androidx.core.app.NotificationCompat
@@ -101,10 +100,7 @@ class GlyphVisualizerService : Service() {
         private const val ACTIVE_MODE_MEDIA_PROJECTION = "MEDIA PROJECTION"
         private const val ACTIVE_MODE_IDLE = "IDLE"
         private const val GLYPH_WARMUP_RESYNC_DELAY_MS = 900L
-        private const val BACKGROUND_UI_UPDATE_INTERVAL_MS = 250L
-        private const val SCREEN_OFF_UI_UPDATE_INTERVAL_MS = 1000L
-        private const val MATRIX_UI_SMOOTH_UPDATE_INTERVAL_MS = 12L
-        private const val MATRIX_UI_REDUCED_UPDATE_INTERVAL_MS = 33L
+        private const val UI_PREVIEW_INTERVAL_MS = 50L
         private const val LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS = 100L
         private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
         private const val MEDIA_PLAYBACK_RESUME_CONFIRM_MS = 1_000L
@@ -399,7 +395,6 @@ class GlyphVisualizerService : Service() {
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private val powerManager by lazy { getSystemService(Context.POWER_SERVICE) as PowerManager }
     private var visualizerStartRequestId = 0
     private var visualizerStartActionAtMs = 0L
     private var visualizerStartSource = VisualizerStartSource.APP
@@ -409,8 +404,6 @@ class GlyphVisualizerService : Service() {
     private var lastUiPublishAtMs = 0L
     private var publishUiFrameCallCount = 0
     private var lastPublishUiFrameCallLogAtMs = 0L
-    private var suppressedUiPublishCount = 0
-    private var lastSuppressedUiPublishLogAtMs = 0L
     private var lastMediaPlaybackCheckAtMs = 0L
     private var lastMediaPlaybackActive = false
     private var mediaPlaybackResumeCandidateAtMs = 0L
@@ -1175,14 +1168,12 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
-        val useGlyphPreviewValues = CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
         val allowPausedMediaSession =
             GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
         val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
         if (!mediaPlaybackActive) {
             val enteringMediaPlaybackSuppression = !mediaPlaybackSuppressed
             mediaPlaybackSuppressed = true
-            val silentBands = FloatArray(frame.spectrumBands.size)
             if (enteringMediaPlaybackSuppression) {
                 try {
                     glyphController.suspendSession()
@@ -1191,11 +1182,11 @@ class GlyphVisualizerService : Service() {
                     AppLogger.w(TAG, "glyphController.suspendSession failed during media playback suppression", error)
                 }
             }
-            if (shouldPublishUiFrame(frame.mode)) {
+            if (shouldPublishUiFrame()) {
                 publishUiFrame(
                     level = 0f,
                     peak = 0f,
-                    spectrumBands = silentBands,
+                    spectrumBands = FloatArray(frame.spectrumBands.size),
                     mode = frame.mode
                 )
             }
@@ -1222,17 +1213,19 @@ class GlyphVisualizerService : Service() {
                 AppLogger.w(TAG, "glyphController.turnOff failed while back-down suppressing", error)
             }
         }
-        val previewLevel = if (useGlyphPreviewValues) {
-            glyphController.previewLevel().coerceIn(0f, 1f)
-        } else {
-            frame.level.coerceIn(0f, 1f)
-        }
-        val previewSpectrumBands = if (useGlyphPreviewValues) {
-            glyphController.previewSpectrumBands()
-        } else {
-            frame.spectrumBands
-        }
-        if (shouldPublishUiFrame(frame.mode)) {
+        if (shouldPublishUiFrame()) {
+            val useGlyphPreviewValues =
+                CaptureUiStore.state.glyphMeterPreviewEnabled && !isBackDownSuppressed
+            val previewLevel = if (useGlyphPreviewValues) {
+                glyphController.previewLevel().coerceIn(0f, 1f)
+            } else {
+                frame.level.coerceIn(0f, 1f)
+            }
+            val previewSpectrumBands = if (useGlyphPreviewValues) {
+                glyphController.previewSpectrumBands()
+            } else {
+                frame.spectrumBands
+            }
             publishUiFrame(
                 level = previewLevel,
                 peak = frame.peak,
@@ -1312,8 +1305,6 @@ class GlyphVisualizerService : Service() {
         lastUiPublishAtMs = 0L
         publishUiFrameCallCount = 0
         lastPublishUiFrameCallLogAtMs = 0L
-        suppressedUiPublishCount = 0
-        lastSuppressedUiPublishLogAtMs = 0L
         lastMediaPlaybackCheckAtMs = 0L
         lastMediaPlaybackActive = false
         mediaPlaybackResumeCandidateAtMs = 0L
@@ -1486,22 +1477,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun currentUiUpdateIntervalMs(): Long {
-        val useExperimentalMatrixUiInterval =
-            experimentalPerformanceOptimizationsEnabled && glyphController is GlyphMatrixController
-        val matrixUiIntervalMs = if (matrixSmoothMotionEnabled) {
-            MATRIX_UI_SMOOTH_UPDATE_INTERVAL_MS
-        } else {
-            MATRIX_UI_REDUCED_UPDATE_INTERVAL_MS
-        }
-        val appUiVisible = CaptureUiStore.shouldPublishLiveUiFrames()
-        return when {
-            appUiVisible && useExperimentalMatrixUiInterval -> matrixUiIntervalMs
-            appUiVisible -> 0L
-            powerManager.isInteractive && useExperimentalMatrixUiInterval -> matrixUiIntervalMs
-            powerManager.isInteractive -> BACKGROUND_UI_UPDATE_INTERVAL_MS
-            useExperimentalMatrixUiInterval -> matrixUiIntervalMs
-            else -> SCREEN_OFF_UI_UPDATE_INTERVAL_MS
-        }
+        return UI_PREVIEW_INTERVAL_MS
     }
 
     private fun isMediaPlaybackAllowed(allowPaused: Boolean = false): Boolean {
@@ -1550,6 +1526,8 @@ class GlyphVisualizerService : Service() {
         mode: String,
         force: Boolean = false
     ) {
+        if (!shouldPublishUiFrame()) return
+
         val entryNow = SystemClock.uptimeMillis()
         publishUiFrameCallCount += 1
         if (
@@ -1564,31 +1542,6 @@ class GlyphVisualizerService : Service() {
                 TAG,
                 "publishUiFrame entered: count=$publishUiFrameCallCount mode=$mode force=$force uiVisible=${CaptureUiStore.shouldPublishLiveUiFrames()}"
             )
-        }
-        if (!force && !shouldPublishUiFrame(mode)) {
-            suppressedUiPublishCount += 1
-            if (
-                DEBUG_UI_VISIBILITY_LOGS &&
-                    (
-                        suppressedUiPublishCount == 1 ||
-                            entryNow - lastSuppressedUiPublishLogAtMs >= 5_000L
-                        )
-            ) {
-                lastSuppressedUiPublishLogAtMs = entryNow
-                AppLogger.i(
-                    TAG,
-                    "UI frame publish suppressed because app UI is not visible: count=$suppressedUiPublishCount mode=$mode"
-                )
-            }
-            return
-        }
-        if (DEBUG_UI_VISIBILITY_LOGS && suppressedUiPublishCount > 0) {
-            AppLogger.i(
-                TAG,
-                "UI frame publish resumed after suppression: count=$suppressedUiPublishCount mode=$mode"
-            )
-            suppressedUiPublishCount = 0
-            lastSuppressedUiPublishLogAtMs = 0L
         }
         val uiState = CaptureUiStore.state
         val lightweightMeter = uiState.lightweightMeterEnabled && uiState.meterVisibleEnabled
@@ -1658,7 +1611,7 @@ class GlyphVisualizerService : Service() {
         }
     }
 
-    private fun shouldPublishUiFrame(mode: String): Boolean {
+    private fun shouldPublishUiFrame(): Boolean {
         return CaptureUiStore.shouldPublishLiveUiFrames()
     }
 

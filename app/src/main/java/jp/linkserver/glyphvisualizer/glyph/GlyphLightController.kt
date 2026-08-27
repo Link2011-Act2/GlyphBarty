@@ -196,6 +196,8 @@ class GlyphLightController(
     private var bLinearFrame: GlyphFrame? = null
     private var d1Frame: GlyphFrame? = null
     private var fullGlyphBrightness = IntArray(0)
+    private var lastSentFrame = IntArray(0)
+    private var blankFrame = IntArray(0)
     private val baseIndicatorRenderers: List<BaseIndicatorRenderer> = listOf(
         Phone4SeriesBaseIndicatorRenderer()
     )
@@ -204,6 +206,7 @@ class GlyphLightController(
 
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
+            invalidateLastSentFrame()
             val spec = resolveDeviceSpec()
             if (spec == null) {
                 onStatusChanged(context.getString(R.string.status_glyph_device_unsupported, Build.MODEL))
@@ -270,6 +273,7 @@ class GlyphLightController(
         }
 
         override fun onServiceDisconnected(componentName: ComponentName) {
+            invalidateLastSentFrame()
             isSessionOpen = false
             silenceStartedAt = 0L
             sessionReleasedForSilence = false
@@ -341,6 +345,7 @@ class GlyphLightController(
             runCatching { glyphManager.unInit() }
             isBound = false
         }
+        invalidateLastSentFrame()
         phone4bEmulationEnabled = nextEnabled
         resetSpectrumMarkerTracking()
         deviceSpec = null
@@ -507,6 +512,17 @@ class GlyphLightController(
 
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
             if (silenceStartedAt <= 0L) silenceStartedAt = now
+            if (!isSessionOpen) {
+                pendingLevel = level
+            }
+            if (isSessionOpen && !sessionReleasedForSilence) {
+                deviceSpec?.let { spec ->
+                    try {
+                        submitBlankFrame(spec)
+                    } catch (_: GlyphException) {
+                    }
+                }
+            }
             if (!sessionReleasedForSilence && now - silenceStartedAt >= SILENCE_RELEASE_MS) {
                 releaseSessionForSilence()
             }
@@ -727,7 +743,7 @@ class GlyphLightController(
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -736,7 +752,7 @@ class GlyphLightController(
             applyLinearRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun updateLinearPeakRanges(level: Float, peakLevel: Float, ranges: List<IntRange>) {
@@ -746,7 +762,7 @@ class GlyphLightController(
         val clamped = level.coerceIn(0f, 1f)
         val peak = peakLevel.coerceIn(0f, 1f)
         if (clamped <= 0.001f && peak <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -755,7 +771,7 @@ class GlyphLightController(
             applyLinearPeakRange(colors, range, clamped, peak)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun updatePulseTrainRanges(level: Float, ranges: List<IntRange>) {
@@ -765,7 +781,7 @@ class GlyphLightController(
         val clamped = level.coerceIn(0f, 1f)
         val pulseBrightness = pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
         if (clamped <= 0.001f && pulseBrightness <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -774,7 +790,7 @@ class GlyphLightController(
             applyPulseTrainRange(colors, range, clamped, pulseBrightness)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun applyLinearRange(colors: IntArray, range: IntRange, level: Float) {
@@ -860,7 +876,7 @@ class GlyphLightController(
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -869,19 +885,19 @@ class GlyphLightController(
             applySpectrumRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun updateClassicSpectrum(level: Float, spec: DeviceSpec) {
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
         val colors = IntArray(spec.channelCount)
         applyClassicSpectrum(colors, spec, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun applyClassicSpectrum(
@@ -1140,16 +1156,17 @@ class GlyphLightController(
     }
 
     private fun updateAllBrightness(level: Float) {
+        val spec = deviceSpec ?: return
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
         val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
             normalizeAllBrightnessLevel(clamped)
         } else clamped
         if (normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
         val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
@@ -1161,7 +1178,7 @@ class GlyphLightController(
             (ALL_BRIGHTNESS_MIN_LIGHT + ((MAX_LIGHT - ALL_BRIGHTNESS_MIN_LIGHT) * shaped)).roundToInt()
         }
         fullGlyphBrightness.fill(brightness)
-        glyphManager.setFrameColors(fullGlyphBrightness)
+        submitFrame(fullGlyphBrightness)
     }
 
     private fun applyAllBrightnessRange(colors: IntArray, range: IntRange, level: Float) {
@@ -1213,7 +1230,7 @@ class GlyphLightController(
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -1252,7 +1269,7 @@ class GlyphLightController(
             }
 
             applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
-            glyphManager.setFrameColors(colors)
+            submitFrame(colors)
             return
         }
 
@@ -1276,7 +1293,7 @@ class GlyphLightController(
             }
         }
         applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun updateCenterRanges(level: Float, ranges: List<IntRange>) {
@@ -1285,7 +1302,7 @@ class GlyphLightController(
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            turnOff()
+            submitBlankFrame(spec)
             return
         }
 
@@ -1294,7 +1311,7 @@ class GlyphLightController(
             applyCenterRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        glyphManager.setFrameColors(colors)
+        submitFrame(colors)
     }
 
     private fun applyCenterRange(colors: IntArray, channelRange: IntRange, level: Float) {
@@ -1352,7 +1369,42 @@ class GlyphLightController(
 
     private fun isCenterDirectionReversed(): Boolean = reverseDirection
 
+    private fun submitFrame(colors: IntArray) {
+        if (lastSentFrame.size == colors.size && lastSentFrame.contentEquals(colors)) {
+            return
+        }
+
+        try {
+            glyphManager.setFrameColors(colors)
+        } catch (error: Throwable) {
+            invalidateLastSentFrame()
+            throw error
+        }
+
+        if (lastSentFrame.size != colors.size) {
+            lastSentFrame = colors.copyOf()
+        } else {
+            colors.copyInto(lastSentFrame)
+        }
+    }
+
+    private fun submitBlankFrame(spec: DeviceSpec) {
+        lastPreviewLevel = 0f
+        val requiredSize = frameChannelCount(spec)
+        if (blankFrame.size != requiredSize) {
+            blankFrame = IntArray(requiredSize)
+        }
+        submitFrame(blankFrame)
+    }
+
+    private fun invalidateLastSentFrame() {
+        if (lastSentFrame.isNotEmpty()) {
+            lastSentFrame = IntArray(0)
+        }
+    }
+
     override fun turnOff() {
+        invalidateLastSentFrame()
         lastPreviewLevel = 0f
         resetLinearPeakTracking()
         resetPulseTrainTracking()
@@ -1386,10 +1438,9 @@ class GlyphLightController(
             applyBaseIndicator(spec.profile, colors)
         }
         if (colors.none { it > 0 }) {
-            turnOff()
-        } else {
-            glyphManager.setFrameColors(colors)
+            lastPreviewLevel = 0f
         }
+        submitFrame(colors)
     }
 
     private fun effectiveMainRange(spec: DeviceSpec): IntRange {
@@ -1406,16 +1457,18 @@ class GlyphLightController(
     }
 
     private fun clearPhone4bRecordingLightIfUnused() {
+        val spec = deviceSpec ?: return
         if (
-            deviceSpec?.profile != GlyphDeviceProfile.PHONE4B ||
+            spec.profile != GlyphDeviceProfile.PHONE4B ||
             recordingLightIncluded ||
             baseIndicatorEnabled ||
             !isSessionOpen
         ) {
             return
         }
+        val recordingLightChannel = spec.recordingLightChannel ?: return
         runCatching {
-            glyphManager.turnOff()
+            submitFrame(IntArray(maxOf(spec.channelCount, recordingLightChannel + 1)))
         }.onFailure { error ->
             AppLogger.w(TAG, "Failed to clear Phone (4b) recording light", error)
         }
@@ -1488,6 +1541,7 @@ class GlyphLightController(
     override fun previewSpectrumBands(): FloatArray = spectrumBands.copyOf()
 
     private fun releaseSessionForSilence() {
+        invalidateLastSentFrame()
         try {
             glyphManager.turnOff()
         } catch (error: Throwable) {
@@ -1506,6 +1560,7 @@ class GlyphLightController(
                 false
             } else {
                 glyphManager.openSession()
+                invalidateLastSentFrame()
                 isSessionOpen = true
                 sessionReleasedForSilence = false
                 true
@@ -1517,6 +1572,7 @@ class GlyphLightController(
     }
 
     private fun closeSession() {
+        invalidateLastSentFrame()
         if (!isSessionOpen) return
         try {
             glyphManager.closeSession()

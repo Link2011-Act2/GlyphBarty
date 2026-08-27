@@ -135,7 +135,7 @@ object CaptureUiStore {
     }
 
     fun shouldPublishLiveUiFrames(): Boolean {
-        return uiVisible
+        return uiVisible && state.meterVisibleEnabled
     }
 
     fun isUiVisible(): Boolean = uiVisible
@@ -223,7 +223,9 @@ object CaptureUiStore {
         if (DEBUG_UI_VISIBILITY_LOGS) {
             AppLogger.i(TAG, "Direct meter listener registered: count=$listenerCount uiVisible=$uiVisible")
         }
-        listener(liveFrame)
+        if (shouldPublishLiveUiFrames()) {
+            listener(liveFrame)
+        }
     }
 
     fun unregisterDirectMeterFrameListener(listener: (CaptureLiveFrame) -> Unit) {
@@ -238,6 +240,7 @@ object CaptureUiStore {
     }
 
     private fun publishDirectMeterFrame(frame: CaptureLiveFrame) {
+        if (!shouldPublishLiveUiFrames()) return
         val listeners = synchronized(directMeterFrameListeners) {
             directMeterFrameListeners.toList()
         }

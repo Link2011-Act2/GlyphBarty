@@ -146,6 +146,7 @@ class GlyphMatrixController(
     private var pulseGridSeed = 0
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
+            invalidateLastSentFrame()
             val currentDevice = GlyphDeviceCatalog.currentOrNull()
             val actualMatrixProfile = when (currentDevice?.profile) {
                 GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> GlyphDeviceProfile.PHONE4A_PRO_MATRIX
@@ -209,6 +210,7 @@ class GlyphMatrixController(
         }
 
         override fun onServiceDisconnected(componentName: ComponentName) {
+            invalidateLastSentFrame()
             isSessionOpen = false
             onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
         }
@@ -222,7 +224,7 @@ class GlyphMatrixController(
     }
 
     override fun unbind() {
-        turnOff()
+        releaseSession()
         if (isBound) {
             glyphMatrixManager.unInit()
             isBound = false
@@ -558,6 +560,7 @@ class GlyphMatrixController(
             }
             matrixReleasedForSilence = false
             matrixTurnedOffForSilence = false
+            invalidateLastSentFrame()
             lastRenderSignature = Long.MIN_VALUE
             lastRenderedMode = null
         }
@@ -572,10 +575,6 @@ class GlyphMatrixController(
 
         val litRows = (renderLevel * matrixLength).roundToInt().coerceIn(0, matrixLength)
         val renderBrightness = matrixBrightnessFor(renderLevel)
-        if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS && renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
-            turnOff()
-            return
-        }
         lastLitRows = litRows
         lastMatrixBrightness = renderBrightness
 
@@ -601,19 +600,27 @@ class GlyphMatrixController(
         } else {
             ((virtualRings - fullRings) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
         }
-        val allBrightnessSignature = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS && renderLevel > ALL_BRIGHTNESS_OFF_THRESHOLD) {
-            val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
+        val allBrightnessFrameBrightness = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
+            val normalizedRaw = if (
+                renderLevel > ALL_BRIGHTNESS_OFF_THRESHOLD && allBrightnessAutoScaleEnabled
+            ) {
                 normalizeAllBrightnessLevel(renderLevel)
             } else {
                 renderLevel
             }
-            val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
-                .coerceIn(0f, 1f)
-            val shaped = normalized.pow(outputGamma)
-            (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX + ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped)).roundToInt()
-                .coerceIn(0, 255)
+            if (renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD || normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
+                COLOR_OFF
+            } else {
+                val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+                    .coerceIn(0f, 1f)
+                val shaped = normalized.pow(outputGamma)
+                (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX +
+                    ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped))
+                    .roundToInt()
+                    .coerceIn(COLOR_OFF, COLOR_ON)
+            }
         } else {
-            0
+            COLOR_OFF
         }
         if (experimentalPerformanceOptimizationsEnabled) {
             val renderSignature = when (renderMode) {
@@ -629,7 +636,7 @@ class GlyphMatrixController(
                     edgeRowBrightness = edgeRowBrightness,
                     fullRings = fullRings,
                     edgeRingBrightness = edgeRingBrightness,
-                    allBrightness = allBrightnessSignature
+                    allBrightness = allBrightnessFrameBrightness
                 )
             }
             if (renderSignature != null && renderSignature == lastRenderSignature) {
@@ -1458,24 +1465,10 @@ class GlyphMatrixController(
             GlyphPatternRenderMode.MATRIX_SKYLINE -> drawSkyline()
             GlyphPatternRenderMode.MATRIX_PULSE_GRID -> drawPulseGrid()
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
-                val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
-                    normalizeAllBrightnessLevel(renderLevel)
-                } else {
-                    renderLevel
-                }
-                if (normalizedRaw > ALL_BRIGHTNESS_OFF_THRESHOLD) {
-                    val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
-                        .coerceIn(0f, 1f)
-                    val shaped = normalized.pow(outputGamma)
-                    val brightness = (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX + ((ALL_BRIGHTNESS_MAX_LIGHT_MATRIX - ALL_BRIGHTNESS_MIN_LIGHT_MATRIX) * shaped)).roundToInt()
-                        .coerceIn(0, 255)
-                    if (!diffModeContinuing || lastMatrixBrightness != brightness) {
-                        frameBuffer.fill(brightness)
-                    }
-                } else {
-                    if (!diffModeContinuing || lastMatrixBrightness != COLOR_OFF) {
-                        frameBuffer.fill(COLOR_OFF)
-                    }
+                frameBuffer.fill(allBrightnessFrameBrightness)
+                lastMatrixBrightness = allBrightnessFrameBrightness
+                if (allBrightnessFrameBrightness == COLOR_OFF) {
+                    lastPreviewLevel = 0f
                 }
             }
             else -> drawBar(matrixLength / 2)
@@ -1483,26 +1476,35 @@ class GlyphMatrixController(
         lastRenderedMode = renderMode
 
         val deviceFrame = frameForPhysicalDevice()
-        if (experimentalPerformanceOptimizationsEnabled) {
-            if (lastSentFrameBuffer.size != deviceFrame.size) {
-                lastSentFrameBuffer = IntArray(deviceFrame.size)
-            }
-        } else if (lastSentFrameBuffer.size != deviceFrame.size) {
-            lastSentFrameBuffer = deviceFrame.copyOf()
-        } else if (lastSentFrameBuffer.contentEquals(deviceFrame)) {
-            // フレームの変更がなければSDKへの転送をスキップし、処理を軽量化する
+        submitMatrixFrame(deviceFrame)
+        if (
+            renderingSilenceDrain &&
+            silenceDrainComplete &&
+            isSessionOpen &&
+            !matrixReleasedForSilence
+        ) {
+            releaseMatrixForSilence()
+        }
+    }
+
+    private fun submitMatrixFrame(deviceFrame: IntArray) {
+        if (
+            lastSentFrameBuffer.size == deviceFrame.size &&
+            lastSentFrameBuffer.contentEquals(deviceFrame)
+        ) {
             return
-        } else {
-            deviceFrame.copyInto(lastSentFrameBuffer)
         }
 
         try {
             glyphMatrixManager.setAppMatrixFrame(deviceFrame)
-            if (experimentalPerformanceOptimizationsEnabled) {
+            if (lastSentFrameBuffer.size != deviceFrame.size) {
+                lastSentFrameBuffer = deviceFrame.copyOf()
+            } else {
                 deviceFrame.copyInto(lastSentFrameBuffer)
             }
             failureCount = 0
         } catch (error: GlyphException) {
+            invalidateLastSentFrame()
             failureCount += 1
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame repeatedly failed. disabling matrix output", error)
@@ -1510,6 +1512,7 @@ class GlyphMatrixController(
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_update_failed))
             }
         } catch (error: Throwable) {
+            invalidateLastSentFrame()
             failureCount += 1
             if (failureCount >= 3) {
                 AppLogger.e(TAG, "setAppMatrixFrame crashed repeatedly. disabling matrix output", error)
@@ -1517,16 +1520,20 @@ class GlyphMatrixController(
                 onStatusChanged(context.getString(R.string.status_glyph_matrix_update_crashed))
             }
         }
-        if (renderingSilenceDrain && silenceDrainComplete && !matrixReleasedForSilence) {
-            releaseMatrixForSilence()
+    }
+
+    private fun invalidateLastSentFrame() {
+        if (lastSentFrameBuffer.isNotEmpty()) {
+            lastSentFrameBuffer = IntArray(0)
         }
+        lastRenderSignature = Long.MIN_VALUE
+        lastRenderedMode = null
     }
 
     override fun turnOff() {
+        invalidateLastSentFrame()
         lastPreviewLevel = 0f
         silenceStartedAt = 0L
-        matrixTurnedOffForSilence = false
-        matrixReleasedForSilence = false
         lastRenderSignature = Long.MIN_VALUE
         lastRenderedMode = null
         resetPatternVisualState()
@@ -1535,15 +1542,18 @@ class GlyphMatrixController(
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff ignored", error)
         }
-        try {
-            glyphMatrixManager.closeAppMatrix()
-        } catch (_: Throwable) {
-        }
     }
 
     override fun releaseSession() {
         turnOff()
+        try {
+            glyphMatrixManager.closeAppMatrix()
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "closeAppMatrix during session release failed", error)
+        }
         isSessionOpen = false
+        matrixTurnedOffForSilence = false
+        matrixReleasedForSilence = false
     }
 
     override fun suspendSession() {
@@ -1551,6 +1561,7 @@ class GlyphMatrixController(
     }
 
     private fun releaseMatrixForSilence() {
+        invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
         } catch (error: Throwable) {
@@ -1566,13 +1577,12 @@ class GlyphMatrixController(
     }
 
     private fun blackoutMatrixForSilence() {
+        invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff during silence blackout failed", error)
         }
-        lastRenderSignature = Long.MIN_VALUE
-        lastRenderedMode = null
         matrixTurnedOffForSilence = true
     }
 
