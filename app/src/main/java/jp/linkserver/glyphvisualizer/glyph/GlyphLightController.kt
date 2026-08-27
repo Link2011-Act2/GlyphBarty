@@ -17,6 +17,24 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+internal fun centerMeterDisplayLevel(
+    level: Float,
+    slotCount: Int,
+    autoScaleEnabled: Boolean
+): Float {
+    val clamped = level.coerceIn(0f, 1f)
+    if (!autoScaleEnabled || slotCount !in 2..4) return clamped
+
+    val normalized = (clamped / DEFAULT_AUTO_GAIN_TARGET_LEVEL).coerceIn(0f, 1f)
+    val exponent = when (slotCount) {
+        2 -> 2.2f
+        3 -> 1.7f
+        4 -> 1.3f
+        else -> 1f
+    }
+    return normalized.pow(exponent)
+}
+
 class GlyphLightController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
@@ -29,7 +47,9 @@ class GlyphLightController(
         private const val SILENCE_RELEASE_MS = 3_000L
         private const val SILENCE_ACTIVITY_THRESHOLD = 0.003f
         private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
-        private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
+        private const val ALL_BRIGHTNESS_ON_THRESHOLD = 0.075f
+        private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.045f
+        private const val ALL_BRIGHTNESS_CURVE_FLOOR = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
         private const val LINEAR_PEAK_BASE_BRIGHTNESS_RATIO = 0.34f
@@ -160,9 +180,10 @@ class GlyphLightController(
     private var smoothingBalance = 0f
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var autoScaleOffset = 0f
-    private var levelMin = 0f
-    private var levelMax = 1f
-    private var lastLevelUpdateMs = 0L
+    private val levelAutoGain = AutoGainController()
+    private val spectrumAutoGain = AutoGainController()
+    private val allBrightnessAutoGain = AutoGainController()
+    private var allBrightnessGateOn = false
     private var linearPeakLevel = 0f
     private var lastLinearPeakUpdateMs = 0L
     private val pulseTrainPulses = mutableListOf<TravelingPulse>()
@@ -172,16 +193,11 @@ class GlyphLightController(
     private var baseIndicatorMin = 0f
     private var baseIndicatorMax = 1f
     private var lastBaseIndicatorUpdateMs = 0L
-    private var allBrightnessMin = 0f
-    private var allBrightnessMax = 1f
-    private var lastAllBrightnessUpdateMs = 0L
     private var lowEnergy = 0f
     private var highEnergy = 0f
     private var spectrumBands = FloatArray(0)
+    private var rawSpectrumPeak = 0f
     private var smoothedSpectrumBands = FloatArray(0)
-    private var spectrumBandMins = FloatArray(0)
-    private var spectrumBandMaxs = FloatArray(0)
-    private var lastSpectrumUpdateMs = 0L
     private var spectrumMarkerPosition: Float? = null
     private var lastSpectrumMarkerUpdateMs = 0L
     private var spectrumMarkerRadiusSegments = SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS
@@ -428,6 +444,7 @@ class GlyphLightController(
         updateBaseIndicatorAnalysis(phone4aBaseBandLevel)
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
         val raw = spectrumBands ?: FloatArray(0)
+        rawSpectrumPeak = raw.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
         this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(raw))
     }
 
@@ -448,41 +465,29 @@ class GlyphLightController(
     }
 
     private fun normalizeSpectrumBands(input: FloatArray): FloatArray {
-        if (input.isEmpty()) return input
+        val framePeak = input.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
         if (!spectrumAutoScaleEnabled) return input
 
         val now = SystemClock.elapsedRealtime()
-        val elapsedMs = if (lastSpectrumUpdateMs <= 0L) 0L else (now - lastSpectrumUpdateMs).coerceAtLeast(0L)
-        lastSpectrumUpdateMs = now
-        val drift = (elapsedMs.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
-
-        if (spectrumBandMins.size != input.size || spectrumBandMaxs.size != input.size) {
-            spectrumBandMins = input.copyOf()
-            spectrumBandMaxs = input.copyOf()
-        }
+        val gain = spectrumAutoGain.update(
+            referenceRaw = framePeak,
+            nowMs = now,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
+        )
 
         val out = FloatArray(input.size)
         for (i in input.indices) {
-            val v = input[i].coerceIn(0f, 1f)
-            var minTrack = min(v, (spectrumBandMins[i] + drift).coerceIn(0f, 1f))
-            var maxTrack = max(v, (spectrumBandMaxs[i] - drift).coerceIn(0f, 1f))
-            if ((maxTrack - minTrack) < 0.05f) {
-                minTrack = (v - 0.025f).coerceIn(0f, 1f)
-                maxTrack = (v + 0.025f).coerceIn(0f, 1f)
-            }
-            spectrumBandMins[i] = minTrack
-            spectrumBandMaxs[i] = maxTrack
-
-            out[i] = normalizeWithAutoScaleOffset(v, minTrack, maxTrack)
+            out[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
         }
         return out
     }
 
     private fun resetSpectrumScaleTracking() {
-        spectrumBandMins = FloatArray(0)
-        spectrumBandMaxs = FloatArray(0)
+        spectrumAutoGain.reset()
+        rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
-        lastSpectrumUpdateMs = 0L
         resetSpectrumMarkerTracking()
         resetAllBrightnessScaleTracking()
     }
@@ -497,8 +502,13 @@ class GlyphLightController(
     override fun updateLevel(level: Float) {
         val now = SystemClock.elapsedRealtime()
         val clamped = level.coerceIn(0f, 1f)
-        val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
+        val maxBand = rawSpectrumPeak
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
+        val renderLevel = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
+            normalizeAllBrightnessLevel(clamped, now)
+        } else {
+            normalizeLevelForMode(clamped, now)
+        }
         val pulseTrainActivity = if (renderMode == GlyphPatternRenderMode.PULSE_TRAIN) {
             updatePulseTrainState(clamped, maxBand)
         } else {
@@ -540,7 +550,6 @@ class GlyphLightController(
             return
         }
         pendingLevel = -1f
-        val renderLevel = normalizeLevelForMode(clamped)
         lastPreviewLevel = renderLevel
 
         val spec = deviceSpec ?: return
@@ -551,23 +560,20 @@ class GlyphLightController(
         }
     }
 
-    private fun normalizeLevelForMode(level: Float): Float {
+    private fun normalizeLevelForMode(level: Float, nowMs: Long): Float {
         if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
-        val now = SystemClock.elapsedRealtime()
-        val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
-        lastLevelUpdateMs = now
-        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
-
-        levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
-        levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
-
-        return normalizeWithAutoScaleOffset(level, levelMin, levelMax)
+        val gain = levelAutoGain.update(
+            referenceRaw = level,
+            nowMs = nowMs,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = level < SILENCE_ACTIVITY_THRESHOLD
+        )
+        return (level * gain).coerceIn(0f, 1f)
     }
 
     private fun resetLevelScaleTracking() {
-        levelMin = 0f
-        levelMax = 1f
-        lastLevelUpdateMs = 0L
+        levelAutoGain.reset()
     }
 
     private fun updateLinearPeakLevel(level: Float): Float {
@@ -1158,18 +1164,11 @@ class GlyphLightController(
     private fun updateAllBrightness(level: Float) {
         val spec = deviceSpec ?: return
         val clamped = level.coerceIn(0f, 1f)
-        if (clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
+        if (clamped <= 0f) {
             submitBlankFrame(spec)
             return
         }
-        val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
-            normalizeAllBrightnessLevel(clamped)
-        } else clamped
-        if (normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
-            submitBlankFrame(spec)
-            return
-        }
-        val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+        val normalized = ((clamped - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
             .coerceIn(0f, 1f)
         val shaped = normalized.pow(outputGamma)
         val brightness = if (binaryMode) {
@@ -1183,12 +1182,8 @@ class GlyphLightController(
 
     private fun applyAllBrightnessRange(colors: IntArray, range: IntRange, level: Float) {
         val clamped = level.coerceIn(0f, 1f)
-        if (clamped <= ALL_BRIGHTNESS_OFF_THRESHOLD) return
-        val normalizedRaw = if (allBrightnessAutoScaleEnabled) {
-            normalizeAllBrightnessLevel(clamped)
-        } else clamped
-        if (normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) return
-        val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+        if (clamped <= 0f) return
+        val normalized = ((clamped - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
             .coerceIn(0f, 1f)
         val shaped = normalized.pow(outputGamma)
         val brightness = if (binaryMode) {
@@ -1203,22 +1198,30 @@ class GlyphLightController(
         }
     }
 
-    private fun normalizeAllBrightnessLevel(level: Float): Float {
-        val now = SystemClock.elapsedRealtime()
-        val elapsed = if (lastAllBrightnessUpdateMs <= 0L) 0L else (now - lastAllBrightnessUpdateMs).coerceAtLeast(0L)
-        lastAllBrightnessUpdateMs = now
-        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
+    private fun normalizeAllBrightnessLevel(level: Float, nowMs: Long): Float {
+        allBrightnessGateOn = if (allBrightnessGateOn) {
+            level > ALL_BRIGHTNESS_OFF_THRESHOLD
+        } else {
+            level >= ALL_BRIGHTNESS_ON_THRESHOLD
+        }
 
-        allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
-        allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))
-
-        return normalizeWithAutoScaleOffset(level, allBrightnessMin, allBrightnessMax)
+        val gain = if (allBrightnessAutoScaleEnabled) {
+            allBrightnessAutoGain.update(
+                referenceRaw = level,
+                nowMs = nowMs,
+                targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+                gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+                holdGainIncrease = !allBrightnessGateOn
+            )
+        } else {
+            1f
+        }
+        return if (allBrightnessGateOn) (level * gain).coerceIn(0f, 1f) else 0f
     }
 
     private fun resetAllBrightnessScaleTracking() {
-        allBrightnessMin = 0f
-        allBrightnessMax = 1f
-        lastAllBrightnessUpdateMs = 0L
+        allBrightnessAutoGain.reset()
+        allBrightnessGateOn = false
     }
 
     private fun updateCenterRange(level: Float, channelRange: IntRange) {
@@ -1241,7 +1244,8 @@ class GlyphLightController(
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
             val pairCount = min(leftChannels.size, rightChannels.size)
             val totalSlots = 1 + pairCount
-            val virtualSlots = clamped * totalSlots
+            val displayLevel = centerMeterDisplayLevel(clamped, totalSlots, levelAutoScaleEnabled)
+            val virtualSlots = displayLevel * totalSlots
             val fullSlots = virtualSlots.toInt().coerceIn(0, totalSlots)
             val edgeBrightness = if (binaryMode) {
                 0
@@ -1274,7 +1278,8 @@ class GlyphLightController(
         }
 
         val pairCount = channelRange.count() / 2
-        val virtualPairs = clamped * pairCount
+        val displayLevel = centerMeterDisplayLevel(clamped, pairCount, levelAutoScaleEnabled)
+        val virtualPairs = displayLevel * pairCount
         val fullPairs = virtualPairs.toInt()
         val edgeBrightness = if (binaryMode) {
             0
@@ -1319,7 +1324,8 @@ class GlyphLightController(
         if (count < 1) return
 
         val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
-        val virtualSlots = level * slots.size
+        val displayLevel = centerMeterDisplayLevel(level, slots.size, levelAutoScaleEnabled)
+        val virtualSlots = displayLevel * slots.size
         val fullSlots = virtualSlots.toInt().coerceIn(0, slots.size)
         val edgeBrightness = if (binaryMode) {
             0

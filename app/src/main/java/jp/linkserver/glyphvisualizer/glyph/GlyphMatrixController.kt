@@ -18,7 +18,6 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -40,7 +39,9 @@ class GlyphMatrixController(
         private const val RIPPLE_SILENCE_DRAIN_MS = 900L
         private const val SILENCE_DRAIN_BRIGHTNESS_THRESHOLD = 0.02f
         private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
-        private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f
+        private const val ALL_BRIGHTNESS_ON_THRESHOLD = 0.075f
+        private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.045f
+        private const val ALL_BRIGHTNESS_CURVE_FLOOR = 0.06f
         private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
         private const val ALL_BRIGHTNESS_MAX_LIGHT = 4095
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
@@ -75,13 +76,11 @@ class GlyphMatrixController(
     private var allBrightnessAutoScaleEnabled = false
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var autoScaleOffset = 0f
-    private var levelMin = 0f
-    private var levelMax = 1f
-    private var lastLevelUpdateMs = 0L
+    private val levelAutoGain = AutoGainController()
+    private val spectrumAutoGain = AutoGainController()
+    private val allBrightnessAutoGain = AutoGainController()
+    private var allBrightnessGateOn = false
     private var lastPreviewLevel = 0f
-    private var allBrightnessMin = 0f
-    private var allBrightnessMax = 1f
-    private var lastAllBrightnessUpdateMs = 0L
     private var physicalMatrixLength = 0
     private var matrixLength = 0
     private var pendingLevel = -1f
@@ -95,13 +94,11 @@ class GlyphMatrixController(
     private var leftLevel = 0f
     private var rightLevel = 0f
     private var spectrumBands = FloatArray(0)
+    private var rawSpectrumPeak = 0f
     private var waveformSamples = FloatArray(0)
     private var leftWaveformSamples = FloatArray(0)
     private var rightWaveformSamples = FloatArray(0)
     private var smoothedSpectrumBands = FloatArray(0)
-    private var spectrumBandMins = FloatArray(0)
-    private var spectrumBandMaxs = FloatArray(0)
-    private var lastSpectrumUpdateMs = 0L
     private var silenceStartedAt = 0L
     private var matrixTurnedOffForSilence = false
     private var matrixReleasedForSilence = false
@@ -369,6 +366,7 @@ class GlyphMatrixController(
         } else {
             raw
         }
+        rawSpectrumPeak = resampled.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
         this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(resampled))
         this.waveformSamples = waveformSamples?.copyOf() ?: FloatArray(0)
         this.leftWaveformSamples = leftWaveformSamples?.copyOf() ?: FloatArray(0)
@@ -408,92 +406,78 @@ class GlyphMatrixController(
     }
 
     private fun normalizeSpectrumBands(input: FloatArray): FloatArray {
-        if (input.isEmpty()) return input
+        val framePeak = input.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
         if (!spectrumAutoScaleEnabled) return input
 
         val now = SystemClock.elapsedRealtime()
-        val elapsedMs = if (lastSpectrumUpdateMs <= 0L) 0L else (now - lastSpectrumUpdateMs).coerceAtLeast(0L)
-        lastSpectrumUpdateMs = now
-        val drift = (elapsedMs.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
-
-        if (spectrumBandMins.size != input.size || spectrumBandMaxs.size != input.size) {
-            spectrumBandMins = input.copyOf()
-            spectrumBandMaxs = input.copyOf()
-        }
+        val gain = spectrumAutoGain.update(
+            referenceRaw = framePeak,
+            nowMs = now,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
+        )
         if (normalizedSpectrumBands.size != input.size) {
             normalizedSpectrumBands = FloatArray(input.size)
         }
 
         for (i in input.indices) {
-            val v = input[i].coerceIn(0f, 1f)
-            var minTrack = min(v, (spectrumBandMins[i] + drift).coerceIn(0f, 1f))
-            var maxTrack = max(v, (spectrumBandMaxs[i] - drift).coerceIn(0f, 1f))
-            if ((maxTrack - minTrack) < 0.05f) {
-                minTrack = (v - 0.025f).coerceIn(0f, 1f)
-                maxTrack = (v + 0.025f).coerceIn(0f, 1f)
-            }
-            spectrumBandMins[i] = minTrack
-            spectrumBandMaxs[i] = maxTrack
-
-            normalizedSpectrumBands[i] = normalizeWithAutoScaleOffset(v, minTrack, maxTrack)
+            normalizedSpectrumBands[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
         }
         return normalizedSpectrumBands
     }
 
     private fun resetSpectrumScaleTracking() {
-        spectrumBandMins = FloatArray(0)
-        spectrumBandMaxs = FloatArray(0)
+        spectrumAutoGain.reset()
+        rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
-        lastSpectrumUpdateMs = 0L
+        normalizedSpectrumBands = FloatArray(0)
     }
 
     private fun resetAllBrightnessScaleTracking() {
-        allBrightnessMin = 0f
-        allBrightnessMax = 1f
-        lastAllBrightnessUpdateMs = 0L
+        allBrightnessAutoGain.reset()
+        allBrightnessGateOn = false
     }
 
     private fun resetLevelScaleTracking() {
-        levelMin = 0f
-        levelMax = 1f
-        lastLevelUpdateMs = 0L
+        levelAutoGain.reset()
     }
 
-    private fun normalizeLevelForMode(level: Float): Float {
+    private fun normalizeLevelForMode(level: Float, nowMs: Long): Float {
         if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
-        val now = SystemClock.elapsedRealtime()
-        val elapsed = if (lastLevelUpdateMs <= 0L) 0L else (now - lastLevelUpdateMs).coerceAtLeast(0L)
-        lastLevelUpdateMs = now
-        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
-
-        levelMin = min(level, (levelMin + drift).coerceIn(0f, 1f))
-        levelMax = max(level, (levelMax - drift).coerceIn(0f, 1f))
-
-        return normalizeWithAutoScaleOffset(level, levelMin, levelMax)
+        val gain = levelAutoGain.update(
+            referenceRaw = level,
+            nowMs = nowMs,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = level < SILENCE_ACTIVITY_THRESHOLD
+        )
+        return (level * gain).coerceIn(0f, 1f)
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
         return GlyphPatternRegistry.isLevelAutoScale(glyphMode)
     }
 
-    private fun normalizeAllBrightnessLevel(level: Float): Float {
-        val now = SystemClock.elapsedRealtime()
-        val elapsed = if (lastAllBrightnessUpdateMs <= 0L) 0L else (now - lastAllBrightnessUpdateMs).coerceAtLeast(0L)
-        lastAllBrightnessUpdateMs = now
-        val drift = (elapsed.toFloat() / autoScaleWindowMs).coerceIn(0f, 1f)
+    private fun normalizeAllBrightnessLevel(level: Float, nowMs: Long): Float {
+        allBrightnessGateOn = if (allBrightnessGateOn) {
+            level > ALL_BRIGHTNESS_OFF_THRESHOLD
+        } else {
+            level >= ALL_BRIGHTNESS_ON_THRESHOLD
+        }
 
-        allBrightnessMin = min(level, (allBrightnessMin + drift).coerceIn(0f, 1f))
-        allBrightnessMax = max(level, (allBrightnessMax - drift).coerceIn(0f, 1f))
-
-        return normalizeWithAutoScaleOffset(level, allBrightnessMin, allBrightnessMax)
-    }
-
-    private fun normalizeWithAutoScaleOffset(value: Float, minTrack: Float, maxTrack: Float): Float {
-        val range = (maxTrack - minTrack).coerceAtLeast(0.05f)
-        val adjustedMin = minTrack - (range * autoScaleOffset)
-        val adjustedMax = maxTrack + (range * autoScaleOffset)
-        val adjustedRange = (adjustedMax - adjustedMin).coerceAtLeast(0.05f)
-        return ((value - adjustedMin) / adjustedRange).coerceIn(0f, 1f)
+        val gain = if (allBrightnessAutoScaleEnabled) {
+            allBrightnessAutoGain.update(
+                referenceRaw = level,
+                nowMs = nowMs,
+                targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+                gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+                holdGainIncrease = !allBrightnessGateOn
+            )
+        } else {
+            1f
+        }
+        return if (allBrightnessGateOn) (level * gain).coerceIn(0f, 1f) else 0f
     }
 
     override fun updateLevel(level: Float) {
@@ -506,11 +490,15 @@ class GlyphMatrixController(
         val now = SystemClock.elapsedRealtime()
 
         val clamped = level.coerceIn(0f, 1f)
-        var renderLevel = normalizeLevelForMode(clamped)
-        val maxBand = if (spectrumBands.isNotEmpty()) spectrumBands.maxOrNull() ?: 0f else 0f
-        val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
             ?: GlyphPatternRenderMode.MATRIX_BAR
+        var renderLevel = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
+            normalizeAllBrightnessLevel(clamped, now)
+        } else {
+            normalizeLevelForMode(clamped, now)
+        }
+        val maxBand = rawSpectrumPeak
+        val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         val openReelPlayback = if (renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
             MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         } else {
@@ -622,17 +610,10 @@ class GlyphMatrixController(
             ((virtualRings - fullRings) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
         }
         val allBrightnessFrameBrightness = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
-            val normalizedRaw = if (
-                renderLevel > ALL_BRIGHTNESS_OFF_THRESHOLD && allBrightnessAutoScaleEnabled
-            ) {
-                normalizeAllBrightnessLevel(renderLevel)
-            } else {
-                renderLevel
-            }
-            if (renderLevel <= ALL_BRIGHTNESS_OFF_THRESHOLD || normalizedRaw <= ALL_BRIGHTNESS_OFF_THRESHOLD) {
+            if (renderLevel <= 0f) {
                 COLOR_OFF
             } else {
-                val normalized = ((normalizedRaw - ALL_BRIGHTNESS_OFF_THRESHOLD) / (1f - ALL_BRIGHTNESS_OFF_THRESHOLD))
+                val normalized = ((renderLevel - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
                     .coerceIn(0f, 1f)
                 val shaped = normalized.pow(outputGamma)
                 (ALL_BRIGHTNESS_MIN_LIGHT_MATRIX +

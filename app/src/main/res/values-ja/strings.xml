@@ -375,11 +375,11 @@
     <string name="param_dynamics_value">%1$.2f</string>
     <string name="param_output_gamma_title">出力Gamma</string>
     <string name="param_output_gamma_desc">光り方のカーブを調整します。高いほど大きい音が強調されます</string>
-    <string name="param_auto_scale_window_title">自動スケール保持時間</string>
-    <string name="param_auto_scale_window_desc">自動スケールが最大値と最小値をどれくらい引きずるかを調整します。短いほど追従が速くなります</string>
+    <string name="param_auto_scale_window_title">自動スケール適応時間</string>
+    <string name="param_auto_scale_window_desc">入力が静かになった際に自動スケールがGainを上げる速さを調整します。短いほど追従が速くなります</string>
     <string name="param_auto_scale_window_value">%1$.0f 秒</string>
-    <string name="param_auto_scale_offset_title">自動スケールオフセット</string>
-    <string name="param_auto_scale_offset_desc">自動スケールがオンの際、メーターの最小/最大範囲を広げます。上げるほど自動スケールの変化が穏やかになります</string>
+    <string name="param_auto_scale_offset_title">自動スケールヘッドルーム</string>
+    <string name="param_auto_scale_offset_desc">自動スケールの目標値を下げて余裕を持たせます。上げるほど輝度変化が控えめになります</string>
     <string name="latency_title">レイテンシ調整</string>
     <string name="latency_desc">メーターとGlyph出力に遅延を加えて、再生とのタイミングを合わせます</string>
     <string name="latency_value_ms">%1$.0f ms</string>
@@ -479,13 +479,13 @@
     <string name="oscilloscope_auto_time_axis_desc">波形が読みやすいように表示窓を自動調整します</string>
 
     <string name="level_auto_scale_title">レベル自動スケール</string>
-    <string name="level_auto_scale_desc">メーターの最大/最小値を自動で変化させます</string>
+    <string name="level_auto_scale_desc">Gainを自動調整して音源ごとの音量差を抑えます</string>
 
     <string name="spectrum_auto_scale_title">自動スケール調整</string>
-    <string name="spectrum_auto_scale_desc">バンドごとにメーターの最大/最小値を自動で変化させます</string>
+    <string name="spectrum_auto_scale_desc">全バンドに共通のGainを自動適用し、バンド間の強弱を保ちます</string>
 
     <string name="all_brightness_auto_scale_title">自動スケール調整</string>
-    <string name="all_brightness_auto_scale_desc">レベルの最大/最小値を自動で変化させます</string>
+    <string name="all_brightness_auto_scale_desc">Gainを自動調整して音源ごとの音量差を抑えます</string>
 
     <string name="turn_off_when_back_down_title">背面を下にすると消灯</string>
     <string name="turn_off_when_back_down_on">端末の背面が下向きの間は Glyphが消灯します</string>
