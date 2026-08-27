@@ -473,7 +473,7 @@
     <string name="binary_mode_title">バイナリモード</string>
     <string name="binary_mode_desc">Glyphライトを点灯/消灯のみで制御します</string>
     <string name="matrix_smooth_motion_title">動きを滑らかにする</string>
-    <string name="matrix_smooth_motion_desc">60fpsで描画しますが、動作が重くなる場合があります</string>
+    <string name="matrix_smooth_motion_desc">Matrixを60fpsで動かします。少し負荷が上がります</string>
     <string name="oscilloscope_auto_time_axis_title">自動時間軸調整</string>
     <string name="oscilloscope_auto_time_axis_title_with_value">自動時間軸調整 (%1$+.1f)</string>
     <string name="oscilloscope_auto_time_axis_desc">波形が読みやすいように表示窓を自動調整します</string>

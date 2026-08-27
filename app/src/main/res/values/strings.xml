@@ -473,7 +473,7 @@
     <string name="binary_mode_title">Binary mode</string>
     <string name="binary_mode_desc">Controls Glyph lights using only on and off states.</string>
     <string name="matrix_smooth_motion_title">Smooth motion</string>
-    <string name="matrix_smooth_motion_desc">Renders at 60 fps, but may reduce performance.</string>
+    <string name="matrix_smooth_motion_desc">Runs the Matrix at 60 fps. This may slightly increase system load.</string>
     <string name="oscilloscope_auto_time_axis_title">Auto time axis</string>
     <string name="oscilloscope_auto_time_axis_title_with_value">Auto time axis (%1$+.1f)</string>
     <string name="oscilloscope_auto_time_axis_desc">Automatically adjusts the display window to keep the waveform readable.</string>
