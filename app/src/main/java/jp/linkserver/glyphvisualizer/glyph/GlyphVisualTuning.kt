@@ -143,8 +143,8 @@ fun supportsGlyphVisualDynamics(patternKind: GlyphPatternKind?): Boolean {
         GlyphPatternKind.ALL_BRIGHTNESS,
         GlyphPatternKind.MATRIX_BAR,
         GlyphPatternKind.MATRIX_FIELD,
-        GlyphPatternKind.MATRIX_CIRCLE -> true
-        GlyphPatternKind.SPECTRUM,
+        GlyphPatternKind.MATRIX_CIRCLE,
+        GlyphPatternKind.SPECTRUM -> true
         null -> false
     }
 }
@@ -181,6 +181,61 @@ internal class VisualDynamicsExpander {
     }
 }
 
+internal class SpectrumVisualDynamicsState {
+    private val sharedExpander = VisualDynamicsExpander()
+    private var perBandExpanders = emptyArray<VisualDynamicsExpander>()
+    private var expandedBands = FloatArray(0)
+
+    fun apply(
+        values: FloatArray,
+        nowMs: Long,
+        windowMs: Float,
+        dynamics: Float,
+        output: FloatArray = FloatArray(values.size)
+    ): FloatArray {
+        require(output.size == values.size)
+        if (perBandExpanders.size != values.size) {
+            reset()
+            perBandExpanders = Array(values.size) { VisualDynamicsExpander() }
+            expandedBands = FloatArray(values.size)
+        }
+
+        val framePeak = values.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+        val expandedPeak = sharedExpander.update(framePeak, nowMs, windowMs)
+        for (index in values.indices) {
+            expandedBands[index] = perBandExpanders[index].update(
+                values[index].coerceIn(0f, 1f),
+                nowMs,
+                windowMs
+            )
+        }
+        if (framePeak <= 0f) {
+            output.fill(0f)
+            return output
+        }
+
+        val blend = dynamics.coerceIn(0f, 1f)
+        val sharedMix = smoothStep((blend / SPECTRUM_SHARED_PHASE_END).coerceIn(0f, 1f))
+        val perBandPhase = ((blend - SPECTRUM_SHARED_PHASE_END) /
+            (1f - SPECTRUM_SHARED_PHASE_END)).coerceIn(0f, 1f)
+        val perBandMix = smoothStep(perBandPhase) * SPECTRUM_PER_BAND_MAX_MIX
+        val displayPeak = blendVisualDynamics(framePeak, expandedPeak, sharedMix)
+        val commonScale = displayPeak / framePeak
+
+        for (index in values.indices) {
+            val sharedBand = (values[index].coerceIn(0f, 1f) * commonScale).coerceIn(0f, 1f)
+            output[index] = blendVisualDynamics(sharedBand, expandedBands[index], perBandMix)
+        }
+        return output
+    }
+
+    fun reset() {
+        sharedExpander.reset()
+        perBandExpanders = emptyArray()
+        expandedBands = FloatArray(0)
+    }
+}
+
 internal fun applyAdaptiveVisualDynamics(
     agcLevel: Float,
     autoScaleEnabled: Boolean,
@@ -207,6 +262,42 @@ internal fun applyAdaptiveVisualDynamics(
     return blendVisualDynamics(clampedAgcLevel, expandedLevel, tuning.dynamics)
 }
 
+/** Blends shared peak scaling into continuously tracked per-band expansion. */
+internal fun applyAdaptiveSpectrumVisualDynamics(
+    agcBands: FloatArray,
+    autoScaleEnabled: Boolean,
+    strategy: GlyphAutoScaleStrategy,
+    profile: GlyphDeviceProfile,
+    patternId: String,
+    patternKind: GlyphPatternKind?,
+    state: SpectrumVisualDynamicsState,
+    nowMs: Long,
+    windowMs: Float,
+    override: GlyphVisualTuning? = null,
+    output: FloatArray = FloatArray(agcBands.size)
+): FloatArray {
+    require(output.size == agcBands.size)
+    if (
+        !autoScaleEnabled ||
+        strategy != GlyphAutoScaleStrategy.ADAPTIVE ||
+        patternKind != GlyphPatternKind.SPECTRUM
+    ) {
+        for (index in agcBands.indices) {
+            output[index] = agcBands[index].coerceIn(0f, 1f)
+        }
+        return output
+    }
+
+    val tuning = override ?: GlyphVisualTuningDatabase.tuningFor(profile, patternId)
+    return state.apply(
+        values = agcBands,
+        nowMs = nowMs,
+        windowMs = windowMs,
+        dynamics = tuning.dynamics,
+        output = output
+    )
+}
+
 internal fun blendVisualDynamics(
     agcLevel: Float,
     expandedLevel: Float,
@@ -229,3 +320,10 @@ fun formatGlyphVisualTuningEntry(
 }
 
 private const val MIN_VISUAL_DYNAMICS_RANGE = 0.05f
+private const val SPECTRUM_SHARED_PHASE_END = 0.5f
+private const val SPECTRUM_PER_BAND_MAX_MIX = 0.95f
+
+private fun smoothStep(value: Float): Float {
+    val clamped = value.coerceIn(0f, 1f)
+    return clamped * clamped * (3f - 2f * clamped)
+}

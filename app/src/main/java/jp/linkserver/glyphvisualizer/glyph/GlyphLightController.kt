@@ -174,6 +174,7 @@ class GlyphLightController(
     private val spectrumAutoGain = AutoGainController()
     private val allBrightnessAutoGain = AutoGainController()
     private val levelVisualDynamicsExpander = VisualDynamicsExpander()
+    private val spectrumVisualDynamicsState = SpectrumVisualDynamicsState()
     private val allBrightnessVisualDynamicsExpander = VisualDynamicsExpander()
     private var allBrightnessGateOn = false
     private var linearPeakLevel = 0f
@@ -234,6 +235,7 @@ class GlyphLightController(
 
             deviceSpec = spec
             levelVisualDynamicsExpander.reset()
+            spectrumVisualDynamicsState.reset()
             allBrightnessVisualDynamicsExpander.reset()
             fullGlyphBrightness = IntArray(spec.channelCount)
 
@@ -511,9 +513,21 @@ class GlyphLightController(
             holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
         )
 
-        return FloatArray(input.size) { index ->
+        val agcBands = FloatArray(input.size) { index ->
             (input[index].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
         }
+        return applyAdaptiveSpectrumVisualDynamics(
+            agcBands = agcBands,
+            autoScaleEnabled = spectrumAutoScaleEnabled,
+            strategy = autoScaleStrategy,
+            profile = currentTuningProfile(),
+            patternId = glyphMode,
+            patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+            state = spectrumVisualDynamicsState,
+            nowMs = now,
+            windowMs = autoScaleWindowMs,
+            override = visualTuningOverride
+        )
     }
 
     private fun resetSpectrumScaleTracking() {
@@ -521,6 +535,7 @@ class GlyphLightController(
         spectrumAutoGain.reset()
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
+        spectrumVisualDynamicsState.reset()
         resetSpectrumMarkerTracking()
         resetAllBrightnessScaleTracking()
     }
@@ -558,6 +573,7 @@ class GlyphLightController(
         }
 
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
+            spectrumVisualDynamicsState.reset()
             if (previewDeviceProfile != null) {
                 deviceSpec?.let(::submitBlankFrame)
                 return

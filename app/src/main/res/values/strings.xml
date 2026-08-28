@@ -548,7 +548,7 @@
     <string name="level_auto_scale_title">Level auto scale</string>
     <string name="level_auto_scale_desc">Automatically adjusts the meter’s minimum and maximum values.</string>
     <string name="adaptive_auto_scale_title">Adaptive Auto Scale (Experimental)</string>
-    <string name="adaptive_auto_scale_desc">Uses the adaptive P95/gain method when auto scale is enabled. Turn off to use Legacy Auto Scale.</string>
+    <string name="adaptive_auto_scale_desc">Uses an AGC-based method for auto scaling.\n⚠️ This feature is still being tuned. The visuals are not polished yet, and some parts are still unfinished.</string>
 
     <string name="spectrum_auto_scale_title">Spectrum auto scale</string>
     <string name="spectrum_auto_scale_desc">Automatically adjusts each band’s minimum and maximum meter values.</string>

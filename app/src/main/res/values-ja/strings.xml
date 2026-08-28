@@ -547,8 +547,8 @@
 
     <string name="level_auto_scale_title">レベル自動スケール</string>
     <string name="level_auto_scale_desc">メーターの最大/最小値を自動で変化させます</string>
-    <string name="adaptive_auto_scale_title">適応型自動スケール（Experimental）</string>
-    <string name="adaptive_auto_scale_desc">自動スケール有効時にP95 / Gain方式を使用します。オフでは従来方式を使用します。</string>
+    <string name="adaptive_auto_scale_title">適応型自動スケール(実験的)</string>
+    <string name="adaptive_auto_scale_desc">自動スケールをAGC方式にします\n⚠️この機能はまだ調整中です。まだ見た目は悪いし、作りかけの部分もあります</string>
 
     <string name="spectrum_auto_scale_title">自動スケール調整</string>
     <string name="spectrum_auto_scale_desc">バンドごとにメーターの最大/最小値を自動で変化させます</string>

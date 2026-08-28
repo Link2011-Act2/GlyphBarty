@@ -467,6 +467,7 @@ internal fun ExperimentalDetailsScreenContent(
                                 patternKind = patternDefinition?.kind,
                                 deviceProfile = deviceProfile,
                                 levelAutoScale = levelAutoScale,
+                                spectrumAutoScale = spectrumAutoScale,
                                 allBrightnessAutoScale = allBrightnessAutoScale,
                                 experimentalAdaptiveAutoScaleEnabled =
                                     experimentalAdaptiveAutoScaleEnabled,
@@ -858,6 +859,7 @@ private fun ExperimentalDetailsTuneTab(
     patternKind: GlyphPatternKind?,
     deviceProfile: GlyphDeviceProfile,
     levelAutoScale: Boolean,
+    spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     experimentalAdaptiveAutoScaleEnabled: Boolean,
     visualDynamics: Float,
@@ -885,6 +887,7 @@ private fun ExperimentalDetailsTuneTab(
         GlyphPatternRegistry.isSupported(deviceProfile, patternId) &&
         supportsGlyphVisualDynamics(patternKind) &&
         when (patternKind) {
+            GlyphPatternKind.SPECTRUM -> spectrumAutoScale
             GlyphPatternKind.ALL_BRIGHTNESS -> allBrightnessAutoScale
             GlyphPatternKind.LINEAR,
             GlyphPatternKind.CENTER,

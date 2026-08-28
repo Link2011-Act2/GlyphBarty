@@ -1,5 +1,6 @@
 package jp.linkserver.glyphvisualizer.glyph
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,7 +30,7 @@ class AutoScaleStrategyTest {
     }
 
     @Test
-    fun visualDynamics_appliesOnlyToAdaptiveScalarAutoScale() {
+    fun visualDynamics_requiresAdaptiveAutoScale() {
         val tuning = GlyphVisualTuning(dynamics = 1f)
         val legacy = applyAdaptiveVisualDynamics(
             agcLevel = 0.4f,
@@ -71,6 +72,69 @@ class AutoScaleStrategyTest {
         assertEquals(0.4f, legacy, 0.0001f)
         assertEquals(0.4f, disabled, 0.0001f)
         assertEquals(0.4f, spectrum, 0.0001f)
+    }
+
+    @Test
+    fun spectrumVisualDynamics_blendsSharedThenPerBandWithWarmTrackers() {
+        fun apply(
+            state: SpectrumVisualDynamicsState,
+            bands: FloatArray,
+            dynamics: Float,
+            nowMs: Long
+        ) = applyAdaptiveSpectrumVisualDynamics(
+            agcBands = bands,
+            autoScaleEnabled = true,
+            strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+            profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            state = state,
+            nowMs = nowMs,
+            windowMs = 30_000f,
+            override = GlyphVisualTuning(dynamics = dynamics)
+        )
+
+        val sharedState = SpectrumVisualDynamicsState()
+        val initial = apply(sharedState, floatArrayOf(0.4f, 0.6f), dynamics = 0f, nowMs = 1_000L)
+        apply(sharedState, floatArrayOf(0.4f, 0.6f), dynamics = 0f, nowMs = 31_000L)
+        val shared = apply(sharedState, floatArrayOf(0.3f, 0.9f), dynamics = 0.5f, nowMs = 31_000L)
+
+        val perBandState = SpectrumVisualDynamicsState()
+        apply(perBandState, floatArrayOf(0.4f, 0.6f), dynamics = 0f, nowMs = 1_000L)
+        apply(perBandState, floatArrayOf(0.4f, 0.6f), dynamics = 0f, nowMs = 31_000L)
+        val nearPerBand = apply(
+            perBandState,
+            floatArrayOf(0.3f, 0.9f),
+            dynamics = 1f,
+            nowMs = 31_000L
+        )
+        perBandState.reset()
+        val afterReset = apply(
+            perBandState,
+            floatArrayOf(0.3f, 0.9f),
+            dynamics = 1f,
+            nowMs = 31_000L
+        )
+        val legacy = applyAdaptiveSpectrumVisualDynamics(
+            agcBands = floatArrayOf(0.2f, 0.8f),
+            autoScaleEnabled = true,
+            strategy = GlyphAutoScaleStrategy.LEGACY,
+            profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            state = SpectrumVisualDynamicsState(),
+            nowMs = 31_000L,
+            windowMs = 30_000f,
+            override = GlyphVisualTuning(dynamics = 1f)
+        )
+
+        assertTrue(supportsGlyphVisualDynamics(GlyphPatternKind.SPECTRUM))
+        assertArrayEquals(floatArrayOf(0.4f, 0.6f), initial, 0.0001f)
+        assertArrayEquals(floatArrayOf(1f / 3f, 1f), shared, 0.0001f)
+        assertEquals(0.3f / 0.9f, shared[0] / shared[1], 0.0001f)
+        assertArrayEquals(floatArrayOf(1f / 60f, 1f), nearPerBand, 0.0001f)
+        assertArrayEquals(floatArrayOf(0.3f, 0.9f), afterReset, 0.0001f)
+        assertArrayEquals(floatArrayOf(0.2f, 0.8f), legacy, 0.0001f)
     }
 
     @Test

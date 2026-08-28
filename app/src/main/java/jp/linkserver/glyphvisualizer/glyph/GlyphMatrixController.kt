@@ -87,6 +87,7 @@ class GlyphMatrixController(
     private val spectrumAutoGain = AutoGainController()
     private val allBrightnessAutoGain = AutoGainController()
     private val levelVisualDynamicsExpander = VisualDynamicsExpander()
+    private val spectrumVisualDynamicsState = SpectrumVisualDynamicsState()
     private val allBrightnessVisualDynamicsExpander = VisualDynamicsExpander()
     private var allBrightnessGateOn = false
     private var lastPreviewLevel = 0f
@@ -222,6 +223,7 @@ class GlyphMatrixController(
             actualMatrixProfile
         }
         levelVisualDynamicsExpander.reset()
+        spectrumVisualDynamicsState.reset()
         allBrightnessVisualDynamicsExpander.reset()
         matrixLength = if (phone4aProEmulatedOnPhone3) {
             GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
@@ -486,7 +488,19 @@ class GlyphMatrixController(
         for (i in input.indices) {
             normalizedSpectrumBands[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
         }
-        return normalizedSpectrumBands
+        return applyAdaptiveSpectrumVisualDynamics(
+            agcBands = normalizedSpectrumBands,
+            autoScaleEnabled = spectrumAutoScaleEnabled,
+            strategy = autoScaleStrategy,
+            profile = matrixProfile,
+            patternId = glyphMode,
+            patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+            state = spectrumVisualDynamicsState,
+            nowMs = now,
+            windowMs = autoScaleWindowMs,
+            override = visualTuningOverride,
+            output = normalizedSpectrumBands
+        )
     }
 
     private fun resetSpectrumScaleTracking() {
@@ -495,6 +509,7 @@ class GlyphMatrixController(
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
         normalizedSpectrumBands = FloatArray(0)
+        spectrumVisualDynamicsState.reset()
     }
 
     private fun resetAllBrightnessScaleTracking() {
@@ -611,6 +626,7 @@ class GlyphMatrixController(
         val maxBand = rawSpectrumPeak
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         if (previewDeviceProfile != null && activity < SILENCE_ACTIVITY_THRESHOLD) {
+            spectrumVisualDynamicsState.reset()
             frameBuffer.fill(COLOR_OFF)
             submitMatrixFrame(frameBuffer)
             return
@@ -626,6 +642,9 @@ class GlyphMatrixController(
             renderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
             renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
         val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD && !holdOpenReelFrameForPause
+        if (isSilent) {
+            spectrumVisualDynamicsState.reset()
+        }
         val silenceElapsedMs = if (isSilent) {
             if (silenceStartedAt <= 0L) silenceStartedAt = now
             now - silenceStartedAt
