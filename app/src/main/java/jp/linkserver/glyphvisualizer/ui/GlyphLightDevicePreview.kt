@@ -10,10 +10,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.PathParser
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightPreviewElement
@@ -47,15 +52,28 @@ internal fun GlyphLightDevicePreview(
     val resolvedElements = remember(profile, brightness.size) {
         layout.resolve(lightSpec, brightness.size)
     }
+    val vectorPaths = remember(layout) {
+        layout.elements
+            .filterIsInstance<GlyphLightPreviewElement.VectorPath>()
+            .associate { element ->
+                element.pathData to PathParser().parsePathString(element.pathData).toPath()
+            }
+    }
 
     Canvas(modifier = modifier.aspectRatio(layout.aspectRatio)) {
         val inset = size.width * 0.025f
+        val bodyInset = if (layout.geometryUsesFullCanvas) 0f else inset
         val body = Rect(
-            left = inset,
-            top = inset,
-            right = size.width - inset,
-            bottom = size.height - inset
+            left = bodyInset,
+            top = bodyInset,
+            right = size.width - bodyInset,
+            bottom = size.height - bodyInset
         )
+        val geometryFrame = if (layout.geometryUsesFullCanvas) {
+            Rect(Offset.Zero, size)
+        } else {
+            body
+        }
         val cornerRadius = layout.bodyCornerRadius * body.width
         drawRoundRect(
             color = DeviceBodyColor,
@@ -72,8 +90,8 @@ internal fun GlyphLightDevicePreview(
         )
 
         layout.cameraMarkers.forEach { marker ->
-            val center = normalizedPoint(marker.center, body)
-            val radius = marker.radius * body.width
+            val center = normalizedPoint(marker.center, geometryFrame)
+            val radius = marker.radius * geometryFrame.width
             drawCircle(CameraFillColor, radius = radius, center = center)
             drawCircle(
                 color = CameraOutlineColor,
@@ -84,7 +102,7 @@ internal fun GlyphLightDevicePreview(
         }
 
         resolvedElements.forEach { resolved ->
-            drawResolvedElement(resolved, brightness, body)
+            drawResolvedElement(resolved, brightness, geometryFrame, vectorPaths)
         }
     }
 }
@@ -92,7 +110,8 @@ internal fun GlyphLightDevicePreview(
 private fun DrawScope.drawResolvedElement(
     resolved: GlyphResolvedLightPreviewElement,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    vectorPaths: Map<String, Path>
 ) {
     when (val geometry = resolved.geometry) {
         is GlyphLightPreviewElement.Line -> drawSegmentedLine(
@@ -119,6 +138,140 @@ private fun DrawScope.drawResolvedElement(
             brightness = brightness,
             body = body
         )
+        is GlyphLightPreviewElement.VectorPath -> drawSegmentedVectorPath(
+            geometry = geometry,
+            path = vectorPaths.getValue(geometry.pathData),
+            channels = resolved.channels,
+            brightness = brightness,
+            body = body
+        )
+    }
+}
+
+private fun DrawScope.drawSegmentedVectorPath(
+    geometry: GlyphLightPreviewElement.VectorPath,
+    path: Path,
+    channels: List<Int>,
+    brightness: IntArray,
+    body: Rect
+) {
+    val target = normalizedRect(geometry.bounds, body)
+    val source = geometry.sourceBounds
+    val scaleX = target.width / source.width
+    val scaleY = target.height / source.height
+
+    withTransform({
+        translate(target.left, target.top)
+        scale(scaleX, scaleY, pivot = Offset.Zero)
+        translate(-source.left, -source.top)
+    }) {
+        if (channels.size == 1) {
+            drawOfficialPath(
+                path = path,
+                color = glyphColor(brightness.getOrElse(channels.first()) { 0 }),
+                strokeWidth = geometry.strokeWidth
+            )
+            return@withTransform
+        }
+
+        drawOfficialPath(
+            path = path,
+            color = InactiveGlyphColor,
+            strokeWidth = geometry.strokeWidth
+        )
+
+        geometry.arcSegments?.let { arcSegments ->
+            val segmentSweep = arcSegments.sweepAngleDegrees / channels.size
+            val arcBounds = Rect(
+                left = arcSegments.center.x - arcSegments.radiusX,
+                top = arcSegments.center.y - arcSegments.radiusY,
+                right = arcSegments.center.x + arcSegments.radiusX,
+                bottom = arcSegments.center.y + arcSegments.radiusY
+            )
+            channels.forEachIndexed { index, channel ->
+                val channelBrightness = brightness.getOrElse(channel) { 0 }
+                if (channelBrightness <= 0) return@forEachIndexed
+                val wedgePath = Path().apply {
+                    moveTo(arcSegments.center.x, arcSegments.center.y)
+                    arcTo(
+                        rect = arcBounds,
+                        startAngleDegrees = arcSegments.startAngleDegrees + segmentSweep *
+                            (index + SEGMENT_GAP_RATIO / 2f),
+                        sweepAngleDegrees = segmentSweep * (1f - SEGMENT_GAP_RATIO),
+                        forceMoveTo = false
+                    )
+                    close()
+                }
+                clipPath(wedgePath) {
+                    drawOfficialPath(
+                        path = path,
+                        color = glyphColor(channelBrightness),
+                        strokeWidth = geometry.strokeWidth
+                    )
+                }
+            }
+            return@withTransform
+        }
+
+        val segmentBounds = geometry.segmentBounds
+        val vertical = geometry.segmentDirection == GlyphPreviewBarDirection.TOP_TO_BOTTOM ||
+            geometry.segmentDirection == GlyphPreviewBarDirection.BOTTOM_TO_TOP
+        val segmentLength = if (vertical) {
+            segmentBounds.height / channels.size
+        } else {
+            segmentBounds.width / channels.size
+        }
+        val gap = segmentLength * SEGMENT_GAP_RATIO
+
+        channels.forEachIndexed { index, channel ->
+            val channelBrightness = brightness.getOrElse(channel) { 0 }
+            if (channelBrightness <= 0) return@forEachIndexed
+            val slot = when (geometry.segmentDirection) {
+                GlyphPreviewBarDirection.TOP_TO_BOTTOM,
+                GlyphPreviewBarDirection.LEFT_TO_RIGHT -> index
+                GlyphPreviewBarDirection.BOTTOM_TO_TOP,
+                GlyphPreviewBarDirection.RIGHT_TO_LEFT -> channels.lastIndex - index
+            }
+            val clipBounds = if (vertical) {
+                Rect(
+                    left = segmentBounds.left,
+                    top = segmentBounds.top + slot * segmentLength + gap / 2f,
+                    right = segmentBounds.right,
+                    bottom = segmentBounds.top + (slot + 1) * segmentLength - gap / 2f
+                )
+            } else {
+                Rect(
+                    left = segmentBounds.left + slot * segmentLength + gap / 2f,
+                    top = segmentBounds.top,
+                    right = segmentBounds.left + (slot + 1) * segmentLength - gap / 2f,
+                    bottom = segmentBounds.bottom
+                )
+            }
+            clipRect(
+                left = clipBounds.left,
+                top = clipBounds.top,
+                right = clipBounds.right,
+                bottom = clipBounds.bottom
+            ) {
+                drawOfficialPath(
+                    path = path,
+                    color = glyphColor(channelBrightness),
+                    strokeWidth = geometry.strokeWidth
+                )
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawOfficialPath(path: Path, color: Color, strokeWidth: Float) {
+    if (strokeWidth > 0f) {
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+        )
+    } else {
+        drawPath(path = path, color = color)
     }
 }
 
@@ -131,11 +284,31 @@ private fun DrawScope.drawSegmentedLine(
     val start = normalizedPoint(geometry.start, body)
     val end = normalizedPoint(geometry.end, body)
     val strokeWidth = (geometry.strokeWidth * body.width).coerceAtLeast(1f)
+    if (channels.size == 1) {
+        drawLine(
+            color = glyphColor(brightness.getOrElse(channels.first()) { 0 }),
+            start = start,
+            end = end,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        return
+    }
+
+    drawLine(
+        color = InactiveGlyphColor,
+        start = start,
+        end = end,
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round
+    )
     channels.forEachIndexed { index, channel ->
+        val channelBrightness = brightness.getOrElse(channel) { 0 }
+        if (channelBrightness <= 0) return@forEachIndexed
         val startFraction = segmentFraction(index, channels.size, start = true)
         val endFraction = segmentFraction(index, channels.size, start = false)
         drawLine(
-            color = glyphColor(brightness.getOrElse(channel) { 0 }),
+            color = glyphColor(channelBrightness),
             start = interpolate(start, end, startFraction),
             end = interpolate(start, end, endFraction),
             strokeWidth = strokeWidth,
@@ -161,9 +334,33 @@ private fun DrawScope.drawSegmentedArc(
     )
     val segmentSweep = geometry.sweepAngleDegrees / channels.size.coerceAtLeast(1)
     val strokeWidth = (geometry.strokeWidth * body.width).coerceAtLeast(1f)
-    channels.forEachIndexed { index, channel ->
+    if (channels.size == 1) {
         drawArc(
-            color = glyphColor(brightness.getOrElse(channel) { 0 }),
+            color = glyphColor(brightness.getOrElse(channels.first()) { 0 }),
+            startAngle = geometry.startAngleDegrees,
+            sweepAngle = geometry.sweepAngleDegrees,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        return
+    }
+
+    drawArc(
+        color = InactiveGlyphColor,
+        startAngle = geometry.startAngleDegrees,
+        sweepAngle = geometry.sweepAngleDegrees,
+        useCenter = false,
+        topLeft = topLeft,
+        size = arcSize,
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+    )
+    channels.forEachIndexed { index, channel ->
+        val channelBrightness = brightness.getOrElse(channel) { 0 }
+        if (channelBrightness <= 0) return@forEachIndexed
+        drawArc(
+            color = glyphColor(channelBrightness),
             startAngle = geometry.startAngleDegrees + segmentSweep *
                 (index + SEGMENT_GAP_RATIO / 2f),
             sweepAngle = segmentSweep * (1f - SEGMENT_GAP_RATIO),
@@ -192,17 +389,26 @@ private fun DrawScope.drawSegmentedCircle(
         return
     }
 
+    val strokeWidth = (radius * 0.7f).coerceAtLeast(1f)
+    drawCircle(
+        color = InactiveGlyphColor,
+        radius = radius,
+        center = center,
+        style = Stroke(width = strokeWidth)
+    )
     val segmentSweep = 360f / channels.size
     channels.forEachIndexed { index, channel ->
+        val channelBrightness = brightness.getOrElse(channel) { 0 }
+        if (channelBrightness <= 0) return@forEachIndexed
         drawArc(
-            color = glyphColor(brightness.getOrElse(channel) { 0 }),
+            color = glyphColor(channelBrightness),
             startAngle = segmentSweep * (index + SEGMENT_GAP_RATIO / 2f),
             sweepAngle = segmentSweep * (1f - SEGMENT_GAP_RATIO),
             useCenter = false,
             topLeft = Offset(center.x - radius, center.y - radius),
             size = Size(radius * 2f, radius * 2f),
             style = Stroke(
-                width = (radius * 0.7f).coerceAtLeast(1f),
+                width = strokeWidth,
                 cap = StrokeCap.Round
             )
         )
@@ -216,12 +422,31 @@ private fun DrawScope.drawSegmentedBar(
     body: Rect
 ) {
     val bounds = normalizedRect(geometry.bounds, body)
+    val baseRadius = min(bounds.width, bounds.height) * 0.22f
+    if (channels.size == 1) {
+        drawRoundRect(
+            color = glyphColor(brightness.getOrElse(channels.first()) { 0 }),
+            topLeft = bounds.topLeft,
+            size = bounds.size,
+            cornerRadius = CornerRadius(baseRadius, baseRadius)
+        )
+        return
+    }
+
+    drawRoundRect(
+        color = InactiveGlyphColor,
+        topLeft = bounds.topLeft,
+        size = bounds.size,
+        cornerRadius = CornerRadius(baseRadius, baseRadius)
+    )
     val vertical = geometry.direction == GlyphPreviewBarDirection.TOP_TO_BOTTOM ||
         geometry.direction == GlyphPreviewBarDirection.BOTTOM_TO_TOP
     val segmentLength = if (vertical) bounds.height / channels.size else bounds.width / channels.size
     val gap = segmentLength * SEGMENT_GAP_RATIO
 
     channels.forEachIndexed { index, channel ->
+        val channelBrightness = brightness.getOrElse(channel) { 0 }
+        if (channelBrightness <= 0) return@forEachIndexed
         val slot = when (geometry.direction) {
             GlyphPreviewBarDirection.TOP_TO_BOTTOM,
             GlyphPreviewBarDirection.LEFT_TO_RIGHT -> index
@@ -245,7 +470,7 @@ private fun DrawScope.drawSegmentedBar(
         }
         val radius = min(segmentBounds.width, segmentBounds.height) * 0.22f
         drawRoundRect(
-            color = glyphColor(brightness.getOrElse(channel) { 0 }),
+            color = glyphColor(channelBrightness),
             topLeft = segmentBounds.topLeft,
             size = segmentBounds.size,
             cornerRadius = CornerRadius(radius, radius)

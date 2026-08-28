@@ -7,16 +7,43 @@ internal data class GlyphPreviewPoint(
     val y: Float
 )
 
+internal data class GlyphPreviewSize(
+    val width: Float,
+    val height: Float
+) {
+    init {
+        require(width > 0f)
+        require(height > 0f)
+    }
+
+    val aspectRatio: Float
+        get() = width / height
+}
+
 internal data class GlyphPreviewRect(
     val left: Float,
     val top: Float,
     val right: Float,
     val bottom: Float
-)
+) {
+    val width: Float
+        get() = right - left
+
+    val height: Float
+        get() = bottom - top
+}
 
 internal data class GlyphPreviewCameraMarker(
     val center: GlyphPreviewPoint,
     val radius: Float
+)
+
+internal data class GlyphPreviewArcSegments(
+    val center: GlyphPreviewPoint,
+    val radiusX: Float,
+    val radiusY: Float,
+    val startAngleDegrees: Float,
+    val sweepAngleDegrees: Float
 )
 
 internal enum class GlyphPreviewSpecRange {
@@ -84,6 +111,22 @@ internal sealed interface GlyphLightPreviewElement {
         val bounds: GlyphPreviewRect,
         val direction: GlyphPreviewBarDirection
     ) : GlyphLightPreviewElement
+
+    /**
+     * A filled official Settings vector placed into the device preview canvas.
+     * Multi-channel paths are clipped into independent slots while the binding
+     * continues to supply Barty's existing SDK channel order.
+     */
+    data class VectorPath(
+        override val channels: GlyphPreviewChannelBinding,
+        val pathData: String,
+        val sourceBounds: GlyphPreviewRect,
+        val bounds: GlyphPreviewRect,
+        val segmentBounds: GlyphPreviewRect = sourceBounds,
+        val segmentDirection: GlyphPreviewBarDirection = GlyphPreviewBarDirection.LEFT_TO_RIGHT,
+        val strokeWidth: Float = 0f,
+        val arcSegments: GlyphPreviewArcSegments? = null
+    ) : GlyphLightPreviewElement
 }
 
 internal data class GlyphResolvedLightPreviewElement(
@@ -92,11 +135,27 @@ internal data class GlyphResolvedLightPreviewElement(
 )
 
 internal data class GlyphLightPreviewLayout(
-    val aspectRatio: Float,
+    val canvasSize: GlyphPreviewSize,
     val bodyCornerRadius: Float,
     val cameraMarkers: List<GlyphPreviewCameraMarker>,
-    val elements: List<GlyphLightPreviewElement>
+    val elements: List<GlyphLightPreviewElement>,
+    val geometryUsesFullCanvas: Boolean = false
 ) {
+    constructor(
+        aspectRatio: Float,
+        bodyCornerRadius: Float,
+        cameraMarkers: List<GlyphPreviewCameraMarker>,
+        elements: List<GlyphLightPreviewElement>
+    ) : this(
+        canvasSize = GlyphPreviewSize(aspectRatio, 1f),
+        bodyCornerRadius = bodyCornerRadius,
+        cameraMarkers = cameraMarkers,
+        elements = elements
+    )
+
+    val aspectRatio: Float
+        get() = canvasSize.aspectRatio
+
     fun resolve(
         spec: GlyphLightDeviceSpec,
         frameChannelCount: Int
@@ -400,5 +459,6 @@ internal object GlyphLightPreviewGeometry {
         )
     )
 
-    fun layoutFor(profile: GlyphDeviceProfile): GlyphLightPreviewLayout? = layouts[profile]
+    fun layoutFor(profile: GlyphDeviceProfile): GlyphLightPreviewLayout? =
+        GlyphOfficialLightPreviewLayouts.layoutFor(profile) ?: layouts[profile]
 }

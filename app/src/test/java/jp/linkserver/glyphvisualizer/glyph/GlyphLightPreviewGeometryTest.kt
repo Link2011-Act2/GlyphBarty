@@ -1,5 +1,6 @@
 package jp.linkserver.glyphvisualizer.glyph
 
+import androidx.compose.ui.graphics.vector.PathParser
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.GlyphLightDeviceSpec
 import org.junit.Assert.assertEquals
@@ -72,7 +73,7 @@ class GlyphLightPreviewGeometryTest {
     }
 
     @Test
-    fun sketchBasedLayoutsKeepTheExpectedPhysicalSegmentCount() {
+    fun officialLayoutsKeepTheExpectedPhysicalPartCount() {
         val expectedSegmentCounts = mapOf(
             GlyphDeviceProfile.PHONE1 to 5,
             GlyphDeviceProfile.PHONE2 to 11,
@@ -87,60 +88,197 @@ class GlyphLightPreviewGeometryTest {
     }
 
     @Test
-    fun phone2CentralSegmentsUseTheSketchSkeletonInsteadOfOneCircularRing() {
-        val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2))
-        val c1 = layout.specArc(GlyphPreviewSpecRange.C)
+    fun officialSettingsCanvasDimensionsArePreserved() {
+        val expectedSizes = mapOf(
+            GlyphDeviceProfile.PHONE1 to GlyphPreviewSize(179f, 375f),
+            GlyphDeviceProfile.PHONE2 to GlyphPreviewSize(191f, 425f),
+            GlyphDeviceProfile.PHONE2A to GlyphPreviewSize(176f, 374f),
+            GlyphDeviceProfile.PHONE3A to GlyphPreviewSize(176f, 374f)
+        )
 
-        assertTrue("C1 must be a shallow upper arc", c1.radiusY < c1.radiusX / 3f)
-        assertTrue("C1 must stay clear of the separate C2/C3 cluster", c1.center.x - c1.radiusX >= 0.28f)
-        assertTrue("C1_1 must traverse from right toward C1_16 on the left", c1.sweepAngleDegrees < 0f)
+        expectedSizes.forEach { (profile, expectedSize) ->
+            val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
+            assertEquals(profile.name, expectedSize, layout.canvasSize)
+            assertTrue(profile.name, layout.geometryUsesFullCanvas)
+        }
+    }
+
+    @Test
+    fun everyOfficialVectorPathParses() {
+        val officialProfiles = listOf(
+            GlyphDeviceProfile.PHONE1,
+            GlyphDeviceProfile.PHONE2,
+            GlyphDeviceProfile.PHONE2A,
+            GlyphDeviceProfile.PHONE3A
+        )
+
+        officialProfiles.forEach { profile ->
+            val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
+            layout.elements
+                .filterIsInstance<GlyphLightPreviewElement.VectorPath>()
+                .forEach { element ->
+                    val nodes = PathParser().parsePathString(element.pathData).toNodes()
+                    assertTrue(profile.name, nodes.isNotEmpty())
+                }
+        }
+    }
+
+    @Test
+    fun overlayPartBoundsMatchTheOfficialGeometryJson() {
+        val phone2a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2A))
+        phone2a.specPath(GlyphPreviewSpecRange.C).assertBoundsDp(
+            phone2a.canvasSize,
+            left = 17.29999f,
+            top = 14f,
+            width = 43f,
+            height = 49f
+        )
+        phone2a.specPath(GlyphPreviewSpecRange.A).assertBoundsDp(
+            phone2a.canvasSize,
+            left = 20.93997f,
+            top = 109.14999f,
+            width = 21f,
+            height = 27f
+        )
+        phone2a.specPath(GlyphPreviewSpecRange.B).assertBoundsDp(
+            phone2a.canvasSize,
+            left = 157.12f,
+            top = 53.5f,
+            width = 7f,
+            height = 57f
+        )
+
+        val phone3a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE3A))
+        phone3a.specPath(GlyphPreviewSpecRange.C).assertBoundsDp(
+            phone3a.canvasSize,
+            left = 17.01999f,
+            top = 14.76999f,
+            width = 37f,
+            height = 45f
+        )
+        phone3a.specPath(GlyphPreviewSpecRange.B).assertBoundsDp(
+            phone3a.canvasSize,
+            left = 20.84998f,
+            top = 109.88998f,
+            width = 21f,
+            height = 25f
+        )
+        phone3a.specPath(GlyphPreviewSpecRange.A).assertBoundsDp(
+            phone3a.canvasSize,
+            left = 146.53f,
+            top = 57.87997f,
+            width = 17f,
+            height = 61f
+        )
+    }
+
+    @Test
+    fun priorityDeviceSegmentCountsRemainBoundToTheExistingDeviceSpecs() {
+        assertSpecSegmentCounts(
+            GlyphDeviceProfile.PHONE1,
+            mapOf(GlyphPreviewSpecRange.C to 4, GlyphPreviewSpecRange.D1 to 8)
+        )
+        assertSpecSegmentCounts(
+            GlyphDeviceProfile.PHONE2,
+            mapOf(GlyphPreviewSpecRange.C to 16, GlyphPreviewSpecRange.D1 to 8)
+        )
+        assertSpecSegmentCounts(
+            GlyphDeviceProfile.PHONE2A,
+            mapOf(
+                GlyphPreviewSpecRange.C to 24,
+                GlyphPreviewSpecRange.A to 1,
+                GlyphPreviewSpecRange.B to 1
+            )
+        )
+        assertSpecSegmentCounts(
+            GlyphDeviceProfile.PHONE3A,
+            mapOf(
+                GlyphPreviewSpecRange.C to 20,
+                GlyphPreviewSpecRange.A to 11,
+                GlyphPreviewSpecRange.B to 5
+            )
+        )
+    }
+
+    @Test
+    fun phone2UsesTheElevenOfficialPathsAndKeepsSegmentTraversal() {
+        val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2))
+        val c1 = layout.specPath(GlyphPreviewSpecRange.C)
+        val d1 = layout.specPath(GlyphPreviewSpecRange.D1)
+
+        assertEquals(11, layout.elements.size)
+        assertEquals(GlyphPreviewBarDirection.RIGHT_TO_LEFT, c1.segmentDirection)
+        assertEquals(GlyphPreviewBarDirection.BOTTOM_TO_TOP, d1.segmentDirection)
+        assertEquals(GlyphPreviewRect(0f, 0f, 1f, 1f), c1.bounds)
 
         val c2ToC6 = layout.elements.filter { element ->
             val binding = element.channels as? GlyphPreviewChannelBinding.Unmapped
             (binding?.offset ?: -1) in 3..7
         }
         assertEquals(5, c2ToC6.size)
-        assertEquals(3, c2ToC6.filterIsInstance<GlyphLightPreviewElement.Arc>().size)
-        assertEquals(2, c2ToC6.filterIsInstance<GlyphLightPreviewElement.Line>().size)
+        assertEquals(5, c2ToC6.filterIsInstance<GlyphLightPreviewElement.VectorPath>().size)
     }
 
     @Test
-    fun dividedSketchSegmentsFollowTheirLabeledEndpointDirection() {
+    fun dividedOfficialShapesKeepExistingChannelDirectionsAndCounts() {
         val phone1 = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE1))
-        val phone1C = phone1.specArc(GlyphPreviewSpecRange.C)
-        val phone1D1 = phone1.specLine(GlyphPreviewSpecRange.D1)
-        assertTrue(phone1C.startAngleDegrees in 0f..90f)
-        assertTrue(phone1C.sweepAngleDegrees > 180f)
-        assertTrue("D1_1 is below D1_8", phone1D1.start.y > phone1D1.end.y)
+        val phone1C = phone1.specPath(GlyphPreviewSpecRange.C)
+        val phone1D1 = phone1.specPath(GlyphPreviewSpecRange.D1)
+        assertTrue(requireNotNull(phone1C.arcSegments).sweepAngleDegrees > 180f)
+        assertEquals(GlyphPreviewBarDirection.BOTTOM_TO_TOP, phone1D1.segmentDirection)
 
         val phone2a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2A))
-        val phone2aC = phone2a.specArc(GlyphPreviewSpecRange.C)
-        assertTrue("C1 starts below C24", phone2aC.startAngleDegrees < 180f)
-        assertTrue(phone2aC.sweepAngleDegrees > 0f)
+        val phone2aC = phone2a.specPath(GlyphPreviewSpecRange.C)
+        assertEquals(GlyphPreviewBarDirection.LEFT_TO_RIGHT, phone2aC.segmentDirection)
+        assertTrue("Pacman C uses the official stroked path", phone2aC.strokeWidth > 0f)
 
         val phone3a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE3A))
-        val phone3aC = phone3a.specArc(GlyphPreviewSpecRange.C)
-        val phone3aA = phone3a.specArc(GlyphPreviewSpecRange.A)
-        val phone3aB = phone3a.specArc(GlyphPreviewSpecRange.B)
-        assertTrue("A1 traverses from top to A11 at the bottom", phone3aA.sweepAngleDegrees > 0f)
-        assertTrue("B1 traverses from lower-right to B5 at upper-left", phone3aB.sweepAngleDegrees > 0f)
-        assertTrue("B is a short arc", phone3aB.sweepAngleDegrees < 90f)
-        assertTrue("B sits below the C arc", phone3aB.center.y > phone3aC.center.y)
+        val phone3aC = phone3a.specPath(GlyphPreviewSpecRange.C)
+        val phone3aA = phone3a.specPath(GlyphPreviewSpecRange.A)
+        val phone3aB = phone3a.specPath(GlyphPreviewSpecRange.B)
+        assertEquals(GlyphPreviewBarDirection.LEFT_TO_RIGHT, phone3aC.segmentDirection)
+        assertEquals(GlyphPreviewBarDirection.TOP_TO_BOTTOM, phone3aA.segmentDirection)
+        assertEquals(GlyphPreviewBarDirection.RIGHT_TO_LEFT, phone3aB.segmentDirection)
+        assertTrue("Barty A remains the right-side eleven-segment path", phone3aA.bounds.left > 0.8f)
+        assertTrue("Barty B remains the lower-left five-segment path", phone3aB.bounds.left < 0.2f)
     }
 
-    private fun GlyphLightPreviewLayout.specArc(
+    private fun GlyphLightPreviewLayout.specPath(
         range: GlyphPreviewSpecRange
-    ): GlyphLightPreviewElement.Arc = elements
-        .filterIsInstance<GlyphLightPreviewElement.Arc>()
+    ): GlyphLightPreviewElement.VectorPath = elements
+        .filterIsInstance<GlyphLightPreviewElement.VectorPath>()
         .first { element ->
             (element.channels as? GlyphPreviewChannelBinding.SpecRange)?.range == range
         }
 
-    private fun GlyphLightPreviewLayout.specLine(
-        range: GlyphPreviewSpecRange
-    ): GlyphLightPreviewElement.Line = elements
-        .filterIsInstance<GlyphLightPreviewElement.Line>()
-        .first { element ->
-            (element.channels as? GlyphPreviewChannelBinding.SpecRange)?.range == range
+    private fun GlyphLightPreviewElement.VectorPath.assertBoundsDp(
+        canvas: GlyphPreviewSize,
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float
+    ) {
+        assertEquals(left / canvas.width, bounds.left, 0.00001f)
+        assertEquals(top / canvas.height, bounds.top, 0.00001f)
+        assertEquals((left + width) / canvas.width, bounds.right, 0.00001f)
+        assertEquals((top + height) / canvas.height, bounds.bottom, 0.00001f)
+    }
+
+    private fun assertSpecSegmentCounts(
+        profile: GlyphDeviceProfile,
+        expected: Map<GlyphPreviewSpecRange, Int>
+    ) {
+        val spec = requireNotNull(GlyphDeviceCatalog.definitionForProfile(profile)?.lightSpec)
+        val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
+        val actual = layout.resolve(spec, spec.channelCount)
+            .mapNotNull { resolved ->
+                val binding = resolved.geometry.channels as? GlyphPreviewChannelBinding.SpecRange
+                binding?.range?.let { range -> range to resolved.channels.size }
+            }
+            .toMap()
+
+        expected.forEach { (range, count) ->
+            assertEquals("$profile/$range", count, actual[range])
         }
+    }
 }
