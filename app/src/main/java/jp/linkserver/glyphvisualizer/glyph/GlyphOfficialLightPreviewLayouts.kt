@@ -6,7 +6,9 @@ package jp.linkserver.glyphvisualizer.glyph
  * bindings below deliberately keep the existing Barty device-spec semantics.
  */
 internal object GlyphOfficialLightPreviewLayouts {
-    private val phone1Canvas = GlyphPreviewSize(179f, 375f)
+    private const val PHONE2A_BODY_CORNER_RATIO = 22.84f / 120f
+
+    private val phone1Canvas = GlyphPreviewSize(182f, 382f)
     private val phone2Canvas = GlyphPreviewSize(191f, 425f)
     private val phone2aCanvas = GlyphPreviewSize(176f, 374f)
     private val phone3aCanvas = GlyphPreviewSize(176f, 374f)
@@ -74,60 +76,71 @@ internal object GlyphOfficialLightPreviewLayouts {
         segmentDirection = segmentDirection
     )
 
+    private fun phone1Path(
+        channels: GlyphPreviewChannelBinding,
+        pathData: String,
+        segmentBounds: GlyphPreviewRect = rect(0f, 0f, 182f, 382f),
+        segmentDirection: GlyphPreviewBarDirection = GlyphPreviewBarDirection.LEFT_TO_RIGHT,
+        arcSegments: GlyphPreviewArcSegments? = null
+    ) = path(
+        channels = channels,
+        pathData = pathData,
+        sourceBounds = rect(0f, 0f, 182f, 382f),
+        bounds = rect(0f, 0f, 1f, 1f),
+        segmentBounds = segmentBounds,
+        segmentDirection = segmentDirection,
+        arcSegments = arcSegments
+    )
+
     private val layouts = mapOf(
         GlyphDeviceProfile.PHONE1 to GlyphLightPreviewLayout(
             canvasSize = phone1Canvas,
-            bodyCornerRadius = 0.075f,
+            bodyCornerRadius = 0.145f,
             geometryUsesFullCanvas = true,
+            contentScale = 1f,
+            frameAspectRatio = 0.48f,
             cameraMarkers = listOf(
-                cameraDp(31.60f, 30f, 8.5f, phone1Canvas),
-                cameraDp(31.60f, 64f, 8.5f, phone1Canvas)
+                cameraDp(31.54f, 32.18f, 8.5f, phone1Canvas),
+                cameraDp(31.54f, 68.08f, 8.5f, phone1Canvas)
             ),
             elements = listOf(
-                path(
+                phone1Path(
                     channels = unmapped(0),
-                    pathData = "M0.57,14.83V38.82C0.57,44.12 3.39,49.01 7.97,51.66C12.54,54.31 18.18,54.31 22.75,51.66C27.32,49.01 30.14,44.12 30.14,38.82V31.88C30.14,31.43 29.77,31.07 29.33,31.07H26.89C26.43,31.07 26.07,31.44 26.07,31.88V38.82C26.07,44.76 21.27,49.57 15.36,49.57C9.44,49.57 4.65,44.76 4.65,38.82V14.83C4.65,8.89 9.44,4.08 15.36,4.08C21.02,4.08 25.66,8.48 26.05,14.07C26.08,14.49 26.43,14.83 26.86,14.83H29.3C29.53,14.83 29.74,14.73 29.9,14.57C30.04,14.4 30.12,14.19 30.11,13.96C29.64,5.96 22.92,-0.23 14.92,0.01C6.93,0.24 0.57,6.81 0.57,14.83Z",
-                    sourceBounds = rect(0f, 0f, 30.7f, 53f),
-                    bounds = rectDp(9.76999f, 8f, 43.66667f, 78.66667f, phone1Canvas)
+                    pathData = "M9.35,68.08V32.18C9.35,20.18 18.89,10.36 30.88,10.01C42.88,9.66 52.96,18.91 53.67,30.88C53.69,31.22 53.57,31.55 53.34,31.8C53.11,32.04 52.79,32.18 52.46,32.18H48.79C48.15,32.18 47.61,31.68 47.57,31.04C46.98,22.69 40.03,16.11 31.54,16.11C22.66,16.11 15.47,23.3 15.47,32.18V68.08C15.47,76.95 22.66,84.14 31.54,84.14C40.41,84.14 47.6,76.95 47.6,68.08V57.7C47.6,57.02 48.15,56.47 48.83,56.47H52.49C53.16,56.47 53.71,57.01 53.71,57.7V68.08C53.71,76 49.48,83.32 42.63,87.28C35.77,91.24 27.31,91.24 20.45,87.28C13.58,83.32 9.35,75.99 9.35,68.08Z"
                 ),
-                path(
+                phone1Path(
                     channels = unmapped(1),
-                    pathData = "M75.14,35.31C74.67,35.86 74.53,36.63 74.78,37.32C75.03,38 75.62,38.5 76.34,38.63C77.05,38.76 77.78,38.49 78.25,37.93L100.72,11.08C101.45,10.21 101.33,8.93 100.47,8.2C99.61,7.48 98.33,7.59 97.61,8.46L75.14,35.31Z",
-                    sourceBounds = rect(74f, 7f, 102f, 39f),
-                    bounds = rectDp(118.09f, 19.33f, 39f, 45.33333f, phone1Canvas)
+                    pathData = "M121.21,62.81C120.51,63.65 120.3,64.79 120.67,65.82C121.04,66.85 121.94,67.59 123.01,67.78C124.07,67.97 125.18,67.58 125.88,66.74L159.59,26.57C160.67,25.28 160.5,23.35 159.21,22.27C157.91,21.18 155.99,21.36 154.91,22.65L121.21,62.81Z"
                 ),
-                path(
+                phone1Path(
                     channels = spec(GlyphPreviewSpecRange.C),
-                    pathData = "M107.96,121.35C109.08,121.35 109.99,122.26 109.99,123.39H110V158.03C110,160.18 109.26,162.27 107.92,163.94C94.99,179.96 75.55,189.27 55,189.27C34.45,189.27 15.01,179.96 2.08,163.94C0.74,162.27 0,160.18 0,158.03V84.02C0,81.87 0.74,79.79 2.08,78.12C14.91,62.21 34.17,52.92 54.56,52.79C74.95,52.65 94.33,61.7 107.36,77.44C107.82,77.99 107.96,78.76 107.7,79.45C107.45,80.13 106.85,80.63 106.14,80.75C105.42,80.87 104.69,80.6 104.23,80.04C91.98,65.24 73.76,56.74 54.59,56.86C35.41,56.99 17.31,65.73 5.25,80.68C4.49,81.62 4.07,82.8 4.07,84.01V158.03C4.07,159.25 4.49,160.42 5.25,161.37C17.4,176.43 35.68,185.18 55,185.18C74.32,185.18 92.6,176.43 104.75,161.37C105.51,160.42 105.93,159.25 105.93,158.03V123.39C105.93,122.27 106.83,121.35 107.96,121.35Z",
-                    sourceBounds = rect(0f, 52.65f, 110f, 189.27f),
-                    bounds = rectDp(8.83333f, 85.14f, 161.33333f, 199.66667f, phone1Canvas),
+                    pathData = "M173.49,194.58C173.49,192.89 172.12,191.53 170.44,191.53C168.75,191.53 167.39,192.9 167.39,194.58V246.4C167.39,248.21 166.77,249.97 165.63,251.38C147.4,273.91 119.98,287.01 91,287.01C62.02,287.01 34.6,273.91 16.37,251.38C15.23,249.97 14.61,248.21 14.61,246.4V135.67C14.61,133.85 15.23,132.1 16.37,130.68C34.46,108.32 61.62,95.25 90.38,95.06C119.14,94.88 146.47,107.6 164.84,129.73C165.54,130.56 166.63,130.97 167.7,130.79C168.78,130.61 169.68,129.86 170.05,128.84C170.43,127.82 170.24,126.67 169.54,125.83C150,102.3 120.93,88.76 90.35,88.96C59.75,89.16 30.87,103.06 11.63,126.85C9.6,129.35 8.5,132.47 8.5,135.68V246.4C8.5,249.61 9.6,252.73 11.63,255.23C31.01,279.2 60.17,293.12 91,293.12C121.83,293.12 150.99,279.2 170.37,255.23C172.4,252.73 173.5,249.61 173.5,246.4V194.58H173.49Z",
                     arcSegments = GlyphPreviewArcSegments(
-                        center = point(55f, 121.03f),
-                        radiusX = 60f,
-                        radiusY = 75f,
+                        center = point(91f, 191.04f),
+                        radiusX = 90f,
+                        radiusY = 112f,
                         startAngleDegrees = 2f,
                         sweepAngleDegrees = 325f
                     )
                 ),
-                path(
+                phone1Path(
                     channels = spec(GlyphPreviewSpecRange.D1),
-                    pathData = "M54.99,231.79C56.12,231.79 57.03,230.88 57.03,229.76V201.76C57.03,200.63 56.11,199.72 54.99,199.72C53.87,199.72 52.96,200.64 52.96,201.76V229.76C52.96,230.88 53.87,231.79 54.99,231.79Z",
-                    sourceBounds = rect(52.5f, 199.5f, 57.5f, 232f),
-                    bounds = rectDp(86.33333f, 301.07f, 6.33333f, 50.66667f, phone1Canvas),
+                    pathData = "M90.99,356.73C92.68,356.73 94.04,355.36 94.04,353.68V311.8C94.04,310.12 92.67,308.76 90.99,308.76C89.31,308.76 87.94,310.13 87.94,311.8V353.68C87.94,355.37 89.31,356.73 90.99,356.73Z",
+                    segmentBounds = rect(87.94f, 308.76f, 94.04f, 356.73f),
                     segmentDirection = GlyphPreviewBarDirection.BOTTOM_TO_TOP
                 ),
-                path(
+                phone1Path(
                     channels = unmapped(2),
-                    pathData = "M54.99,242C56.12,242 57.03,241.08 57.03,239.96V238.73C57.03,237.6 56.11,236.7 54.99,236.7C53.87,236.7 52.96,237.61 52.96,238.73V239.96C52.96,241.08 53.87,242 54.99,242Z",
-                    sourceBounds = rect(52.5f, 236.5f, 57.5f, 242.2f),
-                    bounds = rectDp(86.33333f, 358.41397f, 6.33333f, 6.33333f, phone1Canvas)
+                    pathData = "M90.99,372C92.68,372 94.04,370.63 94.04,368.95V367.11C94.04,365.43 92.67,364.07 90.99,364.07C89.31,364.07 87.94,365.43 87.94,367.11V368.95C87.94,370.63 89.31,372 90.99,372Z"
                 )
             )
         ),
         GlyphDeviceProfile.PHONE2 to GlyphLightPreviewLayout(
             canvasSize = phone2Canvas,
-            bodyCornerRadius = 0.075f,
+            bodyCornerRadius = 0.145f,
             geometryUsesFullCanvas = true,
+            contentScale = 0.925f,
+            frameAspectRatio = 0.48f,
             cameraMarkers = listOf(
                 cameraDp(28.2f, 26.7f, 9.7f, phone2Canvas),
                 cameraDp(28.2f, 70.7f, 9.7f, phone2Canvas)
@@ -194,7 +207,7 @@ internal object GlyphOfficialLightPreviewLayouts {
         ),
         GlyphDeviceProfile.PHONE2A to GlyphLightPreviewLayout(
             canvasSize = phone2aCanvas,
-            bodyCornerRadius = 22.84f / 120f,
+            bodyCornerRadius = PHONE2A_BODY_CORNER_RATIO,
             geometryUsesFullCanvas = true,
             cameraMarkers = listOf(
                 cameraDp(68.405f, 81.67f, 13.875f, phone2aCanvas),

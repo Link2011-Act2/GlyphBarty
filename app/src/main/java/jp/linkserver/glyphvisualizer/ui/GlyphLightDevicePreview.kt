@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -69,11 +70,17 @@ internal fun GlyphLightDevicePreview(
             right = size.width - bodyInset,
             bottom = size.height - bodyInset
         )
-        val geometryFrame = if (layout.geometryUsesFullCanvas) {
+        val geometryBase = if (
+            layout.geometryUsesFullCanvas &&
+            layout.frameAspectRatio != layout.canvasSize.aspectRatio
+        ) {
+            Rect(Offset.Zero, size).fitCenter(layout.canvasSize.aspectRatio)
+        } else if (layout.geometryUsesFullCanvas) {
             Rect(Offset.Zero, size)
         } else {
             body
         }
+        val geometryFrame = geometryBase.scaledFromCenter(layout.contentScale)
         val cornerRadius = layout.bodyCornerRadius * body.width
         drawRoundRect(
             color = DeviceBodyColor,
@@ -102,7 +109,13 @@ internal fun GlyphLightDevicePreview(
         }
 
         resolvedElements.forEach { resolved ->
-            drawResolvedElement(resolved, brightness, geometryFrame, vectorPaths)
+            drawResolvedElement(
+                resolved = resolved,
+                brightness = brightness,
+                body = geometryFrame,
+                vectorPaths = vectorPaths,
+                showSegmentGaps = layout.showSegmentGaps
+            )
         }
     }
 }
@@ -111,39 +124,45 @@ private fun DrawScope.drawResolvedElement(
     resolved: GlyphResolvedLightPreviewElement,
     brightness: IntArray,
     body: Rect,
-    vectorPaths: Map<String, Path>
+    vectorPaths: Map<String, Path>,
+    showSegmentGaps: Boolean
 ) {
     when (val geometry = resolved.geometry) {
         is GlyphLightPreviewElement.Line -> drawSegmentedLine(
             geometry = geometry,
             channels = resolved.channels,
             brightness = brightness,
-            body = body
+            body = body,
+            showSegmentGaps = showSegmentGaps
         )
         is GlyphLightPreviewElement.Arc -> drawSegmentedArc(
             geometry = geometry,
             channels = resolved.channels,
             brightness = brightness,
-            body = body
+            body = body,
+            showSegmentGaps = showSegmentGaps
         )
         is GlyphLightPreviewElement.Circle -> drawSegmentedCircle(
             geometry = geometry,
             channels = resolved.channels,
             brightness = brightness,
-            body = body
+            body = body,
+            showSegmentGaps = showSegmentGaps
         )
         is GlyphLightPreviewElement.Bar -> drawSegmentedBar(
             geometry = geometry,
             channels = resolved.channels,
             brightness = brightness,
-            body = body
+            body = body,
+            showSegmentGaps = showSegmentGaps
         )
         is GlyphLightPreviewElement.VectorPath -> drawSegmentedVectorPath(
             geometry = geometry,
             path = vectorPaths.getValue(geometry.pathData),
             channels = resolved.channels,
             brightness = brightness,
-            body = body
+            body = body,
+            showSegmentGaps = showSegmentGaps
         )
     }
 }
@@ -153,7 +172,8 @@ private fun DrawScope.drawSegmentedVectorPath(
     path: Path,
     channels: List<Int>,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    showSegmentGaps: Boolean
 ) {
     val target = normalizedRect(geometry.bounds, body)
     val source = geometry.sourceBounds
@@ -174,11 +194,14 @@ private fun DrawScope.drawSegmentedVectorPath(
             return@withTransform
         }
 
-        drawOfficialPath(
-            path = path,
-            color = InactiveGlyphColor,
-            strokeWidth = geometry.strokeWidth
-        )
+        val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
+        if (!showSegmentGaps) {
+            drawOfficialPath(
+                path = path,
+                color = InactiveGlyphColor,
+                strokeWidth = geometry.strokeWidth
+            )
+        }
 
         geometry.arcSegments?.let { arcSegments ->
             val segmentSweep = arcSegments.sweepAngleDegrees / channels.size
@@ -190,14 +213,14 @@ private fun DrawScope.drawSegmentedVectorPath(
             )
             channels.forEachIndexed { index, channel ->
                 val channelBrightness = brightness.getOrElse(channel) { 0 }
-                if (channelBrightness <= 0) return@forEachIndexed
+                if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
                 val wedgePath = Path().apply {
                     moveTo(arcSegments.center.x, arcSegments.center.y)
                     arcTo(
                         rect = arcBounds,
                         startAngleDegrees = arcSegments.startAngleDegrees + segmentSweep *
-                            (index + SEGMENT_GAP_RATIO / 2f),
-                        sweepAngleDegrees = segmentSweep * (1f - SEGMENT_GAP_RATIO),
+                            (index + gapRatio / 2f),
+                        sweepAngleDegrees = segmentSweep * (1f - gapRatio),
                         forceMoveTo = false
                     )
                     close()
@@ -221,11 +244,11 @@ private fun DrawScope.drawSegmentedVectorPath(
         } else {
             segmentBounds.width / channels.size
         }
-        val gap = segmentLength * SEGMENT_GAP_RATIO
+        val gap = segmentLength * gapRatio
 
         channels.forEachIndexed { index, channel ->
             val channelBrightness = brightness.getOrElse(channel) { 0 }
-            if (channelBrightness <= 0) return@forEachIndexed
+            if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
             val slot = when (geometry.segmentDirection) {
                 GlyphPreviewBarDirection.TOP_TO_BOTTOM,
                 GlyphPreviewBarDirection.LEFT_TO_RIGHT -> index
@@ -279,7 +302,8 @@ private fun DrawScope.drawSegmentedLine(
     geometry: GlyphLightPreviewElement.Line,
     channels: List<Int>,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    showSegmentGaps: Boolean
 ) {
     val start = normalizedPoint(geometry.start, body)
     val end = normalizedPoint(geometry.end, body)
@@ -295,18 +319,21 @@ private fun DrawScope.drawSegmentedLine(
         return
     }
 
-    drawLine(
-        color = InactiveGlyphColor,
-        start = start,
-        end = end,
-        strokeWidth = strokeWidth,
-        cap = StrokeCap.Round
-    )
+    val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
+    if (!showSegmentGaps) {
+        drawLine(
+            color = InactiveGlyphColor,
+            start = start,
+            end = end,
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
     channels.forEachIndexed { index, channel ->
         val channelBrightness = brightness.getOrElse(channel) { 0 }
-        if (channelBrightness <= 0) return@forEachIndexed
-        val startFraction = segmentFraction(index, channels.size, start = true)
-        val endFraction = segmentFraction(index, channels.size, start = false)
+        if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
+        val startFraction = segmentFraction(index, channels.size, gapRatio, start = true)
+        val endFraction = segmentFraction(index, channels.size, gapRatio, start = false)
         drawLine(
             color = glyphColor(channelBrightness),
             start = interpolate(start, end, startFraction),
@@ -321,7 +348,8 @@ private fun DrawScope.drawSegmentedArc(
     geometry: GlyphLightPreviewElement.Arc,
     channels: List<Int>,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    showSegmentGaps: Boolean
 ) {
     val center = normalizedPoint(geometry.center, body)
     val arcSize = Size(
@@ -347,23 +375,26 @@ private fun DrawScope.drawSegmentedArc(
         return
     }
 
-    drawArc(
-        color = InactiveGlyphColor,
-        startAngle = geometry.startAngleDegrees,
-        sweepAngle = geometry.sweepAngleDegrees,
-        useCenter = false,
-        topLeft = topLeft,
-        size = arcSize,
-        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-    )
+    val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
+    if (!showSegmentGaps) {
+        drawArc(
+            color = InactiveGlyphColor,
+            startAngle = geometry.startAngleDegrees,
+            sweepAngle = geometry.sweepAngleDegrees,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+    }
     channels.forEachIndexed { index, channel ->
         val channelBrightness = brightness.getOrElse(channel) { 0 }
-        if (channelBrightness <= 0) return@forEachIndexed
+        if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
         drawArc(
             color = glyphColor(channelBrightness),
             startAngle = geometry.startAngleDegrees + segmentSweep *
-                (index + SEGMENT_GAP_RATIO / 2f),
-            sweepAngle = segmentSweep * (1f - SEGMENT_GAP_RATIO),
+                (index + gapRatio / 2f),
+            sweepAngle = segmentSweep * (1f - gapRatio),
             useCenter = false,
             topLeft = topLeft,
             size = arcSize,
@@ -376,7 +407,8 @@ private fun DrawScope.drawSegmentedCircle(
     geometry: GlyphLightPreviewElement.Circle,
     channels: List<Int>,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    showSegmentGaps: Boolean
 ) {
     val center = normalizedPoint(geometry.center, body)
     val radius = geometry.radius * body.width
@@ -390,20 +422,23 @@ private fun DrawScope.drawSegmentedCircle(
     }
 
     val strokeWidth = (radius * 0.7f).coerceAtLeast(1f)
-    drawCircle(
-        color = InactiveGlyphColor,
-        radius = radius,
-        center = center,
-        style = Stroke(width = strokeWidth)
-    )
+    val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
+    if (!showSegmentGaps) {
+        drawCircle(
+            color = InactiveGlyphColor,
+            radius = radius,
+            center = center,
+            style = Stroke(width = strokeWidth)
+        )
+    }
     val segmentSweep = 360f / channels.size
     channels.forEachIndexed { index, channel ->
         val channelBrightness = brightness.getOrElse(channel) { 0 }
-        if (channelBrightness <= 0) return@forEachIndexed
+        if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
         drawArc(
             color = glyphColor(channelBrightness),
-            startAngle = segmentSweep * (index + SEGMENT_GAP_RATIO / 2f),
-            sweepAngle = segmentSweep * (1f - SEGMENT_GAP_RATIO),
+            startAngle = segmentSweep * (index + gapRatio / 2f),
+            sweepAngle = segmentSweep * (1f - gapRatio),
             useCenter = false,
             topLeft = Offset(center.x - radius, center.y - radius),
             size = Size(radius * 2f, radius * 2f),
@@ -419,7 +454,8 @@ private fun DrawScope.drawSegmentedBar(
     geometry: GlyphLightPreviewElement.Bar,
     channels: List<Int>,
     brightness: IntArray,
-    body: Rect
+    body: Rect,
+    showSegmentGaps: Boolean
 ) {
     val bounds = normalizedRect(geometry.bounds, body)
     val baseRadius = min(bounds.width, bounds.height) * 0.22f
@@ -433,20 +469,23 @@ private fun DrawScope.drawSegmentedBar(
         return
     }
 
-    drawRoundRect(
-        color = InactiveGlyphColor,
-        topLeft = bounds.topLeft,
-        size = bounds.size,
-        cornerRadius = CornerRadius(baseRadius, baseRadius)
-    )
+    if (!showSegmentGaps) {
+        drawRoundRect(
+            color = InactiveGlyphColor,
+            topLeft = bounds.topLeft,
+            size = bounds.size,
+            cornerRadius = CornerRadius(baseRadius, baseRadius)
+        )
+    }
     val vertical = geometry.direction == GlyphPreviewBarDirection.TOP_TO_BOTTOM ||
         geometry.direction == GlyphPreviewBarDirection.BOTTOM_TO_TOP
     val segmentLength = if (vertical) bounds.height / channels.size else bounds.width / channels.size
-    val gap = segmentLength * SEGMENT_GAP_RATIO
+    val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
+    val gap = segmentLength * gapRatio
 
     channels.forEachIndexed { index, channel ->
         val channelBrightness = brightness.getOrElse(channel) { 0 }
-        if (channelBrightness <= 0) return@forEachIndexed
+        if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
         val slot = when (geometry.direction) {
             GlyphPreviewBarDirection.TOP_TO_BOTTOM,
             GlyphPreviewBarDirection.LEFT_TO_RIGHT -> index
@@ -468,13 +507,26 @@ private fun DrawScope.drawSegmentedBar(
                 bottom = bounds.bottom
             )
         }
-        val radius = min(segmentBounds.width, segmentBounds.height) * 0.22f
-        drawRoundRect(
-            color = glyphColor(channelBrightness),
-            topLeft = segmentBounds.topLeft,
-            size = segmentBounds.size,
-            cornerRadius = CornerRadius(radius, radius)
-        )
+        if (showSegmentGaps) {
+            val radius = min(segmentBounds.width, segmentBounds.height) * 0.22f
+            drawRoundRect(
+                color = glyphColor(channelBrightness),
+                topLeft = segmentBounds.topLeft,
+                size = segmentBounds.size,
+                cornerRadius = CornerRadius(radius, radius)
+            )
+        } else {
+            val outerPath = Path().apply {
+                addRoundRect(RoundRect(bounds, CornerRadius(baseRadius, baseRadius)))
+            }
+            clipPath(outerPath) {
+                drawRect(
+                    color = glyphColor(channelBrightness),
+                    topLeft = segmentBounds.topLeft,
+                    size = segmentBounds.size
+                )
+            }
+        }
     }
 }
 
@@ -490,9 +542,39 @@ private fun normalizedRect(rect: GlyphPreviewRect, body: Rect): Rect = Rect(
     bottom = body.top + rect.bottom * body.height
 )
 
-private fun segmentFraction(index: Int, count: Int, start: Boolean): Float {
+private fun Rect.scaledFromCenter(scale: Float): Rect {
+    if (scale == 1f) return this
+    val horizontalInset = width * (1f - scale) / 2f
+    val verticalInset = height * (1f - scale) / 2f
+    return Rect(
+        left = left + horizontalInset,
+        top = top + verticalInset,
+        right = right - horizontalInset,
+        bottom = bottom - verticalInset
+    )
+}
+
+private fun Rect.fitCenter(aspectRatio: Float): Rect {
+    val currentAspectRatio = width / height
+    return if (currentAspectRatio > aspectRatio) {
+        val fittedWidth = height * aspectRatio
+        val horizontalInset = (width - fittedWidth) / 2f
+        Rect(left + horizontalInset, top, right - horizontalInset, bottom)
+    } else {
+        val fittedHeight = width / aspectRatio
+        val verticalInset = (height - fittedHeight) / 2f
+        Rect(left, top + verticalInset, right, bottom - verticalInset)
+    }
+}
+
+private fun segmentFraction(
+    index: Int,
+    count: Int,
+    gapRatio: Float,
+    start: Boolean
+): Float {
     val segmentSize = 1f / count.coerceAtLeast(1)
-    val gap = segmentSize * SEGMENT_GAP_RATIO
+    val gap = segmentSize * gapRatio
     return if (start) {
         index * segmentSize + gap / 2f
     } else {

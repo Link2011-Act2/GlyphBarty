@@ -90,7 +90,7 @@ class GlyphLightPreviewGeometryTest {
     @Test
     fun officialSettingsCanvasDimensionsArePreserved() {
         val expectedSizes = mapOf(
-            GlyphDeviceProfile.PHONE1 to GlyphPreviewSize(179f, 375f),
+            GlyphDeviceProfile.PHONE1 to GlyphPreviewSize(182f, 382f),
             GlyphDeviceProfile.PHONE2 to GlyphPreviewSize(191f, 425f),
             GlyphDeviceProfile.PHONE2A to GlyphPreviewSize(176f, 374f),
             GlyphDeviceProfile.PHONE3A to GlyphPreviewSize(176f, 374f)
@@ -100,6 +100,52 @@ class GlyphLightPreviewGeometryTest {
             val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
             assertEquals(profile.name, expectedSize, layout.canvasSize)
             assertTrue(profile.name, layout.geometryUsesFullCanvas)
+        }
+    }
+
+    @Test
+    fun phone1AndPhone2UseOneCompletedVectorCoordinateSpacePerDevice() {
+        val expected = mapOf(
+            GlyphDeviceProfile.PHONE1 to GlyphPreviewRect(0f, 0f, 182f, 382f),
+            GlyphDeviceProfile.PHONE2 to GlyphPreviewRect(0f, 0f, 191f, 425f)
+        )
+
+        expected.forEach { (profile, sourceBounds) ->
+            val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
+            val paths = layout.elements.filterIsInstance<GlyphLightPreviewElement.VectorPath>()
+            assertEquals(profile.name, layout.elements.size, paths.size)
+            paths.forEach { element ->
+                assertEquals(profile.name, sourceBounds, element.sourceBounds)
+                assertEquals(profile.name, GlyphPreviewRect(0f, 0f, 1f, 1f), element.bounds)
+            }
+        }
+    }
+
+    @Test
+    fun phone1AndPhone2FramesUsePhysicalAspectWithoutChangingGlyphCanvases() {
+        val phone1 = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE1))
+        val phone2 = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2))
+        val phone2a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2A))
+
+        assertEquals(0.145f, phone1.bodyCornerRadius, 0.00001f)
+        assertEquals(0.145f, phone2.bodyCornerRadius, 0.00001f)
+        assertEquals(0.48f, phone1.aspectRatio, 0.00001f)
+        assertEquals(0.48f, phone2.aspectRatio, 0.00001f)
+        assertEquals(182f / 382f, phone1.canvasSize.aspectRatio, 0.00001f)
+        assertEquals(191f / 425f, phone2.canvasSize.aspectRatio, 0.00001f)
+        assertEquals(phone2a.canvasSize.aspectRatio, phone2a.aspectRatio, 0.00001f)
+        assertEquals(1f, phone1.contentScale, 0.00001f)
+        assertEquals(0.925f, phone2.contentScale, 0.00001f)
+        assertEquals(1f, phone2a.contentScale, 0.00001f)
+    }
+
+    @Test
+    fun onlyPhone4aAndPhone4bKeepSegmentGaps() {
+        lightProfiles.forEach { profile ->
+            val layout = requireNotNull(GlyphLightPreviewGeometry.layoutFor(profile))
+            val expected = profile == GlyphDeviceProfile.PHONE4A ||
+                profile == GlyphDeviceProfile.PHONE4B
+            assertEquals(profile.name, expected, layout.showSegmentGaps)
         }
     }
 

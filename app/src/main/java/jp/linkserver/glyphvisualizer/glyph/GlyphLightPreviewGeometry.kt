@@ -139,22 +139,32 @@ internal data class GlyphLightPreviewLayout(
     val bodyCornerRadius: Float,
     val cameraMarkers: List<GlyphPreviewCameraMarker>,
     val elements: List<GlyphLightPreviewElement>,
-    val geometryUsesFullCanvas: Boolean = false
+    val geometryUsesFullCanvas: Boolean = false,
+    val contentScale: Float = 1f,
+    val frameAspectRatio: Float = canvasSize.aspectRatio,
+    val showSegmentGaps: Boolean = false
 ) {
+    init {
+        require(contentScale > 0f)
+        require(frameAspectRatio > 0f)
+    }
+
     constructor(
         aspectRatio: Float,
         bodyCornerRadius: Float,
         cameraMarkers: List<GlyphPreviewCameraMarker>,
-        elements: List<GlyphLightPreviewElement>
+        elements: List<GlyphLightPreviewElement>,
+        showSegmentGaps: Boolean = false
     ) : this(
         canvasSize = GlyphPreviewSize(aspectRatio, 1f),
         bodyCornerRadius = bodyCornerRadius,
         cameraMarkers = cameraMarkers,
-        elements = elements
+        elements = elements,
+        showSegmentGaps = showSegmentGaps
     )
 
     val aspectRatio: Float
-        get() = canvasSize.aspectRatio
+        get() = frameAspectRatio
 
     fun resolve(
         spec: GlyphLightDeviceSpec,
@@ -419,6 +429,7 @@ internal object GlyphLightPreviewGeometry {
         GlyphDeviceProfile.PHONE4A to GlyphLightPreviewLayout(
             aspectRatio = 0.51f,
             bodyCornerRadius = 0.07f,
+            showSegmentGaps = true,
             cameraMarkers = listOf(
                 camera(0.37f, 0.15f, 0.058f),
                 camera(0.51f, 0.15f, 0.058f),
@@ -440,6 +451,7 @@ internal object GlyphLightPreviewGeometry {
         GlyphDeviceProfile.PHONE4B to GlyphLightPreviewLayout(
             aspectRatio = 0.49f,
             bodyCornerRadius = 0.075f,
+            showSegmentGaps = true,
             cameraMarkers = listOf(
                 camera(0.19f, 0.085f, 0.060f),
                 camera(0.19f, 0.18f, 0.060f)
