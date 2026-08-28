@@ -37,6 +37,8 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuning
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
 import jp.linkserver.glyphvisualizer.glyph.glyphAutoScaleStrategy
@@ -465,7 +467,8 @@ class GlyphVisualizerService : Service() {
         val matrixSmoothMotionEnabled: Boolean,
         val allBrightnessAutoScale: Boolean,
         val autoScaleWindowSeconds: Float,
-        val autoScaleOffset: Float
+        val autoScaleOffset: Float,
+        val visualTuningOverride: GlyphVisualTuning?
     )
     private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
@@ -1775,7 +1778,10 @@ class GlyphVisualizerService : Service() {
             matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
             allBrightnessAutoScale = allBrightnessAutoScale,
             autoScaleWindowSeconds = autoScaleWindowSeconds,
-            autoScaleOffset = autoScaleOffset
+            autoScaleOffset = autoScaleOffset,
+            visualTuningOverride = savedSettings.visualDynamicsOverrides[
+                GlyphVisualTuningKey(outputDeviceProfile, glyphMode)
+            ]?.let { dynamics -> GlyphVisualTuning(dynamics = dynamics) }
         )
         runGlyphControllerCommand {
             setPhone4bEmulationEnabled(snapshot.phone4bEmulationEnabled)
@@ -1795,6 +1801,7 @@ class GlyphVisualizerService : Service() {
             setAllBrightnessAutoScaleEnabled(snapshot.allBrightnessAutoScale)
             setAutoScaleWindowSeconds(snapshot.autoScaleWindowSeconds)
             setAutoScaleOffset(snapshot.autoScaleOffset)
+            setVisualTuningOverride(snapshot.visualTuningOverride)
         }
         updateBackDownSensorState()
     }

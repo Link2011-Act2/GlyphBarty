@@ -86,6 +86,8 @@ class GlyphMatrixController(
     private val levelAutoGain = AutoGainController()
     private val spectrumAutoGain = AutoGainController()
     private val allBrightnessAutoGain = AutoGainController()
+    private val levelVisualDynamicsExpander = VisualDynamicsExpander()
+    private val allBrightnessVisualDynamicsExpander = VisualDynamicsExpander()
     private var allBrightnessGateOn = false
     private var lastPreviewLevel = 0f
     private var physicalMatrixLength = 0
@@ -219,6 +221,8 @@ class GlyphMatrixController(
         } else {
             actualMatrixProfile
         }
+        levelVisualDynamicsExpander.reset()
+        allBrightnessVisualDynamicsExpander.reset()
         matrixLength = if (phone4aProEmulatedOnPhone3) {
             GlyphMatrixProfileEmulator.PHONE4A_PRO_MATRIX_LENGTH
         } else {
@@ -479,16 +483,8 @@ class GlyphMatrixController(
             normalizedSpectrumBands = FloatArray(input.size)
         }
 
-        val patternKind = GlyphPatternRegistry.kindOf(glyphMode)
         for (i in input.indices) {
-            normalizedSpectrumBands[i] = applyAutoScaleVisualTuning(
-                value = input[i].coerceIn(0f, 1f) * gain,
-                autoScaleEnabled = spectrumAutoScaleEnabled,
-                strategy = autoScaleStrategy,
-                profile = matrixProfile,
-                patternKind = patternKind,
-                override = visualTuningOverride
-            )
+            normalizedSpectrumBands[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
         }
         return normalizedSpectrumBands
     }
@@ -504,12 +500,14 @@ class GlyphMatrixController(
     private fun resetAllBrightnessScaleTracking() {
         legacyAllBrightnessAutoScale.reset()
         allBrightnessAutoGain.reset()
+        allBrightnessVisualDynamicsExpander.reset()
         allBrightnessGateOn = false
     }
 
     private fun resetLevelScaleTracking() {
         legacyLevelAutoScale.reset()
         levelAutoGain.reset()
+        levelVisualDynamicsExpander.reset()
     }
 
     private fun normalizeLevelForMode(level: Float, nowMs: Long): Float {
@@ -529,12 +527,16 @@ class GlyphMatrixController(
             gainUpTauSeconds = autoScaleWindowMs / 1_000f,
             holdGainIncrease = level < SILENCE_ACTIVITY_THRESHOLD
         )
-        return applyAutoScaleVisualTuning(
-            value = level * gain,
+        return applyAdaptiveVisualDynamics(
+            agcLevel = level * gain,
             autoScaleEnabled = levelAutoScaleEnabled,
             strategy = autoScaleStrategy,
             profile = matrixProfile,
+            patternId = glyphMode,
             patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+            expander = levelVisualDynamicsExpander,
+            nowMs = nowMs,
+            windowMs = autoScaleWindowMs,
             override = visualTuningOverride
         )
     }
@@ -568,12 +570,16 @@ class GlyphMatrixController(
             holdGainIncrease = !allBrightnessGateOn
         )
         return if (allBrightnessGateOn) {
-            applyAutoScaleVisualTuning(
-                value = level * gain,
+            applyAdaptiveVisualDynamics(
+                agcLevel = level * gain,
                 autoScaleEnabled = allBrightnessAutoScaleEnabled,
                 strategy = autoScaleStrategy,
                 profile = matrixProfile,
+                patternId = glyphMode,
                 patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+                expander = allBrightnessVisualDynamicsExpander,
+                nowMs = nowMs,
+                windowMs = autoScaleWindowMs,
                 override = visualTuningOverride
             )
         } else {
@@ -594,7 +600,11 @@ class GlyphMatrixController(
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
             ?: GlyphPatternRenderMode.MATRIX_BAR
         var renderLevel = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
-            normalizeAllBrightnessLevel(clamped, now)
+            if (isAllBrightnessOff(clamped, allBrightnessAutoScaleEnabled, autoScaleStrategy)) {
+                0f
+            } else {
+                normalizeAllBrightnessLevel(clamped, now)
+            }
         } else {
             normalizeLevelForMode(clamped, now)
         }
@@ -716,7 +726,14 @@ class GlyphMatrixController(
             ((virtualRings - fullRings) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
         }
         val allBrightnessFrameBrightness = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
-            if (renderLevel <= 0f) {
+            if (
+                isAllBrightnessDisplayOff(
+                    displayLevel = renderLevel,
+                    autoScaleEnabled = allBrightnessAutoScaleEnabled,
+                    strategy = autoScaleStrategy,
+                    adaptiveGateOn = allBrightnessGateOn
+                )
+            ) {
                 COLOR_OFF
             } else {
                 val normalized = ((renderLevel - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))

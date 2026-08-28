@@ -3,6 +3,7 @@ package jp.linkserver.glyphvisualizer
 import android.content.Context
 import org.json.JSONObject
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 object SettingsPreferences {
@@ -15,6 +16,7 @@ object SettingsPreferences {
     private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
     private const val KEY_DEBUG_DEVICE_PROFILE_OVERRIDE = "debug_device_profile_override"
     private const val KEY_DETAILED_HOME_ENABLED = "detailed_home_enabled"
+    private const val KEY_VISUAL_DYNAMICS_OVERRIDES = "glyph_visual_dynamics_overrides_v1"
 
     fun defaultParameters(): CaptureUiState = CaptureUiState()
 
@@ -41,6 +43,7 @@ object SettingsPreferences {
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
             experimentalAdaptiveAutoScaleEnabled = state.experimentalAdaptiveAutoScaleEnabled,
+            visualDynamicsOverrides = state.visualDynamicsOverrides,
             autoScaleWindowSeconds = state.autoScaleWindowSeconds,
             autoScaleOffset = state.autoScaleOffset,
             latencyMs = state.latencyMs,
@@ -119,6 +122,9 @@ object SettingsPreferences {
                 "experimental_adaptive_auto_scale_enabled",
                 defaults.experimentalAdaptiveAutoScaleEnabled
             ),
+            visualDynamicsOverrides = decodeVisualDynamicsOverrides(
+                prefs.getString(KEY_VISUAL_DYNAMICS_OVERRIDES, null)
+            ),
             autoScaleWindowSeconds = prefs.getFloatCompat("auto_scale_window_seconds", defaults.autoScaleWindowSeconds),
             autoScaleOffset = prefs.getFloatCompat("auto_scale_offset", defaults.autoScaleOffset),
             latencyMs = prefs.getFloatCompat("latency_ms", defaults.latencyMs),
@@ -184,6 +190,10 @@ object SettingsPreferences {
             .putBoolean(
                 "experimental_adaptive_auto_scale_enabled",
                 parameters.experimentalAdaptiveAutoScaleEnabled
+            )
+            .putString(
+                KEY_VISUAL_DYNAMICS_OVERRIDES,
+                encodeVisualDynamicsOverrides(parameters.visualDynamicsOverrides)
             )
             .putFloat("auto_scale_window_seconds", parameters.autoScaleWindowSeconds)
             .putFloat("auto_scale_offset", parameters.autoScaleOffset)
@@ -267,6 +277,10 @@ object SettingsPreferences {
                     put("glyphMode", parameters.glyphMode)
                     put("autoScaleWindowSeconds", parameters.autoScaleWindowSeconds.toDouble())
                     put("autoScaleOffset", parameters.autoScaleOffset.toDouble())
+                    put(
+                        "visualDynamicsOverrides",
+                        JSONObject(encodeVisualDynamicsOverrides(parameters.visualDynamicsOverrides))
+                    )
                     put("oscilloscopeAutoTimeAxisEnabled", parameters.oscilloscopeAutoTimeAxisEnabled)
                 }
             )
@@ -293,6 +307,9 @@ object SettingsPreferences {
             glyphMode = parameters.optString("glyphMode", defaults.glyphMode),
             autoScaleWindowSeconds = parameters.optDouble("autoScaleWindowSeconds", defaults.autoScaleWindowSeconds.toDouble()).toFloat(),
             autoScaleOffset = parameters.optDouble("autoScaleOffset", defaults.autoScaleOffset.toDouble()).toFloat(),
+            visualDynamicsOverrides = parameters.optJSONObject("visualDynamicsOverrides")?.let {
+                decodeVisualDynamicsOverrides(it.toString())
+            } ?: defaults.visualDynamicsOverrides,
             oscilloscopeAutoTimeAxisEnabled = parameters.optBoolean(
                 "oscilloscopeAutoTimeAxisEnabled",
                 defaults.oscilloscopeAutoTimeAxisEnabled
@@ -322,6 +339,30 @@ object SettingsPreferences {
                 false
             }
         )
+    }
+
+    private fun encodeVisualDynamicsOverrides(
+        overrides: Map<GlyphVisualTuningKey, Float>
+    ): String = JSONObject().apply {
+        overrides.forEach { (key, value) ->
+            put("${key.profile.name}|${key.patternId}", value.coerceIn(0f, 1f).toDouble())
+        }
+    }.toString()
+
+    private fun decodeVisualDynamicsOverrides(raw: String?): Map<GlyphVisualTuningKey, Float> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val root = runCatching { JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val result = mutableMapOf<GlyphVisualTuningKey, Float>()
+        root.keys().forEach { encodedKey ->
+            val parts = encodedKey.split('|', limit = 2)
+            if (parts.size != 2) return@forEach
+            val profile = GlyphDeviceProfile.entries.firstOrNull { it.name == parts[0] }
+                ?: return@forEach
+            val dynamics = root.optDouble(encodedKey, Double.NaN).toFloat()
+            if (dynamics.isNaN()) return@forEach
+            result[GlyphVisualTuningKey(profile, parts[1])] = dynamics.coerceIn(0f, 1f)
+        }
+        return result
     }
 
     private fun loadLegacyLatencyForRoute(

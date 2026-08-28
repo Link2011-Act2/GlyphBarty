@@ -100,9 +100,11 @@ import kotlinx.coroutines.launch
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
+import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
 
 internal enum class ExperimentalDetailsTab {
     LIVE,
@@ -140,6 +142,11 @@ internal fun ExperimentalDetailsScreenContent(
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     experimentalAdaptiveAutoScaleEnabled: Boolean,
+    visualDynamics: Float,
+    visualDynamicsOverridden: Boolean,
+    onVisualDynamicsChanged: (Float) -> Unit,
+    onVisualDynamicsChangeFinished: () -> Unit,
+    onVisualDynamicsReset: () -> Unit,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -455,6 +462,19 @@ internal fun ExperimentalDetailsScreenContent(
                                 smoothing = smoothing,
                                 autoScaleWindowSeconds = autoScaleWindowSeconds,
                                 autoScaleOffset = autoScaleOffset,
+                                patternLabel = patternLabel,
+                                patternId = glyphMode,
+                                patternKind = patternDefinition?.kind,
+                                deviceProfile = deviceProfile,
+                                levelAutoScale = levelAutoScale,
+                                allBrightnessAutoScale = allBrightnessAutoScale,
+                                experimentalAdaptiveAutoScaleEnabled =
+                                    experimentalAdaptiveAutoScaleEnabled,
+                                visualDynamics = visualDynamics,
+                                visualDynamicsOverridden = visualDynamicsOverridden,
+                                onVisualDynamicsChanged = onVisualDynamicsChanged,
+                                onVisualDynamicsChangeFinished = onVisualDynamicsChangeFinished,
+                                onVisualDynamicsReset = onVisualDynamicsReset,
                                 onSensitivityChanged = onSensitivityChanged,
                                 onNoiseGateChanged = onNoiseGateChanged,
                                 onDynamicsChanged = onDynamicsChanged,
@@ -833,6 +853,18 @@ private fun ExperimentalDetailsTuneTab(
     smoothing: Float,
     autoScaleWindowSeconds: Float,
     autoScaleOffset: Float,
+    patternLabel: String,
+    patternId: String,
+    patternKind: GlyphPatternKind?,
+    deviceProfile: GlyphDeviceProfile,
+    levelAutoScale: Boolean,
+    allBrightnessAutoScale: Boolean,
+    experimentalAdaptiveAutoScaleEnabled: Boolean,
+    visualDynamics: Float,
+    visualDynamicsOverridden: Boolean,
+    onVisualDynamicsChanged: (Float) -> Unit,
+    onVisualDynamicsChangeFinished: () -> Unit,
+    onVisualDynamicsReset: () -> Unit,
     onSensitivityChanged: (Float) -> Unit,
     onNoiseGateChanged: (Float) -> Unit,
     onDynamicsChanged: (Float) -> Unit,
@@ -849,6 +881,18 @@ private fun ExperimentalDetailsTuneTab(
     nothingStyleEnabled: Boolean
 ) {
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+    val visualDynamicsAvailable = experimentalAdaptiveAutoScaleEnabled &&
+        GlyphPatternRegistry.isSupported(deviceProfile, patternId) &&
+        supportsGlyphVisualDynamics(patternKind) &&
+        when (patternKind) {
+            GlyphPatternKind.ALL_BRIGHTNESS -> allBrightnessAutoScale
+            GlyphPatternKind.LINEAR,
+            GlyphPatternKind.CENTER,
+            GlyphPatternKind.MATRIX_BAR,
+            GlyphPatternKind.MATRIX_FIELD,
+            GlyphPatternKind.MATRIX_CIRCLE -> levelAutoScale
+            else -> false
+        }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ExperimentalDetailsSectionTitle(text = stringResource(R.string.meter_parameters))
@@ -911,6 +955,73 @@ private fun ExperimentalDetailsTuneTab(
                         valueRange = -1f..1f,
                         nothingStyleEnabled = nothingStyleEnabled
                     )
+                }
+            }
+        }
+    }
+
+    if (visualDynamicsAvailable) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ExperimentalDetailsSectionTitle(text = stringResource(R.string.visual_dynamics_title))
+            Text(
+                text = stringResource(
+                    R.string.visual_dynamics_profile,
+                    deviceProfile.name
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(
+                    R.string.visual_dynamics_pattern,
+                    patternLabel,
+                    patternId
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SettingsItemSurface(
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Single
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ParameterSlider(
+                            title = stringResource(R.string.visual_dynamics_title),
+                            valueText = stringResource(
+                                R.string.visual_dynamics_value,
+                                (visualDynamics * 100f).toInt()
+                            ),
+                            description = stringResource(R.string.visual_dynamics_desc),
+                            value = visualDynamics,
+                            onValueChange = onVisualDynamicsChanged,
+                            onValueChangeFinished = onVisualDynamicsChangeFinished,
+                            valueRange = 0f..1f,
+                            nothingStyleEnabled = nothingStyleEnabled
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = stringResource(R.string.visual_dynamics_natural),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(R.string.visual_dynamics_extreme),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(
+                            onClick = onVisualDynamicsReset,
+                            enabled = visualDynamicsOverridden,
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(stringResource(R.string.visual_dynamics_reset))
+                        }
+                    }
                 }
             }
         }

@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -80,6 +81,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.formatGlyphVisualTuningEntry
 import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
+import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import kotlinx.coroutines.delay
 import kotlin.math.min
@@ -109,6 +111,12 @@ private enum class GlyphInspectorFrameStatus {
     LIVE,
     SIMULATED,
     FROZEN
+}
+
+private enum class GlyphInspectorFramePresentation {
+    FINAL,
+    PRODUCTION_VIRTUAL,
+    SIMULATED
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,7 +151,7 @@ fun GlyphInterfaceInspectorScreen(
         mutableStateOf(GlyphAutoScaleStrategy.ADAPTIVE.name)
     }
     val autoScaleStrategy = GlyphAutoScaleStrategy.valueOf(autoScaleStrategyName)
-    val localTuningScales = remember { mutableStateMapOf<GlyphVisualTuningKey, Float>() }
+    val localTuningDynamics = remember { mutableStateMapOf<GlyphVisualTuningKey, Float>() }
     var showChannelLabels by rememberSaveable { mutableStateOf(true) }
     var frozenFrame by remember { mutableStateOf<GlyphPreviewFrame?>(null) }
     var showProfileDialog by rememberSaveable { mutableStateOf(false) }
@@ -218,14 +226,17 @@ fun GlyphInterfaceInspectorScreen(
         GlyphInspectorInputMode.LIVE_MIRROR -> null
     }
     val selectedPatternKind = GlyphPatternRegistry.kindOf(selectedGlyphMode)
-    val tuningKey = selectedPatternKind?.let { GlyphVisualTuningKey(selectedProfile, it) }
-    val tuningScale = selectedPatternKind?.let { patternKind ->
+    val tuningKey = GlyphVisualTuningKey(selectedProfile, selectedGlyphMode)
+    val tuningDynamicsSupported = supportsGlyphVisualDynamics(selectedPatternKind)
+    val tuningDynamics = if (tuningDynamicsSupported && selectedPatternKind != null) {
         resolveGlyphVisualTuning(
             profile = selectedProfile,
-            patternKind = patternKind,
-            localScaleOverrides = localTuningScales
-        ).scale
-    } ?: 1f
+            patternId = selectedGlyphMode,
+            localDynamicsOverrides = localTuningDynamics
+        ).dynamics
+    } else {
+        0f
+    }
     val exactVirtualFrame = virtualAnalysisFrame?.let { analysisFrame ->
         GlyphExactVirtualPreviewFrame(
             profile = selectedProfile,
@@ -238,7 +249,7 @@ fun GlyphInterfaceInspectorScreen(
             recordingLightIncluded = recordingLightIncluded,
             autoScaleEnabled = inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL,
             autoScaleStrategy = autoScaleStrategy,
-            visualTuning = GlyphVisualTuning(scale = tuningScale),
+            visualTuning = GlyphVisualTuning(dynamics = tuningDynamics),
             autoScaleWindowSeconds = CaptureUiStore.state.autoScaleWindowSeconds,
             autoScaleOffset = CaptureUiStore.state.autoScaleOffset
         )
@@ -326,7 +337,8 @@ fun GlyphInterfaceInspectorScreen(
                     baseIndicatorEnabled = baseIndicatorEnabled,
                     recordingLightIncluded = recordingLightIncluded,
                     autoScaleStrategy = autoScaleStrategy,
-                    tuningScale = tuningScale,
+                    tuningDynamics = tuningDynamics,
+                    tuningDynamicsSupported = tuningDynamicsSupported,
                     showChannelLabels = showChannelLabels,
                     frozen = frozenFrame != null,
                     canFreeze = currentFrame != null,
@@ -343,20 +355,20 @@ fun GlyphInterfaceInspectorScreen(
                     onBaseIndicatorEnabledChanged = { baseIndicatorEnabled = it },
                     onRecordingLightIncludedChanged = { recordingLightIncluded = it },
                     onAutoScaleStrategyChanged = { autoScaleStrategyName = it.name },
-                    onTuningScaleChanged = { scale ->
-                        tuningKey?.let { localTuningScales[it] = scale }
+                    onTuningDynamicsChanged = { dynamics ->
+                        tuningKey?.let { localTuningDynamics[it] = dynamics }
                     },
                     onResetTuning = {
-                        tuningKey?.let { localTuningScales.remove(it) }
+                        tuningKey?.let { localTuningDynamics.remove(it) }
                     },
                     onCopyTuning = {
-                        selectedPatternKind?.let { patternKind ->
+                        selectedPatternKind?.let {
                             clipboardManager.setText(
                                 AnnotatedString(
                                     formatGlyphVisualTuningEntry(
                                         profile = selectedProfile,
-                                        patternKind = patternKind,
-                                        tuning = GlyphVisualTuning(scale = tuningScale)
+                                        patternId = selectedGlyphMode,
+                                        tuning = GlyphVisualTuning(dynamics = tuningDynamics)
                                     )
                                 )
                             )
@@ -373,12 +385,12 @@ fun GlyphInterfaceInspectorScreen(
                         frame = frame,
                         showChannelLabels = showChannelLabels,
                         status = inspectorStatus(inputMode, frozenFrame != null),
-                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE_MIRROR
+                        framePresentation = inspectorFramePresentation(inputMode)
                     )
                     is GlyphPreviewFrame.Matrix -> GlyphMatrixFrameContent(
                         frame = frame,
                         status = inspectorStatus(inputMode, frozenFrame != null),
-                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE_MIRROR
+                        framePresentation = inspectorFramePresentation(inputMode)
                     )
                     null -> GlyphInspectorWaitingState(
                         modifier = Modifier
@@ -532,7 +544,8 @@ private fun GlyphInspectorControls(
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     autoScaleStrategy: GlyphAutoScaleStrategy,
-    tuningScale: Float,
+    tuningDynamics: Float,
+    tuningDynamicsSupported: Boolean,
     showChannelLabels: Boolean,
     frozen: Boolean,
     canFreeze: Boolean,
@@ -546,7 +559,7 @@ private fun GlyphInspectorControls(
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onAutoScaleStrategyChanged: (GlyphAutoScaleStrategy) -> Unit,
-    onTuningScaleChanged: (Float) -> Unit,
+    onTuningDynamicsChanged: (Float) -> Unit,
     onResetTuning: () -> Unit,
     onCopyTuning: () -> Unit,
     onShowChannelLabelsChanged: (Boolean) -> Unit,
@@ -633,6 +646,40 @@ private fun GlyphInspectorControls(
                     Text(patternLabel, maxLines = 1)
                 }
             }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.glyph_inspector_device_profile_key,
+                        selectedProfile.name
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = stringResource(
+                        R.string.glyph_inspector_pattern_id_key,
+                        selectedGlyphMode
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = stringResource(
+                        R.string.glyph_inspector_pattern_kind_key,
+                        pattern?.kind?.name ?: "—"
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
 
             if (syntheticInput) {
                 Column {
@@ -709,10 +756,11 @@ private fun GlyphInspectorControls(
             if (inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL) {
                 GlyphInspectorAutoScaleControls(
                     strategy = autoScaleStrategy,
-                    scale = tuningScale,
+                    dynamics = tuningDynamics,
+                    dynamicsSupported = tuningDynamicsSupported,
                     frozen = frozen,
                     onStrategyChanged = onAutoScaleStrategyChanged,
-                    onScaleChanged = onTuningScaleChanged,
+                    onDynamicsChanged = onTuningDynamicsChanged,
                     onReset = onResetTuning,
                     onCopy = onCopyTuning
                 )
@@ -738,10 +786,11 @@ private fun GlyphInspectorControls(
 @Composable
 private fun GlyphInspectorAutoScaleControls(
     strategy: GlyphAutoScaleStrategy,
-    scale: Float,
+    dynamics: Float,
+    dynamicsSupported: Boolean,
     frozen: Boolean,
     onStrategyChanged: (GlyphAutoScaleStrategy) -> Unit,
-    onScaleChanged: (Float) -> Unit,
+    onDynamicsChanged: (Float) -> Unit,
     onReset: () -> Unit,
     onCopy: () -> Unit
 ) {
@@ -776,20 +825,59 @@ private fun GlyphInspectorAutoScaleControls(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(stringResource(R.string.glyph_inspector_tuning_scale))
+            Text(stringResource(R.string.glyph_inspector_tuning_dynamics))
             Text(
-                text = stringResource(R.string.glyph_inspector_tuning_scale_value, scale),
+                text = stringResource(
+                    R.string.glyph_inspector_tuning_dynamics_value,
+                    (dynamics * 100f).roundToInt()
+                ),
                 fontWeight = FontWeight.Bold
             )
         }
         Slider(
-            value = scale,
-            onValueChange = onScaleChanged,
-            enabled = !frozen && strategy == GlyphAutoScaleStrategy.ADAPTIVE,
-            valueRange = 0.25f..3f
+            value = dynamics,
+            onValueChange = onDynamicsChanged,
+            enabled = !frozen &&
+                strategy == GlyphAutoScaleStrategy.ADAPTIVE &&
+                dynamicsSupported,
+            valueRange = 0f..1f
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = stringResource(R.string.glyph_inspector_tuning_dynamics_natural),
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = stringResource(R.string.glyph_inspector_tuning_dynamics_extreme),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = stringResource(R.string.glyph_inspector_tuning_dynamics_zero),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.glyph_inspector_tuning_dynamics_full),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Text(
-            text = stringResource(R.string.glyph_inspector_tuning_local_note),
+            text = stringResource(
+                if (dynamicsSupported) {
+                    R.string.glyph_inspector_tuning_local_note
+                } else {
+                    R.string.glyph_inspector_tuning_dynamics_unavailable
+                }
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -799,7 +887,7 @@ private fun GlyphInspectorAutoScaleControls(
         ) {
             OutlinedButton(
                 modifier = Modifier.weight(1f),
-                enabled = !frozen,
+                enabled = !frozen && dynamicsSupported,
                 onClick = onReset
             ) {
                 Text(stringResource(R.string.glyph_inspector_tuning_reset))
@@ -939,6 +1027,15 @@ private fun inspectorStatus(
     else -> GlyphInspectorFrameStatus.SIMULATED
 }
 
+private fun inspectorFramePresentation(
+    inputMode: GlyphInspectorInputMode
+): GlyphInspectorFramePresentation = when (inputMode) {
+    GlyphInspectorInputMode.LIVE_MIRROR -> GlyphInspectorFramePresentation.FINAL
+    GlyphInspectorInputMode.LIVE_VIRTUAL -> GlyphInspectorFramePresentation.PRODUCTION_VIRTUAL
+    GlyphInspectorInputMode.MANUAL,
+    GlyphInspectorInputMode.SWEEP -> GlyphInspectorFramePresentation.SIMULATED
+}
+
 @Composable
 private fun GlyphInspectorWaitingState(modifier: Modifier = Modifier) {
     Column(
@@ -973,7 +1070,7 @@ private fun GlyphLightsFrameContent(
     frame: GlyphPreviewFrame.Lights,
     showChannelLabels: Boolean,
     status: GlyphInspectorFrameStatus,
-    exactFrame: Boolean,
+    framePresentation: GlyphInspectorFramePresentation,
     modifier: Modifier = Modifier
 ) {
     val brightness = frame.brightness
@@ -1068,10 +1165,13 @@ private fun GlyphLightsFrameContent(
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     Text(
                         text = stringResource(
-                            if (exactFrame) {
-                                R.string.glyph_inspector_final_frame_title
-                            } else {
-                                R.string.glyph_inspector_simulated_frame_title
+                            when (framePresentation) {
+                                GlyphInspectorFramePresentation.FINAL ->
+                                    R.string.glyph_inspector_final_frame_title
+                                GlyphInspectorFramePresentation.PRODUCTION_VIRTUAL ->
+                                    R.string.glyph_inspector_production_virtual_frame_title
+                                GlyphInspectorFramePresentation.SIMULATED ->
+                                    R.string.glyph_inspector_simulated_frame_title
                             }
                         ),
                         style = MaterialTheme.typography.titleMedium,
@@ -1079,10 +1179,13 @@ private fun GlyphLightsFrameContent(
                     )
                     Text(
                         text = stringResource(
-                            if (exactFrame) {
-                                R.string.glyph_inspector_final_frame_desc
-                            } else {
-                                R.string.glyph_inspector_simulated_frame_desc
+                            when (framePresentation) {
+                                GlyphInspectorFramePresentation.FINAL ->
+                                    R.string.glyph_inspector_final_frame_desc
+                                GlyphInspectorFramePresentation.PRODUCTION_VIRTUAL ->
+                                    R.string.glyph_inspector_production_virtual_frame_desc
+                                GlyphInspectorFramePresentation.SIMULATED ->
+                                    R.string.glyph_inspector_simulated_frame_desc
                             }
                         ),
                         modifier = Modifier.padding(top = 4.dp),
@@ -1120,7 +1223,7 @@ private fun GlyphLightsFrameContent(
 private fun GlyphMatrixFrameContent(
     frame: GlyphPreviewFrame.Matrix,
     status: GlyphInspectorFrameStatus,
-    exactFrame: Boolean
+    framePresentation: GlyphInspectorFramePresentation
 ) {
     val physicalDeviceLabel = GlyphDeviceCatalog.presentationForProfile(
         frame.physicalDeviceProfile
@@ -1207,10 +1310,13 @@ private fun GlyphMatrixFrameContent(
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
                     text = stringResource(
-                        if (exactFrame) {
-                            R.string.glyph_inspector_final_matrix_title
-                        } else {
-                            R.string.glyph_inspector_simulated_matrix_title
+                        when (framePresentation) {
+                            GlyphInspectorFramePresentation.FINAL ->
+                                R.string.glyph_inspector_final_matrix_title
+                            GlyphInspectorFramePresentation.PRODUCTION_VIRTUAL ->
+                                R.string.glyph_inspector_production_virtual_matrix_title
+                            GlyphInspectorFramePresentation.SIMULATED ->
+                                R.string.glyph_inspector_simulated_matrix_title
                         }
                     ),
                     style = MaterialTheme.typography.titleMedium,
@@ -1218,10 +1324,13 @@ private fun GlyphMatrixFrameContent(
                 )
                 Text(
                     text = stringResource(
-                        if (exactFrame) {
-                            R.string.glyph_inspector_final_matrix_desc
-                        } else {
-                            R.string.glyph_inspector_simulated_matrix_desc
+                        when (framePresentation) {
+                            GlyphInspectorFramePresentation.FINAL ->
+                                R.string.glyph_inspector_final_matrix_desc
+                            GlyphInspectorFramePresentation.PRODUCTION_VIRTUAL ->
+                                R.string.glyph_inspector_production_virtual_matrix_desc
+                            GlyphInspectorFramePresentation.SIMULATED ->
+                                R.string.glyph_inspector_simulated_matrix_desc
                         }
                     ),
                     modifier = Modifier.padding(top = 4.dp),

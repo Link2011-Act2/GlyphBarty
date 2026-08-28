@@ -170,6 +170,8 @@ import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
+import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
@@ -461,6 +463,13 @@ class MainActivity : ComponentActivity() {
                 phone4bEmulationEnabled = uiState.phone4bEmulationEnabled,
                 debugDeviceProfileOverride = uiState.debugDeviceProfileOverride
             )
+            val visualTuningKey = GlyphVisualTuningKey(effectiveDeviceProfile, uiState.glyphMode)
+            val visualTuningOverride = uiState.visualDynamicsOverrides[visualTuningKey]
+            val visualDynamics = resolveGlyphVisualTuning(
+                profile = effectiveDeviceProfile,
+                patternId = uiState.glyphMode,
+                localDynamicsOverrides = uiState.visualDynamicsOverrides
+            ).dynamics
             val effectivePresentation = if (effectiveDeviceProfile == deviceProfile) {
                 currentDevice.presentation
             } else {
@@ -515,6 +524,28 @@ class MainActivity : ComponentActivity() {
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
                     experimentalAdaptiveAutoScaleEnabled =
                         uiState.experimentalAdaptiveAutoScaleEnabled,
+                    visualDynamics = visualDynamics,
+                    visualDynamicsOverridden = visualTuningOverride != null,
+                    onVisualDynamicsChanged = { newValue ->
+                        CaptureUiStore.update { current ->
+                            current.copy(
+                                visualDynamicsOverrides = current.visualDynamicsOverrides +
+                                    (visualTuningKey to newValue.coerceIn(0f, 1f))
+                            )
+                        }
+                        scheduleParameterSync()
+                    },
+                    onVisualDynamicsChangeFinished = {
+                        syncCurrentParameters()
+                    },
+                    onVisualDynamicsReset = {
+                        CaptureUiStore.update { current ->
+                            current.copy(
+                                visualDynamicsOverrides = current.visualDynamicsOverrides - visualTuningKey
+                            )
+                        }
+                        syncCurrentParameters()
+                    },
                     mediaProjectionEnabled = uiState.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
                     meterVisibleEnabled = uiState.meterVisibleEnabled,
@@ -1319,6 +1350,7 @@ class MainActivity : ComponentActivity() {
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
                 experimentalAdaptiveAutoScaleEnabled =
                     parameters.experimentalAdaptiveAutoScaleEnabled,
+                visualDynamicsOverrides = parameters.visualDynamicsOverrides,
                 experimentalVisualizerStabilizationEnabled = parameters.experimentalVisualizerStabilizationEnabled,
                 experimentalVisualizerSignalWatchdogEnabled = parameters.experimentalVisualizerSignalWatchdogEnabled,
                 experimentalSpectrumDecayEnabled = parameters.experimentalSpectrumDecayEnabled,
@@ -1747,6 +1779,11 @@ private fun GlyphVisualizerApp(
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     experimentalAdaptiveAutoScaleEnabled: Boolean,
+    visualDynamics: Float,
+    visualDynamicsOverridden: Boolean,
+    onVisualDynamicsChanged: (Float) -> Unit,
+    onVisualDynamicsChangeFinished: () -> Unit,
+    onVisualDynamicsReset: () -> Unit,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -2031,6 +2068,11 @@ private fun GlyphVisualizerApp(
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
                         experimentalAdaptiveAutoScaleEnabled = experimentalAdaptiveAutoScaleEnabled,
+                        visualDynamics = visualDynamics,
+                        visualDynamicsOverridden = visualDynamicsOverridden,
+                        onVisualDynamicsChanged = onVisualDynamicsChanged,
+                        onVisualDynamicsChangeFinished = onVisualDynamicsChangeFinished,
+                        onVisualDynamicsReset = onVisualDynamicsReset,
                         mediaProjectionEnabled = mediaProjectionEnabled,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
                         meterVisibleEnabled = meterVisibleEnabled,
@@ -2574,6 +2616,11 @@ private fun MainScreenContent(
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
     experimentalAdaptiveAutoScaleEnabled: Boolean,
+    visualDynamics: Float,
+    visualDynamicsOverridden: Boolean,
+    onVisualDynamicsChanged: (Float) -> Unit,
+    onVisualDynamicsChangeFinished: () -> Unit,
+    onVisualDynamicsReset: () -> Unit,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -2655,6 +2702,11 @@ private fun MainScreenContent(
             spectrumAutoScale = spectrumAutoScale,
             allBrightnessAutoScale = allBrightnessAutoScale,
             experimentalAdaptiveAutoScaleEnabled = experimentalAdaptiveAutoScaleEnabled,
+            visualDynamics = visualDynamics,
+            visualDynamicsOverridden = visualDynamicsOverridden,
+            onVisualDynamicsChanged = onVisualDynamicsChanged,
+            onVisualDynamicsChangeFinished = onVisualDynamicsChangeFinished,
+            onVisualDynamicsReset = onVisualDynamicsReset,
             mediaProjectionEnabled = mediaProjectionEnabled,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
             meterVisibleEnabled = meterVisibleEnabled,
@@ -5824,6 +5876,11 @@ private fun GlyphVisualizerPreview() {
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
             experimentalAdaptiveAutoScaleEnabled = false,
+            visualDynamics = 0f,
+            visualDynamicsOverridden = false,
+            onVisualDynamicsChanged = {},
+            onVisualDynamicsChangeFinished = {},
+            onVisualDynamicsReset = {},
             mediaProjectionEnabled = false,
             glyphMeterPreviewEnabled = true,
             meterVisibleEnabled = true,

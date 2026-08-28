@@ -106,4 +106,31 @@ internal fun normalizeWithAutoScaleOffset(
     return ((value - adjustedMin) / adjustedRange).coerceIn(0f, 1f)
 }
 
+internal fun isAllBrightnessOff(
+    level: Float,
+    autoScaleEnabled: Boolean,
+    strategy: GlyphAutoScaleStrategy
+): Boolean {
+    val offThreshold = if (!autoScaleEnabled || strategy == GlyphAutoScaleStrategy.LEGACY) {
+        LEGACY_ALL_BRIGHTNESS_OFF_THRESHOLD
+    } else {
+        0f
+    }
+    return level <= offThreshold
+}
+
+internal fun isAllBrightnessDisplayOff(
+    displayLevel: Float,
+    autoScaleEnabled: Boolean,
+    strategy: GlyphAutoScaleStrategy,
+    adaptiveGateOn: Boolean
+): Boolean {
+    return if (autoScaleEnabled && strategy == GlyphAutoScaleStrategy.ADAPTIVE) {
+        !adaptiveGateOn
+    } else {
+        isAllBrightnessOff(displayLevel, autoScaleEnabled, strategy)
+    }
+}
+
 private const val MIN_AUTO_SCALE_RANGE = 0.05f
+private const val LEGACY_ALL_BRIGHTNESS_OFF_THRESHOLD = 0.06f

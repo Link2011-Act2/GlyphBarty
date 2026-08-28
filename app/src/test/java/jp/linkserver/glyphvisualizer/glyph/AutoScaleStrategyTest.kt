@@ -29,58 +29,118 @@ class AutoScaleStrategyTest {
     }
 
     @Test
-    fun visualTuning_appliesOnlyToAdaptiveAutoScale() {
-        val tuning = GlyphVisualTuning(scale = 1.5f)
-        val legacy = applyAutoScaleVisualTuning(
-            value = 0.4f,
+    fun visualDynamics_appliesOnlyToAdaptiveScalarAutoScale() {
+        val tuning = GlyphVisualTuning(dynamics = 1f)
+        val legacy = applyAdaptiveVisualDynamics(
+            agcLevel = 0.4f,
             autoScaleEnabled = true,
             strategy = GlyphAutoScaleStrategy.LEGACY,
             profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_CENTER,
             patternKind = GlyphPatternKind.CENTER,
+            expander = VisualDynamicsExpander(),
+            nowMs = 1_000L,
+            windowMs = 30_000f,
             override = tuning
         )
-        val disabled = applyAutoScaleVisualTuning(
-            value = 0.4f,
+        val disabled = applyAdaptiveVisualDynamics(
+            agcLevel = 0.4f,
             autoScaleEnabled = false,
             strategy = GlyphAutoScaleStrategy.ADAPTIVE,
             profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_CENTER,
             patternKind = GlyphPatternKind.CENTER,
+            expander = VisualDynamicsExpander(),
+            nowMs = 1_000L,
+            windowMs = 30_000f,
             override = tuning
         )
-        val adaptive = applyAutoScaleVisualTuning(
-            value = 0.4f,
+        val spectrum = applyAdaptiveVisualDynamics(
+            agcLevel = 0.4f,
             autoScaleEnabled = true,
             strategy = GlyphAutoScaleStrategy.ADAPTIVE,
             profile = GlyphDeviceProfile.PHONE2,
-            patternKind = GlyphPatternKind.CENTER,
+            patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            expander = VisualDynamicsExpander(),
+            nowMs = 1_000L,
+            windowMs = 30_000f,
             override = tuning
         )
 
         assertEquals(0.4f, legacy, 0.0001f)
         assertEquals(0.4f, disabled, 0.0001f)
-        assertEquals(0.6f, adaptive, 0.0001f)
+        assertEquals(0.4f, spectrum, 0.0001f)
     }
 
     @Test
-    fun tuningDatabase_containsEveryProfileAndPatternKind() {
+    fun visualDynamicsExpander_expandsTrackedRangeAndResetsIndependently() {
+        val expander = VisualDynamicsExpander()
+        expander.update(0.5f, 1_000L, 30_000f)
+        expander.update(0.5f, 31_000L, 30_000f)
+
+        assertEquals(1f, expander.update(0.75f, 31_000L, 30_000f), 0.0001f)
+        assertEquals(0.5f, expander.update(0.625f, 31_000L, 30_000f), 0.0001f)
+
+        expander.reset()
+        assertEquals(0.625f, expander.update(0.625f, 31_000L, 30_000f), 0.0001f)
+    }
+
+    @Test
+    fun visualDynamics_blendsNaturalAndExpandedLevels() {
+        assertEquals(0.75f, blendVisualDynamics(0.75f, 1f, 0f), 0.0001f)
+        assertEquals(0.875f, blendVisualDynamics(0.75f, 1f, 0.5f), 0.0001f)
+        assertEquals(1f, blendVisualDynamics(0.75f, 1f, 1f), 0.0001f)
+    }
+
+    @Test
+    fun tuningDatabase_hasSafeFallbackForUnknownPattern() {
         GlyphDeviceProfile.entries.forEach { profile ->
-            GlyphPatternKind.entries.forEach { patternKind ->
-                val tuning = GlyphVisualTuningDatabase.tuningFor(profile, patternKind)
-                assertTrue(tuning.scale > 0f)
-                assertEquals(1f, tuning.scale, 0.0001f)
+            GlyphPatternRegistry.patternsFor(profile).forEach { pattern ->
+                val tuning = GlyphVisualTuningDatabase.tuningFor(profile, pattern.id)
+                assertTrue(tuning.dynamics in 0f..1f)
             }
+            assertEquals(0f, GlyphVisualTuningDatabase.tuningFor(profile, "new_pattern").dynamics, 0.0001f)
         }
+    }
+
+    @Test
+    fun tuningDatabase_keepsPatternIdsIndependent() {
+        assertEquals(
+            0.3f,
+            GlyphVisualTuningDatabase.tuningFor(
+                GlyphDeviceProfile.PHONE4A,
+                GlyphPatternRegistry.P4A_LINEAR
+            ).dynamics,
+            0.0001f
+        )
+        assertEquals(
+            0.6f,
+            GlyphVisualTuningDatabase.tuningFor(
+                GlyphDeviceProfile.PHONE4A,
+                GlyphPatternRegistry.P4A_CENTER
+            ).dynamics,
+            0.0001f
+        )
+        assertEquals(
+            0.7f,
+            GlyphVisualTuningDatabase.tuningFor(
+                GlyphDeviceProfile.PHONE4B,
+                GlyphPatternRegistry.P4A_CENTER
+            ).dynamics,
+            0.0001f
+        )
     }
 
     @Test
     fun tuningClipboardEntry_isKotlinReady() {
         assertEquals(
-            "key(GlyphDeviceProfile.PHONE2, GlyphPatternKind.CENTER) to " +
-                "GlyphVisualTuning(\n    scale = 1.38f,\n),",
+            "key(GlyphDeviceProfile.PHONE2, \"C1_CENTER\") to " +
+                "GlyphVisualTuning(\n    dynamics = 0.75f,\n),",
             formatGlyphVisualTuningEntry(
                 GlyphDeviceProfile.PHONE2,
-                GlyphPatternKind.CENTER,
-                GlyphVisualTuning(scale = 1.38f)
+                GlyphPatternRegistry.P2_C1_CENTER,
+                GlyphVisualTuning(dynamics = 0.75f)
             )
         )
     }
@@ -90,30 +150,30 @@ class AutoScaleStrategyTest {
         val overrides = mapOf(
             GlyphVisualTuningKey(
                 GlyphDeviceProfile.PHONE2,
-                GlyphPatternKind.CENTER
-            ) to 1.38f,
+                GlyphPatternRegistry.P2_C1_CENTER
+            ) to 0.75f,
             GlyphVisualTuningKey(
                 GlyphDeviceProfile.PHONE3A,
-                GlyphPatternKind.CENTER
-            ) to 0.82f
+                GlyphPatternRegistry.P3A_C_CENTER
+            ) to 0.25f
         )
 
         assertEquals(
-            1.38f,
+            0.75f,
             resolveGlyphVisualTuning(
                 GlyphDeviceProfile.PHONE2,
-                GlyphPatternKind.CENTER,
+                GlyphPatternRegistry.P2_C1_CENTER,
                 overrides
-            ).scale,
+            ).dynamics,
             0.0001f
         )
         assertEquals(
-            1f,
+            0f,
             resolveGlyphVisualTuning(
                 GlyphDeviceProfile.PHONE2,
-                GlyphPatternKind.LINEAR,
+                GlyphPatternRegistry.P2_C1_LINEAR,
                 overrides
-            ).scale,
+            ).dynamics,
             0.0001f
         )
     }
@@ -123,5 +183,37 @@ class AutoScaleStrategyTest {
         assertFalse(DEFAULT_ADAPTIVE_AUTO_SCALE_ENABLED)
         assertEquals(GlyphAutoScaleStrategy.LEGACY, glyphAutoScaleStrategy(false))
         assertEquals(GlyphAutoScaleStrategy.ADAPTIVE, glyphAutoScaleStrategy(true))
+    }
+
+    @Test
+    fun allBrightness_usesLegacyThresholdUnlessAdaptiveAutoScaleIsActive() {
+        assertTrue(isAllBrightnessOff(0.06f, true, GlyphAutoScaleStrategy.LEGACY))
+        assertFalse(isAllBrightnessOff(0.061f, true, GlyphAutoScaleStrategy.LEGACY))
+        assertTrue(isAllBrightnessOff(0.06f, false, GlyphAutoScaleStrategy.ADAPTIVE))
+        assertFalse(isAllBrightnessOff(0.061f, false, GlyphAutoScaleStrategy.ADAPTIVE))
+
+        assertTrue(isAllBrightnessOff(0f, true, GlyphAutoScaleStrategy.ADAPTIVE))
+        assertFalse(isAllBrightnessOff(0.001f, true, GlyphAutoScaleStrategy.ADAPTIVE))
+        assertFalse(isAllBrightnessOff(0.06f, true, GlyphAutoScaleStrategy.ADAPTIVE))
+    }
+
+    @Test
+    fun adaptiveAllBrightness_usesRawGateInsteadOfDynamicsOutput() {
+        assertFalse(
+            isAllBrightnessDisplayOff(
+                displayLevel = 0f,
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                adaptiveGateOn = true
+            )
+        )
+        assertTrue(
+            isAllBrightnessDisplayOff(
+                displayLevel = 1f,
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                adaptiveGateOn = false
+            )
+        )
     }
 }
