@@ -139,6 +139,7 @@ internal fun ExperimentalDetailsScreenContent(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
+    experimentalAdaptiveAutoScaleEnabled: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -172,6 +173,7 @@ internal fun ExperimentalDetailsScreenContent(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onExperimentalAdaptiveAutoScaleEnabledChanged: (Boolean) -> Unit,
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onStartVisualizerClick: () -> Unit,
     onStartProjectionClick: () -> Unit,
@@ -478,6 +480,8 @@ internal fun ExperimentalDetailsScreenContent(
                                 levelAutoScale = levelAutoScale,
                                 spectrumAutoScale = spectrumAutoScale,
                                 allBrightnessAutoScale = allBrightnessAutoScale,
+                                experimentalAdaptiveAutoScaleEnabled =
+                                    experimentalAdaptiveAutoScaleEnabled,
                                 glyphMode = glyphMode,
                                 isMatrixDevice = isMatrixDevice,
                                 glyphRenderMode = glyphRenderMode,
@@ -489,7 +493,9 @@ internal fun ExperimentalDetailsScreenContent(
                                 onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
                                 onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                                 onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
-                                onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged
+                                onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                                onExperimentalAdaptiveAutoScaleEnabledChanged =
+                                    onExperimentalAdaptiveAutoScaleEnabledChanged
                             )
                         }
 
@@ -1144,6 +1150,7 @@ private fun ExperimentalDetailsSystemTab(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
+    experimentalAdaptiveAutoScaleEnabled: Boolean,
     glyphMode: String,
     isMatrixDevice: Boolean,
     glyphRenderMode: GlyphPatternRenderMode?,
@@ -1155,7 +1162,8 @@ private fun ExperimentalDetailsSystemTab(
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
-    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit
+    onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onExperimentalAdaptiveAutoScaleEnabledChanged: (Boolean) -> Unit
 ) {
     var oscilloscopeTimeAxisMultiplier by remember { mutableStateOf(1f) }
     LaunchedEffect(glyphRenderMode, oscilloscopeAutoTimeAxisEnabled) {
@@ -1255,6 +1263,14 @@ private fun ExperimentalDetailsSystemTab(
                 )
             )
         }
+        add(
+            ExperimentalDetailsToggleItem(
+                title = stringResource(R.string.adaptive_auto_scale_title),
+                description = stringResource(R.string.adaptive_auto_scale_desc),
+                checked = experimentalAdaptiveAutoScaleEnabled,
+                onCheckedChange = onExperimentalAdaptiveAutoScaleEnabledChanged
+            )
+        )
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {

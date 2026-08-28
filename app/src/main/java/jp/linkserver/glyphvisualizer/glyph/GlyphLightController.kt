@@ -17,30 +17,11 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-internal fun centerMeterDisplayLevel(
-    level: Float,
-    slotCount: Int,
-    autoScaleEnabled: Boolean
-): Float {
-    val clamped = level.coerceIn(0f, 1f)
-    if (!autoScaleEnabled || slotCount !in 2..4) return clamped
-
-    val normalized = (clamped / DEFAULT_AUTO_GAIN_TARGET_LEVEL).coerceIn(0f, 1f)
-    val exponent = when (slotCount) {
-        2 -> 2.2f
-        3 -> 1.7f
-        4 -> 1.3f
-        else -> 1f
-    }
-    return normalized.pow(exponent)
-}
-
 class GlyphLightController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
     initialPhone4bEmulationEnabled: Boolean = false,
     private val previewDeviceProfile: GlyphDeviceProfile? = null,
-    private val previewCenterCorrectionEnabled: Boolean? = null,
     private val previewFrameListener: ((GlyphPreviewFrame.Lights) -> Unit)? = null
 ) : GlyphOutputController {
     companion object {
@@ -184,6 +165,11 @@ class GlyphLightController(
     private var smoothingBalance = 0f
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var autoScaleOffset = 0f
+    private var autoScaleStrategy = GlyphAutoScaleStrategy.LEGACY
+    private var visualTuningOverride: GlyphVisualTuning? = null
+    private val legacyLevelAutoScale = LegacyAutoScaleController()
+    private val legacySpectrumAutoScale = LegacySpectrumAutoScaleController()
+    private val legacyAllBrightnessAutoScale = LegacyAutoScaleController()
     private val levelAutoGain = AutoGainController()
     private val spectrumAutoGain = AutoGainController()
     private val allBrightnessAutoGain = AutoGainController()
@@ -406,6 +392,19 @@ class GlyphLightController(
         }
     }
 
+    override fun setAutoScaleStrategy(strategy: GlyphAutoScaleStrategy) {
+        if (autoScaleStrategy != strategy) {
+            autoScaleStrategy = strategy
+            resetLevelScaleTracking()
+            resetSpectrumScaleTracking()
+            resetAllBrightnessScaleTracking()
+        }
+    }
+
+    override fun setVisualTuningOverride(tuning: GlyphVisualTuning?) {
+        visualTuningOverride = tuning
+    }
+
     override fun setSpectrumAutoScaleEnabled(enabled: Boolean) {
         if (spectrumAutoScaleEnabled != enabled) {
             spectrumAutoScaleEnabled = enabled
@@ -489,6 +488,15 @@ class GlyphLightController(
         if (!spectrumAutoScaleEnabled) return input
 
         val now = SystemClock.elapsedRealtime()
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacySpectrumAutoScale.update(
+                input = input,
+                nowMs = now,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset
+            )
+        }
+
         val gain = spectrumAutoGain.update(
             referenceRaw = framePeak,
             nowMs = now,
@@ -497,14 +505,22 @@ class GlyphLightController(
             holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
         )
 
-        val out = FloatArray(input.size)
-        for (i in input.indices) {
-            out[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
+        val profile = currentTuningProfile()
+        val patternKind = GlyphPatternRegistry.kindOf(glyphMode)
+        return FloatArray(input.size) { index ->
+            applyAutoScaleVisualTuning(
+                value = input[index].coerceIn(0f, 1f) * gain,
+                autoScaleEnabled = spectrumAutoScaleEnabled,
+                strategy = autoScaleStrategy,
+                profile = profile,
+                patternKind = patternKind,
+                override = visualTuningOverride
+            )
         }
-        return out
     }
 
     private fun resetSpectrumScaleTracking() {
+        legacySpectrumAutoScale.reset()
         spectrumAutoGain.reset()
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
@@ -586,6 +602,14 @@ class GlyphLightController(
 
     private fun normalizeLevelForMode(level: Float, nowMs: Long): Float {
         if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacyLevelAutoScale.update(
+                value = level,
+                nowMs = nowMs,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset
+            )
+        }
         val gain = levelAutoGain.update(
             referenceRaw = level,
             nowMs = nowMs,
@@ -593,10 +617,18 @@ class GlyphLightController(
             gainUpTauSeconds = autoScaleWindowMs / 1_000f,
             holdGainIncrease = level < SILENCE_ACTIVITY_THRESHOLD
         )
-        return (level * gain).coerceIn(0f, 1f)
+        return applyAutoScaleVisualTuning(
+            value = level * gain,
+            autoScaleEnabled = levelAutoScaleEnabled,
+            strategy = autoScaleStrategy,
+            profile = currentTuningProfile(),
+            patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+            override = visualTuningOverride
+        )
     }
 
     private fun resetLevelScaleTracking() {
+        legacyLevelAutoScale.reset()
         levelAutoGain.reset()
     }
 
@@ -1223,29 +1255,51 @@ class GlyphLightController(
     }
 
     private fun normalizeAllBrightnessLevel(level: Float, nowMs: Long): Float {
+        if (!allBrightnessAutoScaleEnabled) return level
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacyAllBrightnessAutoScale.update(
+                value = level,
+                nowMs = nowMs,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset
+            )
+        }
+
         allBrightnessGateOn = if (allBrightnessGateOn) {
             level > ALL_BRIGHTNESS_OFF_THRESHOLD
         } else {
             level >= ALL_BRIGHTNESS_ON_THRESHOLD
         }
 
-        val gain = if (allBrightnessAutoScaleEnabled) {
-            allBrightnessAutoGain.update(
-                referenceRaw = level,
-                nowMs = nowMs,
-                targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
-                gainUpTauSeconds = autoScaleWindowMs / 1_000f,
-                holdGainIncrease = !allBrightnessGateOn
+        val gain = allBrightnessAutoGain.update(
+            referenceRaw = level,
+            nowMs = nowMs,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = !allBrightnessGateOn
+        )
+        return if (allBrightnessGateOn) {
+            applyAutoScaleVisualTuning(
+                value = level * gain,
+                autoScaleEnabled = allBrightnessAutoScaleEnabled,
+                strategy = autoScaleStrategy,
+                profile = currentTuningProfile(),
+                patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+                override = visualTuningOverride
             )
         } else {
-            1f
+            0f
         }
-        return if (allBrightnessGateOn) (level * gain).coerceIn(0f, 1f) else 0f
     }
 
     private fun resetAllBrightnessScaleTracking() {
+        legacyAllBrightnessAutoScale.reset()
         allBrightnessAutoGain.reset()
         allBrightnessGateOn = false
+    }
+
+    private fun currentTuningProfile(): GlyphDeviceProfile {
+        return deviceSpec?.profile ?: previewDeviceProfile ?: GlyphDeviceCatalog.currentProfile()
     }
 
     private fun updateCenterRange(level: Float, channelRange: IntRange) {
@@ -1268,12 +1322,7 @@ class GlyphLightController(
             val rightChannels = ((centerChannel + 1)..channelRange.last).toList()
             val pairCount = min(leftChannels.size, rightChannels.size)
             val totalSlots = 1 + pairCount
-            val displayLevel = centerMeterDisplayLevel(
-                clamped,
-                totalSlots,
-                previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
-            )
-            val virtualSlots = displayLevel * totalSlots
+            val virtualSlots = clamped * totalSlots
             val fullSlots = virtualSlots.toInt().coerceIn(0, totalSlots)
             val edgeBrightness = if (binaryMode) {
                 0
@@ -1306,12 +1355,7 @@ class GlyphLightController(
         }
 
         val pairCount = channelRange.count() / 2
-        val displayLevel = centerMeterDisplayLevel(
-            clamped,
-            pairCount,
-            previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
-        )
-        val virtualPairs = displayLevel * pairCount
+        val virtualPairs = clamped * pairCount
         val fullPairs = virtualPairs.toInt()
         val edgeBrightness = if (binaryMode) {
             0
@@ -1356,12 +1400,7 @@ class GlyphLightController(
         if (count < 1) return
 
         val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
-        val displayLevel = centerMeterDisplayLevel(
-            level,
-            slots.size,
-            previewCenterCorrectionEnabled ?: levelAutoScaleEnabled
-        )
-        val virtualSlots = displayLevel * slots.size
+        val virtualSlots = level * slots.size
         val fullSlots = virtualSlots.toInt().coerceIn(0, slots.size)
         val edgeBrightness = if (binaryMode) {
             0

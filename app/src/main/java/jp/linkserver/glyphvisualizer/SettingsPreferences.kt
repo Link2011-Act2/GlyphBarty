@@ -40,6 +40,7 @@ object SettingsPreferences {
             levelAutoScale = state.levelAutoScale,
             spectrumAutoScale = state.spectrumAutoScale,
             allBrightnessAutoScale = state.allBrightnessAutoScale,
+            experimentalAdaptiveAutoScaleEnabled = state.experimentalAdaptiveAutoScaleEnabled,
             autoScaleWindowSeconds = state.autoScaleWindowSeconds,
             autoScaleOffset = state.autoScaleOffset,
             latencyMs = state.latencyMs,
@@ -114,6 +115,10 @@ object SettingsPreferences {
             levelAutoScale = prefs.getBoolean("level_auto_scale", defaults.levelAutoScale),
             spectrumAutoScale = prefs.getBoolean("spectrum_auto_scale", defaults.spectrumAutoScale),
             allBrightnessAutoScale = prefs.getBoolean("all_brightness_auto_scale", defaults.allBrightnessAutoScale),
+            experimentalAdaptiveAutoScaleEnabled = prefs.getBoolean(
+                "experimental_adaptive_auto_scale_enabled",
+                defaults.experimentalAdaptiveAutoScaleEnabled
+            ),
             autoScaleWindowSeconds = prefs.getFloatCompat("auto_scale_window_seconds", defaults.autoScaleWindowSeconds),
             autoScaleOffset = prefs.getFloatCompat("auto_scale_offset", defaults.autoScaleOffset),
             latencyMs = prefs.getFloatCompat("latency_ms", defaults.latencyMs),
@@ -176,6 +181,10 @@ object SettingsPreferences {
             .putBoolean("level_auto_scale", parameters.levelAutoScale)
             .putBoolean("spectrum_auto_scale", parameters.spectrumAutoScale)
             .putBoolean("all_brightness_auto_scale", parameters.allBrightnessAutoScale)
+            .putBoolean(
+                "experimental_adaptive_auto_scale_enabled",
+                parameters.experimentalAdaptiveAutoScaleEnabled
+            )
             .putFloat("auto_scale_window_seconds", parameters.autoScaleWindowSeconds)
             .putFloat("auto_scale_offset", parameters.autoScaleOffset)
             .putFloat("latency_ms", parameters.latencyMs)

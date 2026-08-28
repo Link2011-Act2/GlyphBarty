@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -52,13 +53,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.GlyphControllerFamily
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.CaptureUiStore
+import jp.linkserver.glyphvisualizer.glyph.GlyphAnalysisFrame
+import jp.linkserver.glyphvisualizer.glyph.GlyphAnalysisFrameStore
+import jp.linkserver.glyphvisualizer.glyph.GlyphAutoScaleStrategy
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphInspectorPreviewRenderer
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
@@ -69,6 +76,10 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPreviewFrame
 import jp.linkserver.glyphvisualizer.glyph.GlyphPreviewFrameStore
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuning
+import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
+import jp.linkserver.glyphvisualizer.glyph.formatGlyphVisualTuningEntry
+import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import kotlinx.coroutines.delay
 import kotlin.math.min
@@ -88,7 +99,8 @@ private data class GlyphChannelGroup(
 )
 
 private enum class GlyphInspectorInputMode {
-    LIVE,
+    LIVE_MIRROR,
+    LIVE_VIRTUAL,
     MANUAL,
     SWEEP
 }
@@ -108,8 +120,13 @@ fun GlyphInterfaceInspectorScreen(
     onBack: () -> Unit
 ) {
     var liveFrame by remember { mutableStateOf<GlyphPreviewFrame?>(null) }
-    var inputModeName by rememberSaveable { mutableStateOf(GlyphInspectorInputMode.LIVE.name) }
-    val inputMode = GlyphInspectorInputMode.valueOf(inputModeName)
+    var liveAnalysisFrame by remember { mutableStateOf<GlyphAnalysisFrame?>(null) }
+    var inputModeName by rememberSaveable {
+        mutableStateOf(GlyphInspectorInputMode.LIVE_MIRROR.name)
+    }
+    val inputMode = runCatching {
+        GlyphInspectorInputMode.valueOf(inputModeName)
+    }.getOrDefault(GlyphInspectorInputMode.LIVE_MIRROR)
     var selectedProfileName by rememberSaveable { mutableStateOf(initialDeviceProfile.name) }
     val selectedProfile = GlyphDeviceProfile.valueOf(selectedProfileName)
     var selectedGlyphMode by rememberSaveable {
@@ -122,7 +139,11 @@ fun GlyphInterfaceInspectorScreen(
     var fillOtherGlyphLightsEnabled by rememberSaveable { mutableStateOf(false) }
     var baseIndicatorEnabled by rememberSaveable { mutableStateOf(false) }
     var recordingLightIncluded by rememberSaveable { mutableStateOf(false) }
-    var centerCorrectionEnabled by rememberSaveable { mutableStateOf(true) }
+    var autoScaleStrategyName by rememberSaveable {
+        mutableStateOf(GlyphAutoScaleStrategy.ADAPTIVE.name)
+    }
+    val autoScaleStrategy = GlyphAutoScaleStrategy.valueOf(autoScaleStrategyName)
+    val localTuningScales = remember { mutableStateMapOf<GlyphVisualTuningKey, Float>() }
     var showChannelLabels by rememberSaveable { mutableStateOf(true) }
     var frozenFrame by remember { mutableStateOf<GlyphPreviewFrame?>(null) }
     var showProfileDialog by rememberSaveable { mutableStateOf(false) }
@@ -130,16 +151,33 @@ fun GlyphInterfaceInspectorScreen(
     val frameListener = remember {
         { frame: GlyphPreviewFrame? -> liveFrame = frame }
     }
+    val analysisFrameListener = remember {
+        { frame: GlyphAnalysisFrame? -> liveAnalysisFrame = frame }
+    }
 
-    DisposableEffect(frameListener) {
-        GlyphPreviewFrameStore.register(frameListener)
+    DisposableEffect(inputMode, frameListener) {
+        if (inputMode == GlyphInspectorInputMode.LIVE_MIRROR) {
+            GlyphPreviewFrameStore.register(frameListener)
+        }
         onDispose {
             GlyphPreviewFrameStore.unregister(frameListener)
         }
     }
 
+    DisposableEffect(inputMode, analysisFrameListener) {
+        if (inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL) {
+            GlyphAnalysisFrameStore.register(analysisFrameListener)
+        }
+        onDispose {
+            GlyphAnalysisFrameStore.unregister(analysisFrameListener)
+        }
+    }
+
     LaunchedEffect(inputMode, frozenFrame) {
-        if (inputMode != GlyphInspectorInputMode.LIVE && frozenFrame == null) {
+        if (
+            inputMode in setOf(GlyphInspectorInputMode.MANUAL, GlyphInspectorInputMode.SWEEP) &&
+            frozenFrame == null
+        ) {
             while (true) {
                 virtualTimestampMs = SystemClock.elapsedRealtime()
                 delay(33L)
@@ -149,7 +187,7 @@ fun GlyphInterfaceInspectorScreen(
 
     LaunchedEffect(inputMode, liveFrame?.deviceProfile, liveFrame?.glyphMode, frozenFrame) {
         val frame = liveFrame ?: return@LaunchedEffect
-        if (inputMode == GlyphInspectorInputMode.LIVE && frozenFrame == null) {
+        if (inputMode == GlyphInspectorInputMode.LIVE_MIRROR && frozenFrame == null) {
             selectedProfileName = frame.deviceProfile.name
             if (GlyphPatternRegistry.isSupported(frame.deviceProfile, frame.glyphMode)) {
                 selectedGlyphMode = frame.glyphMode
@@ -165,28 +203,51 @@ fun GlyphInterfaceInspectorScreen(
 
     val sweepLevel = triangleSweepLevel(virtualTimestampMs)
     val virtualLevel = if (inputMode == GlyphInspectorInputMode.SWEEP) sweepLevel else manualLevel
-    val exactVirtualFrame = if (inputMode == GlyphInspectorInputMode.LIVE) {
-        null
+    val syntheticAnalysisFrame = if (
+        inputMode == GlyphInspectorInputMode.MANUAL ||
+        inputMode == GlyphInspectorInputMode.SWEEP
+    ) {
+        inspectorSyntheticAnalysisFrame(virtualTimestampMs, virtualLevel)
     } else {
+        null
+    }
+    val virtualAnalysisFrame = when (inputMode) {
+        GlyphInspectorInputMode.LIVE_VIRTUAL -> liveAnalysisFrame
+        GlyphInspectorInputMode.MANUAL,
+        GlyphInspectorInputMode.SWEEP -> syntheticAnalysisFrame
+        GlyphInspectorInputMode.LIVE_MIRROR -> null
+    }
+    val selectedPatternKind = GlyphPatternRegistry.kindOf(selectedGlyphMode)
+    val tuningKey = selectedPatternKind?.let { GlyphVisualTuningKey(selectedProfile, it) }
+    val tuningScale = selectedPatternKind?.let { patternKind ->
+        resolveGlyphVisualTuning(
+            profile = selectedProfile,
+            patternKind = patternKind,
+            localScaleOverrides = localTuningScales
+        ).scale
+    } ?: 1f
+    val exactVirtualFrame = virtualAnalysisFrame?.let { analysisFrame ->
         GlyphExactVirtualPreviewFrame(
             profile = selectedProfile,
             glyphMode = selectedGlyphMode,
-            level = virtualLevel,
+            analysisFrame = analysisFrame,
             reverseDirection = reverseDirection,
             binaryMode = binaryMode,
             fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
             baseIndicatorEnabled = baseIndicatorEnabled,
             recordingLightIncluded = recordingLightIncluded,
-            centerCorrectionEnabled = centerCorrectionEnabled,
-            timestampMs = virtualTimestampMs
+            autoScaleEnabled = inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL,
+            autoScaleStrategy = autoScaleStrategy,
+            visualTuning = GlyphVisualTuning(scale = tuningScale),
+            autoScaleWindowSeconds = CaptureUiStore.state.autoScaleWindowSeconds,
+            autoScaleOffset = CaptureUiStore.state.autoScaleOffset
         )
     }
-    val generatedFrame = if (inputMode == GlyphInspectorInputMode.LIVE) {
-        null
+    val currentFrame = if (inputMode == GlyphInspectorInputMode.LIVE_MIRROR) {
+        liveFrame
     } else {
         exactVirtualFrame
     }
-    val currentFrame = if (inputMode == GlyphInspectorInputMode.LIVE) liveFrame else generatedFrame
     val displayedFrame = frozenFrame ?: currentFrame
 
     if (showProfileDialog) {
@@ -213,6 +274,7 @@ fun GlyphInterfaceInspectorScreen(
             onDismiss = { showPatternDialog = false }
         )
     }
+    val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
         topBar = {
@@ -263,7 +325,8 @@ fun GlyphInterfaceInspectorScreen(
                     fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
                     baseIndicatorEnabled = baseIndicatorEnabled,
                     recordingLightIncluded = recordingLightIncluded,
-                    centerCorrectionEnabled = centerCorrectionEnabled,
+                    autoScaleStrategy = autoScaleStrategy,
+                    tuningScale = tuningScale,
                     showChannelLabels = showChannelLabels,
                     frozen = frozenFrame != null,
                     canFreeze = currentFrame != null,
@@ -279,7 +342,26 @@ fun GlyphInterfaceInspectorScreen(
                     onFillOtherGlyphLightsEnabledChanged = { fillOtherGlyphLightsEnabled = it },
                     onBaseIndicatorEnabledChanged = { baseIndicatorEnabled = it },
                     onRecordingLightIncludedChanged = { recordingLightIncluded = it },
-                    onCenterCorrectionEnabledChanged = { centerCorrectionEnabled = it },
+                    onAutoScaleStrategyChanged = { autoScaleStrategyName = it.name },
+                    onTuningScaleChanged = { scale ->
+                        tuningKey?.let { localTuningScales[it] = scale }
+                    },
+                    onResetTuning = {
+                        tuningKey?.let { localTuningScales.remove(it) }
+                    },
+                    onCopyTuning = {
+                        selectedPatternKind?.let { patternKind ->
+                            clipboardManager.setText(
+                                AnnotatedString(
+                                    formatGlyphVisualTuningEntry(
+                                        profile = selectedProfile,
+                                        patternKind = patternKind,
+                                        tuning = GlyphVisualTuning(scale = tuningScale)
+                                    )
+                                )
+                            )
+                        }
+                    },
                     onShowChannelLabelsChanged = { showChannelLabels = it },
                     onFrozenChanged = { frozen ->
                         frozenFrame = if (frozen) currentFrame else null
@@ -291,12 +373,12 @@ fun GlyphInterfaceInspectorScreen(
                         frame = frame,
                         showChannelLabels = showChannelLabels,
                         status = inspectorStatus(inputMode, frozenFrame != null),
-                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE
+                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE_MIRROR
                     )
                     is GlyphPreviewFrame.Matrix -> GlyphMatrixFrameContent(
                         frame = frame,
                         status = inspectorStatus(inputMode, frozenFrame != null),
-                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE
+                        exactFrame = inputMode == GlyphInspectorInputMode.LIVE_MIRROR
                     )
                     null -> GlyphInspectorWaitingState(
                         modifier = Modifier
@@ -309,31 +391,68 @@ fun GlyphInterfaceInspectorScreen(
     }
 }
 
+private fun inspectorSyntheticAnalysisFrame(
+    timestampMs: Long,
+    level: Float
+): GlyphAnalysisFrame {
+    val spectrum = GlyphInspectorPreviewRenderer.spectrum(timestampMs, level)
+    val waveform = GlyphInspectorPreviewRenderer.waveform(timestampMs, level, phaseOffset = 0f)
+    val leftWaveform = GlyphInspectorPreviewRenderer.waveform(
+        timestampMs,
+        level,
+        phaseOffset = -0.45f
+    )
+    val rightWaveform = GlyphInspectorPreviewRenderer.waveform(
+        timestampMs,
+        level,
+        phaseOffset = 0.45f
+    )
+    val half = (spectrum.size / 2).coerceAtLeast(1)
+    val lowEnergy = spectrum.take(half).maxOrNull() ?: 0f
+    val highEnergy = spectrum.drop(half).maxOrNull() ?: 0f
+    return GlyphAnalysisFrame(
+        timestampMs = timestampMs,
+        level = level,
+        peak = level,
+        lowEnergy = lowEnergy,
+        highEnergy = highEnergy,
+        leftLevel = (level * 0.9f).coerceIn(0f, 1f),
+        rightLevel = level.coerceIn(0f, 1f),
+        spectrumBands = spectrum,
+        phone4aBaseBandLevel = lowEnergy,
+        waveformSamples = waveform,
+        leftWaveformSamples = leftWaveform,
+        rightWaveformSamples = rightWaveform
+    )
+}
+
 @Composable
 private fun GlyphExactVirtualPreviewFrame(
     profile: GlyphDeviceProfile,
     glyphMode: String,
-    level: Float,
+    analysisFrame: GlyphAnalysisFrame,
     reverseDirection: Boolean,
     binaryMode: Boolean,
     fillOtherGlyphLightsEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
-    centerCorrectionEnabled: Boolean,
-    timestampMs: Long
+    autoScaleEnabled: Boolean,
+    autoScaleStrategy: GlyphAutoScaleStrategy,
+    visualTuning: GlyphVisualTuning,
+    autoScaleWindowSeconds: Float,
+    autoScaleOffset: Float
 ): GlyphPreviewFrame? {
     val context = LocalContext.current.applicationContext
-    val outputState = remember(profile, centerCorrectionEnabled) {
+    val outputState = remember(profile) {
         mutableStateOf<GlyphPreviewFrame?>(null)
     }
-    val controller = remember(profile, centerCorrectionEnabled, context) {
+    val controller = remember(profile, context) {
         val definition = requireNotNull(GlyphDeviceCatalog.definitionForProfile(profile))
         when (definition.controllerFamily) {
             GlyphControllerFamily.LIGHTS -> GlyphLightController(
                 context = context,
                 onStatusChanged = {},
                 previewDeviceProfile = profile,
-                previewCenterCorrectionEnabled = centerCorrectionEnabled,
                 previewFrameListener = { outputState.value = it }
             )
             GlyphControllerFamily.MATRIX -> GlyphMatrixController(
@@ -345,16 +464,24 @@ private fun GlyphExactVirtualPreviewFrame(
         }
     }
 
+    DisposableEffect(controller) {
+        onDispose { controller.unbind() }
+    }
+
     LaunchedEffect(
         controller,
         glyphMode,
-        level,
+        analysisFrame.timestampMs,
         reverseDirection,
         binaryMode,
         fillOtherGlyphLightsEnabled,
         baseIndicatorEnabled,
         recordingLightIncluded,
-        timestampMs
+        autoScaleEnabled,
+        autoScaleStrategy,
+        visualTuning,
+        autoScaleWindowSeconds,
+        autoScaleOffset
     ) {
         controller.setGlyphMode(glyphMode)
         controller.setReverseDirection(reverseDirection)
@@ -362,43 +489,31 @@ private fun GlyphExactVirtualPreviewFrame(
         controller.setFillOtherGlyphLightsEnabled(fillOtherGlyphLightsEnabled)
         controller.setBaseIndicatorEnabled(baseIndicatorEnabled)
         controller.setRecordingLightIncluded(recordingLightIncluded)
-        controller.setLevelAutoScaleEnabled(false)
-        controller.setSpectrumAutoScaleEnabled(false)
-        controller.setAllBrightnessAutoScaleEnabled(false)
+        controller.setLevelAutoScaleEnabled(autoScaleEnabled)
+        controller.setSpectrumAutoScaleEnabled(autoScaleEnabled)
+        controller.setAllBrightnessAutoScaleEnabled(autoScaleEnabled)
+        controller.setAutoScaleStrategy(autoScaleStrategy)
+        controller.setVisualTuningOverride(
+            visualTuning.takeIf {
+                autoScaleEnabled && autoScaleStrategy == GlyphAutoScaleStrategy.ADAPTIVE
+            }
+        )
+        controller.setAutoScaleWindowSeconds(autoScaleWindowSeconds)
+        controller.setAutoScaleOffset(autoScaleOffset)
         controller.setExperimentalPerformanceOptimizationsEnabled(false)
         controller.setMatrixSmoothMotionEnabled(true)
-
-        val spectrum = GlyphInspectorPreviewRenderer.spectrum(timestampMs, level)
-        val waveform = GlyphInspectorPreviewRenderer.waveform(
-            timestampMs,
-            level,
-            phaseOffset = 0f
-        )
-        val leftWaveform = GlyphInspectorPreviewRenderer.waveform(
-            timestampMs,
-            level,
-            phaseOffset = -0.45f
-        )
-        val rightWaveform = GlyphInspectorPreviewRenderer.waveform(
-            timestampMs,
-            level,
-            phaseOffset = 0.45f
-        )
-        val half = (spectrum.size / 2).coerceAtLeast(1)
-        val lowEnergy = spectrum.take(half).maxOrNull() ?: 0f
-        val highEnergy = spectrum.drop(half).maxOrNull() ?: 0f
         controller.updateAnalysis(
-            lowEnergy = lowEnergy,
-            highEnergy = highEnergy,
-            leftLevel = (level * 0.9f).coerceIn(0f, 1f),
-            rightLevel = level.coerceIn(0f, 1f),
-            spectrumBands = spectrum,
-            phone4aBaseBandLevel = lowEnergy,
-            waveformSamples = waveform,
-            leftWaveformSamples = leftWaveform,
-            rightWaveformSamples = rightWaveform
+            lowEnergy = analysisFrame.lowEnergy,
+            highEnergy = analysisFrame.highEnergy,
+            leftLevel = analysisFrame.leftLevel,
+            rightLevel = analysisFrame.rightLevel,
+            spectrumBands = analysisFrame.spectrumBands,
+            phone4aBaseBandLevel = analysisFrame.phone4aBaseBandLevel,
+            waveformSamples = analysisFrame.waveformSamples,
+            leftWaveformSamples = analysisFrame.leftWaveformSamples,
+            rightWaveformSamples = analysisFrame.rightWaveformSamples
         )
-        controller.updateLevel(level)
+        controller.updateLevel(analysisFrame.level)
     }
 
     return outputState.value
@@ -416,7 +531,8 @@ private fun GlyphInspectorControls(
     fillOtherGlyphLightsEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
-    centerCorrectionEnabled: Boolean,
+    autoScaleStrategy: GlyphAutoScaleStrategy,
+    tuningScale: Float,
     showChannelLabels: Boolean,
     frozen: Boolean,
     canFreeze: Boolean,
@@ -429,14 +545,19 @@ private fun GlyphInspectorControls(
     onFillOtherGlyphLightsEnabledChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onRecordingLightIncludedChanged: (Boolean) -> Unit,
-    onCenterCorrectionEnabledChanged: (Boolean) -> Unit,
+    onAutoScaleStrategyChanged: (GlyphAutoScaleStrategy) -> Unit,
+    onTuningScaleChanged: (Float) -> Unit,
+    onResetTuning: () -> Unit,
+    onCopyTuning: () -> Unit,
     onShowChannelLabelsChanged: (Boolean) -> Unit,
     onFrozenChanged: (Boolean) -> Unit
 ) {
     val pattern = GlyphPatternRegistry.definition(selectedGlyphMode)
     val patternLabel = if (pattern != null) stringResource(pattern.labelRes) else selectedGlyphMode
     val profileLabel = GlyphDeviceCatalog.presentationForProfile(selectedProfile).deviceLabel
-    val virtualInput = inputMode != GlyphInspectorInputMode.LIVE
+    val virtualInput = inputMode != GlyphInspectorInputMode.LIVE_MIRROR
+    val syntheticInput = inputMode == GlyphInspectorInputMode.MANUAL ||
+        inputMode == GlyphInspectorInputMode.SWEEP
     val isLightsProfile = GlyphDeviceCatalog.definitionForProfile(selectedProfile)
         ?.controllerFamily == GlyphControllerFamily.LIGHTS
     val isPhone4Bar = selectedProfile == GlyphDeviceProfile.PHONE4A ||
@@ -479,7 +600,10 @@ private fun GlyphInspectorControls(
                             Text(
                                 stringResource(
                                     when (mode) {
-                                        GlyphInspectorInputMode.LIVE -> R.string.glyph_inspector_input_live
+                                        GlyphInspectorInputMode.LIVE_MIRROR ->
+                                            R.string.glyph_inspector_input_live_mirror
+                                        GlyphInspectorInputMode.LIVE_VIRTUAL ->
+                                            R.string.glyph_inspector_input_live_virtual
                                         GlyphInspectorInputMode.MANUAL -> R.string.glyph_inspector_input_manual
                                         GlyphInspectorInputMode.SWEEP -> R.string.glyph_inspector_input_sweep
                                     }
@@ -510,7 +634,7 @@ private fun GlyphInspectorControls(
                 }
             }
 
-            if (virtualInput) {
+            if (syntheticInput) {
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -541,7 +665,9 @@ private fun GlyphInspectorControls(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
 
+            if (virtualInput) {
                 GlyphInspectorToggleRow(
                     title = stringResource(R.string.glyph_inspector_reverse),
                     checked = reverseDirection,
@@ -578,14 +704,18 @@ private fun GlyphInspectorControls(
                         onCheckedChange = onRecordingLightIncludedChanged
                     )
                 }
-                if (pattern?.kind == GlyphPatternKind.CENTER) {
-                    GlyphInspectorToggleRow(
-                        title = stringResource(R.string.glyph_inspector_center_correction),
-                        checked = centerCorrectionEnabled,
-                        enabled = !frozen,
-                        onCheckedChange = onCenterCorrectionEnabledChanged
-                    )
-                }
+            }
+
+            if (inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL) {
+                GlyphInspectorAutoScaleControls(
+                    strategy = autoScaleStrategy,
+                    scale = tuningScale,
+                    frozen = frozen,
+                    onStrategyChanged = onAutoScaleStrategyChanged,
+                    onScaleChanged = onTuningScaleChanged,
+                    onReset = onResetTuning,
+                    onCopy = onCopyTuning
+                )
             }
 
             if (isLightsProfile) {
@@ -601,6 +731,85 @@ private fun GlyphInspectorControls(
                 enabled = canFreeze,
                 onCheckedChange = onFrozenChanged
             )
+        }
+    }
+}
+
+@Composable
+private fun GlyphInspectorAutoScaleControls(
+    strategy: GlyphAutoScaleStrategy,
+    scale: Float,
+    frozen: Boolean,
+    onStrategyChanged: (GlyphAutoScaleStrategy) -> Unit,
+    onScaleChanged: (Float) -> Unit,
+    onReset: () -> Unit,
+    onCopy: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = stringResource(R.string.glyph_inspector_auto_scale_strategy),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlyphAutoScaleStrategy.entries.forEach { option ->
+                FilterChip(
+                    selected = strategy == option,
+                    enabled = !frozen,
+                    onClick = { onStrategyChanged(option) },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (option) {
+                                    GlyphAutoScaleStrategy.LEGACY ->
+                                        R.string.glyph_inspector_auto_scale_legacy
+                                    GlyphAutoScaleStrategy.ADAPTIVE ->
+                                        R.string.glyph_inspector_auto_scale_adaptive
+                                }
+                            )
+                        )
+                    }
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(stringResource(R.string.glyph_inspector_tuning_scale))
+            Text(
+                text = stringResource(R.string.glyph_inspector_tuning_scale_value, scale),
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Slider(
+            value = scale,
+            onValueChange = onScaleChanged,
+            enabled = !frozen && strategy == GlyphAutoScaleStrategy.ADAPTIVE,
+            valueRange = 0.25f..3f
+        )
+        Text(
+            text = stringResource(R.string.glyph_inspector_tuning_local_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                enabled = !frozen,
+                onClick = onReset
+            ) {
+                Text(stringResource(R.string.glyph_inspector_tuning_reset))
+            }
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = onCopy
+            ) {
+                Text(stringResource(R.string.glyph_inspector_tuning_copy))
+            }
         }
     }
 }
@@ -725,7 +934,8 @@ private fun inspectorStatus(
     frozen: Boolean
 ): GlyphInspectorFrameStatus = when {
     frozen -> GlyphInspectorFrameStatus.FROZEN
-    inputMode == GlyphInspectorInputMode.LIVE -> GlyphInspectorFrameStatus.LIVE
+    inputMode == GlyphInspectorInputMode.LIVE_MIRROR ||
+        inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL -> GlyphInspectorFrameStatus.LIVE
     else -> GlyphInspectorFrameStatus.SIMULATED
 }
 

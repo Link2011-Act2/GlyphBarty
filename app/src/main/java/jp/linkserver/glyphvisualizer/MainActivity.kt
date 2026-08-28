@@ -513,6 +513,8 @@ class MainActivity : ComponentActivity() {
                     levelAutoScale = uiState.levelAutoScale,
                     spectrumAutoScale = uiState.spectrumAutoScale,
                     allBrightnessAutoScale = uiState.allBrightnessAutoScale,
+                    experimentalAdaptiveAutoScaleEnabled =
+                        uiState.experimentalAdaptiveAutoScaleEnabled,
                     mediaProjectionEnabled = uiState.mediaProjectionEnabled,
                     glyphMeterPreviewEnabled = uiState.glyphMeterPreviewEnabled,
                     meterVisibleEnabled = uiState.meterVisibleEnabled,
@@ -980,6 +982,14 @@ class MainActivity : ComponentActivity() {
                         )
                         SettingsPreferences.save(this, updated)
                     },
+                    onExperimentalAdaptiveAutoScaleEnabledChanged = { enabled ->
+                        CaptureUiStore.update {
+                            it.copy(experimentalAdaptiveAutoScaleEnabled = enabled)
+                        }
+                        val updated = CaptureUiStore.state
+                        SettingsPreferences.save(this, updated)
+                        syncCurrentParameters(updated)
+                    },
                     onTurnOffWhenBackDownChanged = { newValue ->
                         CaptureUiStore.update { it.copy(turnOffWhenBackDown = newValue) }
                         val updated = CaptureUiStore.state
@@ -1307,6 +1317,8 @@ class MainActivity : ComponentActivity() {
                 levelAutoScale = parameters.levelAutoScale,
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
+                experimentalAdaptiveAutoScaleEnabled =
+                    parameters.experimentalAdaptiveAutoScaleEnabled,
                 experimentalVisualizerStabilizationEnabled = parameters.experimentalVisualizerStabilizationEnabled,
                 experimentalVisualizerSignalWatchdogEnabled = parameters.experimentalVisualizerSignalWatchdogEnabled,
                 experimentalSpectrumDecayEnabled = parameters.experimentalSpectrumDecayEnabled,
@@ -1734,6 +1746,7 @@ private fun GlyphVisualizerApp(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
+    experimentalAdaptiveAutoScaleEnabled: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -1787,6 +1800,7 @@ private fun GlyphVisualizerApp(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onExperimentalAdaptiveAutoScaleEnabledChanged: (Boolean) -> Unit,
     onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     onNothingStyleEnabledChanged: (Boolean) -> Unit,
     onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,
@@ -2016,6 +2030,7 @@ private fun GlyphVisualizerApp(
                         levelAutoScale = levelAutoScale,
                         spectrumAutoScale = spectrumAutoScale,
                         allBrightnessAutoScale = allBrightnessAutoScale,
+                        experimentalAdaptiveAutoScaleEnabled = experimentalAdaptiveAutoScaleEnabled,
                         mediaProjectionEnabled = mediaProjectionEnabled,
                         glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
                         meterVisibleEnabled = meterVisibleEnabled,
@@ -2048,6 +2063,8 @@ private fun GlyphVisualizerApp(
                         onLevelAutoScaleChanged = onLevelAutoScaleChanged,
                         onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
                         onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+                        onExperimentalAdaptiveAutoScaleEnabledChanged =
+                            onExperimentalAdaptiveAutoScaleEnabledChanged,
                         onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                         onTurnOffWhenBackDownChanged = onTurnOffWhenBackDownChanged,
                         startPending = startPending,
@@ -2556,6 +2573,7 @@ private fun MainScreenContent(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
+    experimentalAdaptiveAutoScaleEnabled: Boolean,
     mediaProjectionEnabled: Boolean,
     glyphMeterPreviewEnabled: Boolean,
     meterVisibleEnabled: Boolean,
@@ -2588,6 +2606,7 @@ private fun MainScreenContent(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onExperimentalAdaptiveAutoScaleEnabledChanged: (Boolean) -> Unit,
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
@@ -2635,6 +2654,7 @@ private fun MainScreenContent(
             levelAutoScale = levelAutoScale,
             spectrumAutoScale = spectrumAutoScale,
             allBrightnessAutoScale = allBrightnessAutoScale,
+            experimentalAdaptiveAutoScaleEnabled = experimentalAdaptiveAutoScaleEnabled,
             mediaProjectionEnabled = mediaProjectionEnabled,
             glyphMeterPreviewEnabled = glyphMeterPreviewEnabled,
             meterVisibleEnabled = meterVisibleEnabled,
@@ -2668,6 +2688,8 @@ private fun MainScreenContent(
             onLevelAutoScaleChanged = onLevelAutoScaleChanged,
             onSpectrumAutoScaleChanged = onSpectrumAutoScaleChanged,
             onAllBrightnessAutoScaleChanged = onAllBrightnessAutoScaleChanged,
+            onExperimentalAdaptiveAutoScaleEnabledChanged =
+                onExperimentalAdaptiveAutoScaleEnabledChanged,
             onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
             onStartVisualizerClick = onStartVisualizerClick,
             onStartProjectionClick = onStartProjectionClick,
@@ -5801,6 +5823,7 @@ private fun GlyphVisualizerPreview() {
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
+            experimentalAdaptiveAutoScaleEnabled = false,
             mediaProjectionEnabled = false,
             glyphMeterPreviewEnabled = true,
             meterVisibleEnabled = true,
@@ -5854,6 +5877,7 @@ private fun GlyphVisualizerPreview() {
             onLevelAutoScaleChanged = {},
             onSpectrumAutoScaleChanged = {},
             onAllBrightnessAutoScaleChanged = {},
+            onExperimentalAdaptiveAutoScaleEnabledChanged = {},
             onMediaProjectionEnabledChanged = {},
             onNothingStyleEnabledChanged = {},
             onExperimentalMainUiEnabledChanged = {},

@@ -11,6 +11,8 @@ interface GlyphOutputController {
     fun setRecordingLightIncluded(enabled: Boolean) {}
     fun setPhone4bEmulationEnabled(enabled: Boolean) {}
     fun setLevelAutoScaleEnabled(enabled: Boolean) {}
+    fun setAutoScaleStrategy(strategy: GlyphAutoScaleStrategy) {}
+    fun setVisualTuningOverride(tuning: GlyphVisualTuning?) {}
     fun setOutputGamma(gamma: Float) {}
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}
     fun setExperimentalPerformanceOptimizationsEnabled(enabled: Boolean) {}

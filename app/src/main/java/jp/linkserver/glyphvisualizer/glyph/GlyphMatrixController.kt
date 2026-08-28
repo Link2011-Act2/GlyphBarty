@@ -78,6 +78,11 @@ class GlyphMatrixController(
     private var allBrightnessAutoScaleEnabled = false
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var autoScaleOffset = 0f
+    private var autoScaleStrategy = GlyphAutoScaleStrategy.LEGACY
+    private var visualTuningOverride: GlyphVisualTuning? = null
+    private val legacyLevelAutoScale = LegacyAutoScaleController()
+    private val legacySpectrumAutoScale = LegacySpectrumAutoScaleController()
+    private val legacyAllBrightnessAutoScale = LegacyAutoScaleController()
     private val levelAutoGain = AutoGainController()
     private val spectrumAutoGain = AutoGainController()
     private val allBrightnessAutoGain = AutoGainController()
@@ -342,6 +347,19 @@ class GlyphMatrixController(
         }
     }
 
+    override fun setAutoScaleStrategy(strategy: GlyphAutoScaleStrategy) {
+        if (autoScaleStrategy != strategy) {
+            autoScaleStrategy = strategy
+            resetLevelScaleTracking()
+            resetSpectrumScaleTracking()
+            resetAllBrightnessScaleTracking()
+        }
+    }
+
+    override fun setVisualTuningOverride(tuning: GlyphVisualTuning?) {
+        visualTuningOverride = tuning
+    }
+
     override fun setSpectrumAutoScaleEnabled(enabled: Boolean) {
         if (spectrumAutoScaleEnabled != enabled) {
             spectrumAutoScaleEnabled = enabled
@@ -440,6 +458,16 @@ class GlyphMatrixController(
         if (!spectrumAutoScaleEnabled) return input
 
         val now = SystemClock.elapsedRealtime()
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacySpectrumAutoScale.update(
+                input = input,
+                nowMs = now,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset,
+                output = normalizedSpectrumBands
+            ).also { normalizedSpectrumBands = it }
+        }
+
         val gain = spectrumAutoGain.update(
             referenceRaw = framePeak,
             nowMs = now,
@@ -451,13 +479,22 @@ class GlyphMatrixController(
             normalizedSpectrumBands = FloatArray(input.size)
         }
 
+        val patternKind = GlyphPatternRegistry.kindOf(glyphMode)
         for (i in input.indices) {
-            normalizedSpectrumBands[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
+            normalizedSpectrumBands[i] = applyAutoScaleVisualTuning(
+                value = input[i].coerceIn(0f, 1f) * gain,
+                autoScaleEnabled = spectrumAutoScaleEnabled,
+                strategy = autoScaleStrategy,
+                profile = matrixProfile,
+                patternKind = patternKind,
+                override = visualTuningOverride
+            )
         }
         return normalizedSpectrumBands
     }
 
     private fun resetSpectrumScaleTracking() {
+        legacySpectrumAutoScale.reset()
         spectrumAutoGain.reset()
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
@@ -465,16 +502,26 @@ class GlyphMatrixController(
     }
 
     private fun resetAllBrightnessScaleTracking() {
+        legacyAllBrightnessAutoScale.reset()
         allBrightnessAutoGain.reset()
         allBrightnessGateOn = false
     }
 
     private fun resetLevelScaleTracking() {
+        legacyLevelAutoScale.reset()
         levelAutoGain.reset()
     }
 
     private fun normalizeLevelForMode(level: Float, nowMs: Long): Float {
         if (!levelAutoScaleEnabled || !isLevelAutoScaleMode()) return level
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacyLevelAutoScale.update(
+                value = level,
+                nowMs = nowMs,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset
+            )
+        }
         val gain = levelAutoGain.update(
             referenceRaw = level,
             nowMs = nowMs,
@@ -482,7 +529,14 @@ class GlyphMatrixController(
             gainUpTauSeconds = autoScaleWindowMs / 1_000f,
             holdGainIncrease = level < SILENCE_ACTIVITY_THRESHOLD
         )
-        return (level * gain).coerceIn(0f, 1f)
+        return applyAutoScaleVisualTuning(
+            value = level * gain,
+            autoScaleEnabled = levelAutoScaleEnabled,
+            strategy = autoScaleStrategy,
+            profile = matrixProfile,
+            patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+            override = visualTuningOverride
+        )
     }
 
     private fun isLevelAutoScaleMode(): Boolean {
@@ -490,24 +544,41 @@ class GlyphMatrixController(
     }
 
     private fun normalizeAllBrightnessLevel(level: Float, nowMs: Long): Float {
+        if (!allBrightnessAutoScaleEnabled) return level
+        if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            return legacyAllBrightnessAutoScale.update(
+                value = level,
+                nowMs = nowMs,
+                windowMs = autoScaleWindowMs,
+                offset = autoScaleOffset
+            )
+        }
+
         allBrightnessGateOn = if (allBrightnessGateOn) {
             level > ALL_BRIGHTNESS_OFF_THRESHOLD
         } else {
             level >= ALL_BRIGHTNESS_ON_THRESHOLD
         }
 
-        val gain = if (allBrightnessAutoScaleEnabled) {
-            allBrightnessAutoGain.update(
-                referenceRaw = level,
-                nowMs = nowMs,
-                targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
-                gainUpTauSeconds = autoScaleWindowMs / 1_000f,
-                holdGainIncrease = !allBrightnessGateOn
+        val gain = allBrightnessAutoGain.update(
+            referenceRaw = level,
+            nowMs = nowMs,
+            targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
+            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
+            holdGainIncrease = !allBrightnessGateOn
+        )
+        return if (allBrightnessGateOn) {
+            applyAutoScaleVisualTuning(
+                value = level * gain,
+                autoScaleEnabled = allBrightnessAutoScaleEnabled,
+                strategy = autoScaleStrategy,
+                profile = matrixProfile,
+                patternKind = GlyphPatternRegistry.kindOf(glyphMode),
+                override = visualTuningOverride
             )
         } else {
-            1f
+            0f
         }
-        return if (allBrightnessGateOn) (level * gain).coerceIn(0f, 1f) else 0f
     }
 
     override fun updateLevel(level: Float) {

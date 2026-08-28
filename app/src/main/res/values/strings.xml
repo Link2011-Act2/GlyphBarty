@@ -375,11 +375,11 @@
     <string name="param_dynamics_value" translatable="false">%1$.2f</string>
     <string name="param_output_gamma_title">Output gamma</string>
     <string name="param_output_gamma_desc">Adjusts the output brightness curve. Higher values emphasize louder sounds</string>
-    <string name="param_auto_scale_window_title">Auto scale adaptation</string>
-    <string name="param_auto_scale_window_desc">Controls how quickly auto scale raises gain after the input becomes quieter. Shorter values adapt faster.</string>
+    <string name="param_auto_scale_window_title">Auto scale window</string>
+    <string name="param_auto_scale_window_desc">Adjusts how long auto scale remembers recent min/max levels. Shorter values adapt faster.</string>
     <string name="param_auto_scale_window_value">%1$.0f s</string>
-    <string name="param_auto_scale_offset_title">Auto scale headroom</string>
-    <string name="param_auto_scale_offset_desc">Lowers the auto scale target to leave more headroom. Higher values make brightness changes more restrained.</string>
+    <string name="param_auto_scale_offset_title">Auto scale offset</string>
+    <string name="param_auto_scale_offset_desc">When auto scale is enabled, expands the meter\'s minimum and maximum range. Higher values make auto scale change more gently.</string>
     <string name="latency_title">Latency adjustment</string>
     <string name="latency_desc">Delay the meter and Glyph output to match playback timing.</string>
     <string name="latency_value_ms">%1$.0f ms</string>
@@ -416,7 +416,8 @@
     <string name="glyph_inspector_waiting_title">Waiting for a Glyph frame</string>
     <string name="glyph_inspector_waiting_desc">Start the visualizer and play audio, or select Manual or Sweep above for a virtual preview.</string>
     <string name="glyph_inspector_input_title">Preview input</string>
-    <string name="glyph_inspector_input_live">Live mirror</string>
+    <string name="glyph_inspector_input_live_mirror">Live Mirror</string>
+    <string name="glyph_inspector_input_live_virtual">Live Virtual</string>
     <string name="glyph_inspector_input_manual">Manual</string>
     <string name="glyph_inspector_input_sweep">Sweep</string>
     <string name="glyph_inspector_level">Test level</string>
@@ -426,7 +427,14 @@
     <string name="glyph_inspector_binary">Binary brightness</string>
     <string name="glyph_inspector_fill_other_lights">Fill other Glyph lights</string>
     <string name="glyph_inspector_base_indicator">Bass/base indicator</string>
-    <string name="glyph_inspector_center_correction">2–4 slot Center correction</string>
+    <string name="glyph_inspector_auto_scale_strategy">Auto Scale strategy</string>
+    <string name="glyph_inspector_auto_scale_legacy">Legacy</string>
+    <string name="glyph_inspector_auto_scale_adaptive">Adaptive AGC</string>
+    <string name="glyph_inspector_tuning_scale">Visual Tuning scale</string>
+    <string name="glyph_inspector_tuning_scale_value">%1$.2f×</string>
+    <string name="glyph_inspector_tuning_local_note">Temporary Inspector value for the selected device profile and pattern. It is not saved to app settings.</string>
+    <string name="glyph_inspector_tuning_reset">Reset</string>
+    <string name="glyph_inspector_tuning_copy">Copy tuning</string>
     <string name="glyph_inspector_channel_labels">Channel labels</string>
     <string name="glyph_inspector_freeze">Freeze frame</string>
     <string name="glyph_inspector_device_dialog_title">Preview device</string>
@@ -518,13 +526,15 @@
     <string name="oscilloscope_auto_time_axis_desc">Automatically adjusts the display window to keep the waveform readable.</string>
 
     <string name="level_auto_scale_title">Level auto scale</string>
-    <string name="level_auto_scale_desc">Automatically adjusts gain to reduce differences in source volume.</string>
+    <string name="level_auto_scale_desc">Automatically adjusts the meter’s minimum and maximum values.</string>
+    <string name="adaptive_auto_scale_title">Adaptive Auto Scale (Experimental)</string>
+    <string name="adaptive_auto_scale_desc">Uses the adaptive P95/gain method when auto scale is enabled. Turn off to use Legacy Auto Scale.</string>
 
     <string name="spectrum_auto_scale_title">Spectrum auto scale</string>
-    <string name="spectrum_auto_scale_desc">Applies one shared automatic gain to all bands while preserving their relative levels.</string>
+    <string name="spectrum_auto_scale_desc">Automatically adjusts each band’s minimum and maximum meter values.</string>
 
     <string name="all_brightness_auto_scale_title">All Brightness auto scale</string>
-    <string name="all_brightness_auto_scale_desc">Automatically adjusts gain to reduce differences in source volume.</string>
+    <string name="all_brightness_auto_scale_desc">Automatically adjusts the level’s minimum and maximum values.</string>
 
     <string name="turn_off_when_back_down_title">Turn off when back side is down</string>
     <string name="turn_off_when_back_down_on">Glyph output pauses while the phone is back-down</string>

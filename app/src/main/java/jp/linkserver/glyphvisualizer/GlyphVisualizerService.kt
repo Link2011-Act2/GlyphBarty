@@ -31,12 +31,15 @@ import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
+import jp.linkserver.glyphvisualizer.glyph.GlyphAutoScaleStrategy
+import jp.linkserver.glyphvisualizer.glyph.GlyphAnalysisFrameStore
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphOutputController
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
+import jp.linkserver.glyphvisualizer.glyph.glyphAutoScaleStrategy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
@@ -457,6 +460,7 @@ class GlyphVisualizerService : Service() {
         val smoothingBalance: Float,
         val levelAutoScale: Boolean,
         val spectrumAutoScale: Boolean,
+        val autoScaleStrategy: GlyphAutoScaleStrategy,
         val experimentalPerformanceOptimizationsEnabled: Boolean,
         val matrixSmoothMotionEnabled: Boolean,
         val allBrightnessAutoScale: Boolean,
@@ -1447,6 +1451,7 @@ class GlyphVisualizerService : Service() {
         }
         mediaPlaybackSuppressed = false
         if (!isBackDownSuppressed) {
+            publishInspectorAnalysisFrame(frame)
             glyphController.updateAnalysis(
                 frame.lowEnergy,
                 frame.highEnergy,
@@ -1517,6 +1522,7 @@ class GlyphVisualizerService : Service() {
         mediaPlaybackSuppressed = false
         val backDownSuppressed = isBackDownSuppressed
         if (!backDownSuppressed) {
+            publishInspectorAnalysisFrame(frame)
             glyphController.updateAnalysis(
                 frame.lowEnergy,
                 frame.highEnergy,
@@ -1549,6 +1555,22 @@ class GlyphVisualizerService : Service() {
             },
             mode = frame.mode,
             backDownSuppressed = backDownSuppressed
+        )
+    }
+
+    private fun publishInspectorAnalysisFrame(frame: DelayedLevelFrame) {
+        GlyphAnalysisFrameStore.publish(
+            level = frame.level,
+            peak = frame.peak,
+            lowEnergy = frame.lowEnergy,
+            highEnergy = frame.highEnergy,
+            leftLevel = frame.leftLevel,
+            rightLevel = frame.rightLevel,
+            spectrumBands = frame.spectrumBands,
+            phone4aBaseBandLevel = frame.phone4aBaseBandLevel,
+            waveformSamples = frame.waveformSamples,
+            leftWaveformSamples = frame.leftWaveformSamples,
+            rightWaveformSamples = frame.rightWaveformSamples
         )
     }
 
@@ -1676,6 +1698,7 @@ class GlyphVisualizerService : Service() {
         mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
         pendingLevelFrames.clear()
         latestLevelFrame = null
+        GlyphAnalysisFrameStore.clear()
         CaptureUiStore.update {
             it.copy(
                 level = 0f,
@@ -1745,6 +1768,9 @@ class GlyphVisualizerService : Service() {
             smoothingBalance = smoothingBalance,
             levelAutoScale = levelAutoScale,
             spectrumAutoScale = spectrumAutoScale,
+            autoScaleStrategy = glyphAutoScaleStrategy(
+                savedSettings.experimentalAdaptiveAutoScaleEnabled
+            ),
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
             allBrightnessAutoScale = allBrightnessAutoScale,
@@ -1763,6 +1789,7 @@ class GlyphVisualizerService : Service() {
             setSmoothing(snapshot.smoothing, snapshot.smoothingBalance)
             setLevelAutoScaleEnabled(snapshot.levelAutoScale)
             setSpectrumAutoScaleEnabled(snapshot.spectrumAutoScale)
+            setAutoScaleStrategy(snapshot.autoScaleStrategy)
             setExperimentalPerformanceOptimizationsEnabled(snapshot.experimentalPerformanceOptimizationsEnabled)
             setMatrixSmoothMotionEnabled(snapshot.matrixSmoothMotionEnabled)
             setAllBrightnessAutoScaleEnabled(snapshot.allBrightnessAutoScale)

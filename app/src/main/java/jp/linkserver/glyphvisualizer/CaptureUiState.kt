@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import android.os.Handler
 import android.os.Looper
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
+import jp.linkserver.glyphvisualizer.glyph.DEFAULT_ADAPTIVE_AUTO_SCALE_ENABLED
 
 data class CaptureUiState(
     val statusText: String = "",
@@ -34,6 +35,7 @@ data class CaptureUiState(
     val levelAutoScale: Boolean = true,
     val spectrumAutoScale: Boolean = true,
     val allBrightnessAutoScale: Boolean = true,
+    val experimentalAdaptiveAutoScaleEnabled: Boolean = DEFAULT_ADAPTIVE_AUTO_SCALE_ENABLED,
     val autoScaleWindowSeconds: Float = 20f,
     val autoScaleOffset: Float = 0f,
     val latencyMs: Float = 0f,
