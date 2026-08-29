@@ -25,7 +25,7 @@
     <string name="about_version_details_title">Version details</string>
     <string name="about_version_details_message">Version: %1$s\nInternal version code: %2$d\nBuild number: %3$s</string>
     <string name="about_updates_title">What\'s new</string>
-    <string name="about_updates_body">• Added support for Phone (4b)\n• Added three new patterns\n• Overhauled the UI\n• Refined the app icon\n• Added a notification recommending that Spatial Audio be turned off when a related Nothing OS startup issue is detected</string>
+    <string name="about_updates_body">• Improved performance on Matrix devices\n• Redesigned Auto Scale (Experimental)</string>
     <string name="about_update_check_button">Check for updates</string>
     <string name="about_update_not_checked">Not checked yet</string>
     <string name="about_update_checking">Checking GitHub Releases…</string>
