@@ -66,6 +66,7 @@ class GlyphLightController(
         private const val CLASSIC_RELEASE_MAX_TAU_MS = 260f
         private const val CLASSIC_SMOOTHING_MIN = 0.05f
         private const val CLASSIC_SMOOTHING_MAX = 0.6f
+        private const val CLASSIC_BRIGHTNESS_BOOST_EXPONENT = 2.2f
     }
 
     private data class TravelingPulse(
@@ -1049,7 +1050,7 @@ class GlyphLightController(
             val brightness = if (binaryMode) {
                 if (shaped >= 0.5f) MAX_LIGHT else 0
             } else {
-                (shaped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
+                (boostClassicBrightness(shaped) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
             }
             if (brightness <= 0) return@forEachIndexed
             channels.forEach { channel ->
@@ -1058,6 +1059,11 @@ class GlyphLightController(
                 }
             }
         }
+    }
+
+    private fun boostClassicBrightness(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return 1f - (1f - clamped).pow(CLASSIC_BRIGHTNESS_BOOST_EXPONENT)
     }
 
     private fun sampleClassicSpectrumAt(position: Float): Float {

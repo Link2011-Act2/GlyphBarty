@@ -195,15 +195,27 @@ private fun DrawScope.drawSegmentedVectorPath(
         }
 
         val gapRatio = if (showSegmentGaps) SEGMENT_GAP_RATIO else 0f
-        if (!showSegmentGaps) {
-            drawOfficialPath(
-                path = path,
-                color = InactiveGlyphColor,
-                strokeWidth = geometry.strokeWidth
-            )
-        }
-
         geometry.arcSegments?.let { arcSegments ->
+            if (!showSegmentGaps) {
+                val firstBrightness = brightness.getOrElse(channels.first()) { 0 }
+                val hasUniformBrightness = channels.all { channel ->
+                    brightness.getOrElse(channel) { 0 } == firstBrightness
+                }
+                if (hasUniformBrightness) {
+                    drawOfficialPath(
+                        path = path,
+                        color = glyphColor(firstBrightness),
+                        strokeWidth = geometry.strokeWidth
+                    )
+                    return@withTransform
+                }
+                drawOfficialPath(
+                    path = path,
+                    color = InactiveGlyphColor,
+                    strokeWidth = geometry.strokeWidth
+                )
+            }
+
             val segmentSweep = arcSegments.sweepAngleDegrees / channels.size
             val arcBounds = Rect(
                 left = arcSegments.center.x - arcSegments.radiusX,
@@ -234,6 +246,14 @@ private fun DrawScope.drawSegmentedVectorPath(
                 }
             }
             return@withTransform
+        }
+
+        if (!showSegmentGaps) {
+            drawOfficialPath(
+                path = path,
+                color = InactiveGlyphColor,
+                strokeWidth = geometry.strokeWidth
+            )
         }
 
         val segmentBounds = geometry.segmentBounds
