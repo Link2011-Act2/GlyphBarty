@@ -61,12 +61,27 @@ class GlyphLightController(
         private const val PHONE4A_BASE_INDICATOR_PEAK_FALLOFF = 0.9995f
         private const val PHONE4A_RECORDING_LIGHT_CHANNEL = 6
         private const val PHONE4B_RECORDING_LIGHT_CHANNEL = 4
+        private const val CLASSIC_ATTACK_TAU_MS = 25f
+        private const val CLASSIC_RELEASE_MIN_TAU_MS = 60f
+        private const val CLASSIC_RELEASE_MAX_TAU_MS = 260f
+        private const val CLASSIC_SMOOTHING_MIN = 0.05f
+        private const val CLASSIC_SMOOTHING_MAX = 0.6f
     }
 
     private data class TravelingPulse(
         var position: Float,
         var brightness: Float
     )
+
+    private class ClassicOutputSmoothingState {
+        var output = FloatArray(0)
+        var lastUpdateMs = 0L
+
+        fun reset() {
+            output = FloatArray(0)
+            lastUpdateMs = 0L
+        }
+    }
 
     private interface BaseIndicatorRenderer {
         fun accepts(profile: GlyphDeviceProfile): Boolean
@@ -191,6 +206,8 @@ class GlyphLightController(
     private var spectrumBands = FloatArray(0)
     private var rawSpectrumPeak = 0f
     private var smoothedSpectrumBands = FloatArray(0)
+    private val classicPatternSmoothingState = ClassicOutputSmoothingState()
+    private val fillOtherSmoothingState = ClassicOutputSmoothingState()
     private var spectrumMarkerPosition: Float? = null
     private var lastSpectrumMarkerUpdateMs = 0L
     private var spectrumMarkerRadiusSegments = SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS
@@ -227,6 +244,7 @@ class GlyphLightController(
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
             invalidateLastSentFrame()
+            resetClassicSpectrumSmoothing()
             val spec = resolveDeviceSpec()
             if (spec == null) {
                 onStatusChanged(context.getString(R.string.status_glyph_device_unsupported, Build.MODEL))
@@ -297,6 +315,7 @@ class GlyphLightController(
 
         override fun onServiceDisconnected(componentName: ComponentName) {
             invalidateLastSentFrame()
+            resetClassicSpectrumSmoothing()
             isSessionOpen = false
             silenceStartedAt = 0L
             sessionReleasedForSilence = false
@@ -326,6 +345,9 @@ class GlyphLightController(
     }
 
     override fun setReverseDirection(reverse: Boolean) {
+        if (reverseDirection != reverse) {
+            resetClassicSpectrumSmoothing()
+        }
         reverseDirection = reverse
     }
 
@@ -336,11 +358,15 @@ class GlyphLightController(
             resetLevelScaleTracking()
             resetLinearPeakTracking()
             resetPulseTrainTracking()
+            resetClassicSpectrumSmoothing()
             resetBaseIndicatorTracking()
         }
     }
 
     override fun setFillOtherGlyphLightsEnabled(enabled: Boolean) {
+        if (fillOtherGlyphLightsEnabled != enabled) {
+            fillOtherSmoothingState.reset()
+        }
         fillOtherGlyphLightsEnabled = enabled
     }
 
@@ -575,7 +601,9 @@ class GlyphLightController(
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
             spectrumVisualDynamicsState.reset()
             if (previewDeviceProfile != null) {
-                deviceSpec?.let(::submitBlankFrame)
+                deviceSpec?.let { spec ->
+                    submitSilenceFrame(spec, renderMode)
+                }
                 return
             }
             if (silenceStartedAt <= 0L) silenceStartedAt = now
@@ -585,7 +613,7 @@ class GlyphLightController(
             if (isSessionOpen && !sessionReleasedForSilence) {
                 deviceSpec?.let { spec ->
                     try {
-                        submitBlankFrame(spec)
+                        submitSilenceFrame(spec, renderMode)
                     } catch (_: GlyphException) {
                     }
                 }
@@ -793,7 +821,12 @@ class GlyphLightController(
             GlyphPatternRenderMode.CENTER -> ranges.forEach { applyCenterRange(colors, it, level) }
             GlyphPatternRenderMode.SPECTRUM -> ranges.forEach { applySpectrumRange(colors, it, level) }
             GlyphPatternRenderMode.SPECTRUM_MARKER -> ranges.forEach { applySpectrumMarkerRange(colors, it, level) }
-            GlyphPatternRenderMode.CLASSIC -> applyClassicSpectrum(colors, deviceSpec ?: return, level)
+            GlyphPatternRenderMode.CLASSIC -> applyClassicSpectrum(
+                colors = colors,
+                spec = deviceSpec ?: return,
+                level = level,
+                smoothingState = classicPatternSmoothingState
+            )
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
                 val primaryRange = ranges.firstOrNull() ?: return
                 applyAllBrightnessRange(colors, primaryRange, level)
@@ -817,7 +850,8 @@ class GlyphLightController(
             colors = colors,
             spec = spec,
             level = level,
-            excludedRanges = usedRanges
+            excludedRanges = usedRanges,
+            smoothingState = fillOtherSmoothingState
         )
     }
 
@@ -974,13 +1008,13 @@ class GlyphLightController(
 
     private fun updateClassicSpectrum(level: Float, spec: DeviceSpec) {
         val clamped = level.coerceIn(0f, 1f)
-        if (clamped <= 0.001f) {
-            submitBlankFrame(spec)
-            return
-        }
-
         val colors = IntArray(spec.channelCount)
-        applyClassicSpectrum(colors, spec, clamped)
+        applyClassicSpectrum(
+            colors = colors,
+            spec = spec,
+            level = clamped,
+            smoothingState = classicPatternSmoothingState
+        )
         submitFrame(colors)
     }
 
@@ -988,24 +1022,30 @@ class GlyphLightController(
         colors: IntArray,
         spec: DeviceSpec,
         level: Float,
-        excludedRanges: List<IntRange> = emptyList()
+        excludedRanges: List<IntRange> = emptyList(),
+        smoothingState: ClassicOutputSmoothingState
     ) {
-        val groups = classicSpectrumGroupsFor(spec)
-            .map { group ->
-                group.filter { channel ->
-                    excludedRanges.none { channel in it }
-                }
-            }
-            .filter { it.isNotEmpty() }
-        if (groups.isEmpty()) return
+        val physicalGroups = classicSpectrumGroupsFor(spec)
+        if (physicalGroups.isEmpty()) return
 
-        val orderedGroups = if (shouldReverseLightOrder()) groups.reversed() else groups
-        val lastIndex = (orderedGroups.size - 1).coerceAtLeast(1)
-        orderedGroups.forEachIndexed { index, channels ->
-            val position = index / lastIndex.toFloat()
-            val bandValue = sampleSpectrumAt(position)
+        val lastGroupIndex = physicalGroups.lastIndex
+        val positionDenominator = lastGroupIndex.coerceAtLeast(1).toFloat()
+        val reverse = shouldReverseLightOrder()
+        val targetOutput = FloatArray(physicalGroups.size) { groupIndex ->
+            val spectrumIndex = if (reverse) lastGroupIndex - groupIndex else groupIndex
+            val position = spectrumIndex / positionDenominator
+            val bandValue = sampleClassicSpectrumAt(position)
             val weighted = (bandValue * level).coerceIn(0f, 1f)
-            val shaped = weighted.pow(outputGamma)
+            weighted.pow(outputGamma)
+        }
+        val output = smoothClassicOutput(targetOutput, smoothingState)
+        physicalGroups.forEachIndexed { groupIndex, physicalChannels ->
+            val channels = physicalChannels.filter { channel ->
+                excludedRanges.none { channel in it }
+            }
+            if (channels.isEmpty()) return@forEachIndexed
+
+            val shaped = output[groupIndex]
             val brightness = if (binaryMode) {
                 if (shaped >= 0.5f) MAX_LIGHT else 0
             } else {
@@ -1018,6 +1058,51 @@ class GlyphLightController(
                 }
             }
         }
+    }
+
+    private fun sampleClassicSpectrumAt(position: Float): Float {
+        if (spectrumBands.size <= 1) return sampleSpectrumAt(position)
+        val adjacentBandOffset = 1f / (spectrumBands.size - 1f)
+        val left = sampleSpectrumAt(position - adjacentBandOffset)
+        val center = sampleSpectrumAt(position)
+        val right = sampleSpectrumAt(position + adjacentBandOffset)
+        return ((left * 0.25f) + (center * 0.5f) + (right * 0.25f)).coerceIn(0f, 1f)
+    }
+
+    private fun smoothClassicOutput(
+        target: FloatArray,
+        state: ClassicOutputSmoothingState
+    ): FloatArray {
+        val now = SystemClock.elapsedRealtime()
+        if (state.output.size != target.size || state.lastUpdateMs <= 0L) {
+            state.output = target.copyOf()
+            state.lastUpdateMs = now
+            return state.output.copyOf()
+        }
+
+        val elapsedMs = (now - state.lastUpdateMs).coerceAtLeast(0L).toFloat()
+        state.lastUpdateMs = now
+        val releaseTauMs = classicReleaseTauMs()
+        for (index in target.indices) {
+            val current = state.output[index]
+            val tauMs = if (target[index] > current) CLASSIC_ATTACK_TAU_MS else releaseTauMs
+            val alpha = (1f - exp(-elapsedMs / tauMs)).coerceIn(0f, 1f)
+            state.output[index] = current + ((target[index] - current) * alpha)
+        }
+        return state.output.copyOf()
+    }
+
+    private fun classicReleaseTauMs(): Float {
+        val responseSpeed = ((smoothing - CLASSIC_SMOOTHING_MIN) /
+            (CLASSIC_SMOOTHING_MAX - CLASSIC_SMOOTHING_MIN)).coerceIn(0f, 1f)
+        val smoothingStrength = 1f - responseSpeed
+        return CLASSIC_RELEASE_MIN_TAU_MS +
+            ((CLASSIC_RELEASE_MAX_TAU_MS - CLASSIC_RELEASE_MIN_TAU_MS) * smoothingStrength)
+    }
+
+    private fun resetClassicSpectrumSmoothing() {
+        classicPatternSmoothingState.reset()
+        fillOtherSmoothingState.reset()
     }
 
     private fun applyLinearPeakRange(colors: IntArray, range: IntRange, level: Float, peakLevel: Float) {
@@ -1534,6 +1619,26 @@ class GlyphLightController(
         submitFrame(blankFrame)
     }
 
+    private fun submitSilenceFrame(spec: DeviceSpec, renderMode: GlyphPatternRenderMode?) {
+        if (renderMode == GlyphPatternRenderMode.CLASSIC) {
+            lastPreviewLevel = 0f
+            renderLightPattern(spec, 0f)
+            return
+        }
+
+        val recipe = GlyphPatternRegistry.recipeFor(glyphMode)
+        if (fillOtherGlyphLightsEnabled && recipe != null) {
+            lastPreviewLevel = 0f
+            val colors = IntArray(spec.channelCount)
+            val usedRanges = resolveLightRanges(spec, recipe.lightZones)
+            applyFillOtherGlyphLights(colors, spec, usedRanges, 0f)
+            submitFrame(colors)
+            return
+        }
+
+        submitBlankFrame(spec)
+    }
+
     private fun invalidateLastSentFrame() {
         if (lastSentFrame.isNotEmpty()) {
             lastSentFrame = IntArray(0)
@@ -1546,6 +1651,7 @@ class GlyphLightController(
         resetLinearPeakTracking()
         resetPulseTrainTracking()
         resetSpectrumMarkerTracking()
+        resetClassicSpectrumSmoothing()
         resetBaseIndicators()
         silenceStartedAt = 0L
         // Keep sessionReleasedForSilence intact. A capture-only restart calls turnOff()
@@ -1686,6 +1792,7 @@ class GlyphLightController(
 
     private fun releaseSessionForSilence() {
         invalidateLastSentFrame()
+        resetClassicSpectrumSmoothing()
         try {
             glyphManager.turnOff()
             mirrorOffPreviewFrame()
@@ -1735,6 +1842,7 @@ class GlyphLightController(
             } else {
                 glyphManager.openSession()
                 invalidateLastSentFrame()
+                resetClassicSpectrumSmoothing()
                 isSessionOpen = true
                 sessionReleasedForSilence = false
                 true
