@@ -316,6 +316,8 @@
     <string name="glyph_pattern_desc_matrix_pulse_grid">Assigns spectrum bands across the Matrix grid so each pixel pulses with its mapped frequency range.</string>
     <string name="fill_other_glyph_lights_title">Light up the other Glyphs too</string>
     <string name="fill_other_glyph_lights_desc">When using a partial-light mode, the remaining lights will also react to the spectrum like Classic.</string>
+    <string name="phone1_classic_c_split_title">Split Phone (1) C in Classic</string>
+    <string name="phone1_classic_c_split_desc">Treat Glyphs 2–5 as four separate Classic groups, spaced evenly across the spectrum.</string>
     <string name="fill_other_glyph_lights_enabled">Light them</string>
     <string name="fill_other_glyph_lights_disabled">Do not light them</string>
     <string name="fill_other_glyph_lights_disabled_desc">Uses only the Glyphs controlled by the selected pattern.</string>

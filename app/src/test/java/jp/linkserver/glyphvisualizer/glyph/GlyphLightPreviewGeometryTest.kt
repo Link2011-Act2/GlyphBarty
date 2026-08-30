@@ -270,7 +270,15 @@ class GlyphLightPreviewGeometryTest {
         val phone1 = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE1))
         val phone1C = phone1.specPath(GlyphPreviewSpecRange.C)
         val phone1D1 = phone1.specPath(GlyphPreviewSpecRange.D1)
-        assertTrue(requireNotNull(phone1C.arcSegments).sweepAngleDegrees > 180f)
+        val phone1CArc = requireNotNull(phone1C.arcSegments)
+        assertTrue(phone1CArc.sweepAngleDegrees > 180f)
+        assertEquals(
+            listOf(327f, 238f, 155f, 75f, 2f),
+            phone1CArc.channelBoundaryAnglesDegrees
+        )
+        assertEquals(4f, phone1CArc.endCapPaddingDegrees)
+        val phone1CBinding = phone1C.channels as GlyphPreviewChannelBinding.SpecRange
+        assertEquals(false, phone1CBinding.reversed)
         assertEquals(GlyphPreviewBarDirection.BOTTOM_TO_TOP, phone1D1.segmentDirection)
 
         val phone2a = requireNotNull(GlyphLightPreviewGeometry.layoutFor(GlyphDeviceProfile.PHONE2A))

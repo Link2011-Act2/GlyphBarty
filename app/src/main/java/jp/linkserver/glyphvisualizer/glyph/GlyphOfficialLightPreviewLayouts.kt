@@ -120,7 +120,15 @@ internal object GlyphOfficialLightPreviewLayouts {
                         radiusX = 90f,
                         radiusY = 112f,
                         startAngleDegrees = 2f,
-                        sweepAngleDegrees = 325f
+                        sweepAngleDegrees = 325f,
+                        channelBoundaryAnglesDegrees = listOf(
+                            327f,
+                            238f,
+                            155f,
+                            75f,
+                            2f
+                        ),
+                        endCapPaddingDegrees = 4f
                     )
                 ),
                 phone1Path(

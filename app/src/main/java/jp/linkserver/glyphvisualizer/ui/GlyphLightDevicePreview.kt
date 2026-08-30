@@ -216,7 +216,9 @@ private fun DrawScope.drawSegmentedVectorPath(
                 )
             }
 
-            val segmentSweep = arcSegments.sweepAngleDegrees / channels.size
+            val equalSegmentSweep = arcSegments.sweepAngleDegrees / channels.size
+            val channelBoundaries = arcSegments.channelBoundaryAnglesDegrees
+                .takeIf { it.size == channels.size + 1 }
             val arcBounds = Rect(
                 left = arcSegments.center.x - arcSegments.radiusX,
                 top = arcSegments.center.y - arcSegments.radiusY,
@@ -226,13 +228,30 @@ private fun DrawScope.drawSegmentedVectorPath(
             channels.forEachIndexed { index, channel ->
                 val channelBrightness = brightness.getOrElse(channel) { 0 }
                 if (!showSegmentGaps && channelBrightness <= 0) return@forEachIndexed
+                val segmentStartAngle = channelBoundaries?.get(index)
+                    ?: arcSegments.startAngleDegrees + equalSegmentSweep * index
+                val segmentSweep = channelBoundaries?.let { boundaries ->
+                    boundaries[index + 1] - boundaries[index]
+                } ?: equalSegmentSweep
+                val sweepDirection = if (segmentSweep >= 0f) 1f else -1f
+                val startCapPadding = if (index == 0) {
+                    arcSegments.endCapPaddingDegrees
+                } else {
+                    0f
+                }
+                val endCapPadding = if (index == channels.lastIndex) {
+                    arcSegments.endCapPaddingDegrees
+                } else {
+                    0f
+                }
                 val wedgePath = Path().apply {
                     moveTo(arcSegments.center.x, arcSegments.center.y)
                     arcTo(
                         rect = arcBounds,
-                        startAngleDegrees = arcSegments.startAngleDegrees + segmentSweep *
-                            (index + gapRatio / 2f),
-                        sweepAngleDegrees = segmentSweep * (1f - gapRatio),
+                        startAngleDegrees = segmentStartAngle + segmentSweep * gapRatio / 2f -
+                            sweepDirection * startCapPadding,
+                        sweepAngleDegrees = segmentSweep * (1f - gapRatio) +
+                            sweepDirection * (startCapPadding + endCapPadding),
                         forceMoveTo = false
                     )
                     close()

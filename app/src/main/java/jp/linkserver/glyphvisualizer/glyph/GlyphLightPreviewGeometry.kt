@@ -43,7 +43,10 @@ internal data class GlyphPreviewArcSegments(
     val radiusX: Float,
     val radiusY: Float,
     val startAngleDegrees: Float,
-    val sweepAngleDegrees: Float
+    val sweepAngleDegrees: Float,
+    val channelBoundaryAnglesDegrees: List<Float> = emptyList(),
+    /** Extra coverage for the rounded/open ends when a filled path is clipped per channel. */
+    val endCapPaddingDegrees: Float = 0f
 )
 
 internal enum class GlyphPreviewSpecRange {

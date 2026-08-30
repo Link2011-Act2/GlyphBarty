@@ -168,6 +168,7 @@ class GlyphLightController(
     private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var fillOtherGlyphLightsEnabled = false
+    private var phone1ClassicCSplitEnabled = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
     private var recordingLightIncluded = false
@@ -369,6 +370,13 @@ class GlyphLightController(
             fillOtherSmoothingState.reset()
         }
         fillOtherGlyphLightsEnabled = enabled
+    }
+
+    override fun setPhone1ClassicCSplitEnabled(enabled: Boolean) {
+        if (phone1ClassicCSplitEnabled != enabled) {
+            resetClassicSpectrumSmoothing()
+        }
+        phone1ClassicCSplitEnabled = enabled
     }
 
     override fun setBinaryMode(binary: Boolean) {
@@ -1143,39 +1151,10 @@ class GlyphLightController(
     }
 
     private fun classicSpectrumGroupsFor(spec: DeviceSpec): List<List<Int>> {
-        return when (spec.profile) {
-            GlyphDeviceProfile.PHONE1 -> listOf(
-                listOf(0),
-                listOf(1),
-                (2..5).toList(),
-                (7..14).toList(),
-                listOf(6)
-            )
-            GlyphDeviceProfile.PHONE2 -> listOf(
-                listOf(0),
-                listOf(1),
-                listOf(2),
-                (3..18).toList(),
-                listOf(19),
-                listOf(20),
-                listOf(21),
-                listOf(22),
-                listOf(23),
-                (25..32).toList(),
-                listOf(24)
-            )
-            GlyphDeviceProfile.PHONE2A -> listOf(
-                listOf(25),
-                listOf(24),
-                (0..23).toList()
-            )
-            GlyphDeviceProfile.PHONE3A -> listOf(
-                (20..30).toList(),
-                (31..35).toList(),
-                (0..19).toList()
-            )
-            else -> emptyList()
-        }
+        return classicSpectrumGroupsFor(
+            profile = spec.profile,
+            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled
+        )
     }
 
     private fun applySpectrumRange(colors: IntArray, range: IntRange, level: Float) {
@@ -1925,4 +1904,54 @@ class GlyphLightController(
             centerSupported = lightSpec.centerSupported
         )
     }
+}
+
+internal fun classicSpectrumGroupsFor(
+    profile: GlyphDeviceProfile,
+    phone1ClassicCSplitEnabled: Boolean
+): List<List<Int>> = when (profile) {
+    GlyphDeviceProfile.PHONE1 -> if (phone1ClassicCSplitEnabled) {
+        listOf(
+            listOf(0),
+            listOf(1),
+            listOf(2),
+            listOf(3),
+            listOf(4),
+            listOf(5),
+            (7..14).toList(),
+            listOf(6)
+        )
+    } else {
+        listOf(
+            listOf(0),
+            listOf(1),
+            (2..5).toList(),
+            (7..14).toList(),
+            listOf(6)
+        )
+    }
+    GlyphDeviceProfile.PHONE2 -> listOf(
+        listOf(0),
+        listOf(1),
+        listOf(2),
+        (3..18).toList(),
+        listOf(19),
+        listOf(20),
+        listOf(21),
+        listOf(22),
+        listOf(23),
+        (25..32).toList(),
+        listOf(24)
+    )
+    GlyphDeviceProfile.PHONE2A -> listOf(
+        listOf(25),
+        listOf(24),
+        (0..23).toList()
+    )
+    GlyphDeviceProfile.PHONE3A -> listOf(
+        (20..30).toList(),
+        (31..35).toList(),
+        (0..19).toList()
+    )
+    else -> emptyList()
 }

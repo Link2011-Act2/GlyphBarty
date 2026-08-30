@@ -145,6 +145,7 @@ fun GlyphInterfaceInspectorScreen(
     var reverseDirection by rememberSaveable { mutableStateOf(false) }
     var binaryMode by rememberSaveable { mutableStateOf(false) }
     var fillOtherGlyphLightsEnabled by rememberSaveable { mutableStateOf(false) }
+    var phone1ClassicCSplitEnabled by rememberSaveable { mutableStateOf(false) }
     var baseIndicatorEnabled by rememberSaveable { mutableStateOf(false) }
     var recordingLightIncluded by rememberSaveable { mutableStateOf(false) }
     var autoScaleStrategyName by rememberSaveable {
@@ -245,6 +246,7 @@ fun GlyphInterfaceInspectorScreen(
             reverseDirection = reverseDirection,
             binaryMode = binaryMode,
             fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
+            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
             baseIndicatorEnabled = baseIndicatorEnabled,
             recordingLightIncluded = recordingLightIncluded,
             autoScaleEnabled = inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL,
@@ -334,6 +336,7 @@ fun GlyphInterfaceInspectorScreen(
                     reverseDirection = reverseDirection,
                     binaryMode = binaryMode,
                     fillOtherGlyphLightsEnabled = fillOtherGlyphLightsEnabled,
+                    phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                     baseIndicatorEnabled = baseIndicatorEnabled,
                     recordingLightIncluded = recordingLightIncluded,
                     autoScaleStrategy = autoScaleStrategy,
@@ -352,6 +355,7 @@ fun GlyphInterfaceInspectorScreen(
                     onReverseDirectionChanged = { reverseDirection = it },
                     onBinaryModeChanged = { binaryMode = it },
                     onFillOtherGlyphLightsEnabledChanged = { fillOtherGlyphLightsEnabled = it },
+                    onPhone1ClassicCSplitEnabledChanged = { phone1ClassicCSplitEnabled = it },
                     onBaseIndicatorEnabledChanged = { baseIndicatorEnabled = it },
                     onRecordingLightIncludedChanged = { recordingLightIncluded = it },
                     onAutoScaleStrategyChanged = { autoScaleStrategyName = it.name },
@@ -446,6 +450,7 @@ private fun GlyphExactVirtualPreviewFrame(
     reverseDirection: Boolean,
     binaryMode: Boolean,
     fillOtherGlyphLightsEnabled: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     autoScaleEnabled: Boolean,
@@ -487,6 +492,7 @@ private fun GlyphExactVirtualPreviewFrame(
         reverseDirection,
         binaryMode,
         fillOtherGlyphLightsEnabled,
+        phone1ClassicCSplitEnabled,
         baseIndicatorEnabled,
         recordingLightIncluded,
         autoScaleEnabled,
@@ -499,6 +505,7 @@ private fun GlyphExactVirtualPreviewFrame(
         controller.setReverseDirection(reverseDirection)
         controller.setBinaryMode(binaryMode)
         controller.setFillOtherGlyphLightsEnabled(fillOtherGlyphLightsEnabled)
+        controller.setPhone1ClassicCSplitEnabled(phone1ClassicCSplitEnabled)
         controller.setBaseIndicatorEnabled(baseIndicatorEnabled)
         controller.setRecordingLightIncluded(recordingLightIncluded)
         controller.setLevelAutoScaleEnabled(autoScaleEnabled)
@@ -541,6 +548,7 @@ private fun GlyphInspectorControls(
     reverseDirection: Boolean,
     binaryMode: Boolean,
     fillOtherGlyphLightsEnabled: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     autoScaleStrategy: GlyphAutoScaleStrategy,
@@ -556,6 +564,7 @@ private fun GlyphInspectorControls(
     onReverseDirectionChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onFillOtherGlyphLightsEnabledChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onBaseIndicatorEnabledChanged: (Boolean) -> Unit,
     onRecordingLightIncludedChanged: (Boolean) -> Unit,
     onAutoScaleStrategyChanged: (GlyphAutoScaleStrategy) -> Unit,
@@ -581,6 +590,7 @@ private fun GlyphInspectorControls(
         GlyphDeviceProfile.PHONE2A
     )
     val supportsBaseIndicator = isPhone4Bar
+    val supportsPhone1ClassicCSplit = selectedProfile == GlyphDeviceProfile.PHONE1
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(selectedGlyphMode) &&
         pattern?.recipe?.renderMode != GlyphPatternRenderMode.CLASSIC
@@ -733,6 +743,14 @@ private fun GlyphInspectorControls(
                         checked = fillOtherGlyphLightsEnabled,
                         enabled = !frozen,
                         onCheckedChange = onFillOtherGlyphLightsEnabledChanged
+                    )
+                }
+                if (supportsPhone1ClassicCSplit) {
+                    GlyphInspectorToggleRow(
+                        title = stringResource(R.string.phone1_classic_c_split_title),
+                        checked = phone1ClassicCSplitEnabled,
+                        enabled = !frozen,
+                        onCheckedChange = onPhone1ClassicCSplitEnabledChanged
                     )
                 }
                 if (supportsBaseIndicator) {

@@ -92,6 +92,7 @@ internal fun ExperimentalMainScreenContent(
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     fillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     baseIndicatorEnabled: Boolean,
     recordingLightIncluded: Boolean,
     reverseDirection: Boolean,
@@ -106,6 +107,7 @@ internal fun ExperimentalMainScreenContent(
     onStopClick: () -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onEnablePhone1GlyphDebugClick: () -> Unit,
     onOpenDetails: () -> Unit,
@@ -126,7 +128,9 @@ internal fun ExperimentalMainScreenContent(
         GlyphDeviceProfile.PHONE2A
     )
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
+    val supportsPhone1ClassicCSplit = deviceProfile == GlyphDeviceProfile.PHONE1
     val hasDevicePatternSettings = supportsFillOtherGlyphLights ||
+        supportsPhone1ClassicCSplit ||
         supportsRecordingLightBehavior ||
         showPhone1GlyphDebugControls
     val recordingLightBehavior = resolveRecordingLightBehavior(
@@ -284,6 +288,17 @@ internal fun ExperimentalMainScreenContent(
                         description = stringResource(R.string.fill_other_glyph_lights_desc),
                         checked = fillOtherGlyphLights,
                         onCheckedChange = onFillOtherGlyphLightsChanged,
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Single,
+                        containerColor = patternSettingsSheetItemColor
+                    )
+                }
+                if (supportsPhone1ClassicCSplit) {
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.phone1_classic_c_split_title),
+                        description = stringResource(R.string.phone1_classic_c_split_desc),
+                        checked = phone1ClassicCSplitEnabled,
+                        onCheckedChange = onPhone1ClassicCSplitEnabledChanged,
                         nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Single,
                         containerColor = patternSettingsSheetItemColor

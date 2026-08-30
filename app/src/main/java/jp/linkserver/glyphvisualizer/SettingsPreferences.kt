@@ -13,6 +13,7 @@ object SettingsPreferences {
     private const val KEY_INITIAL_SETUP_COMPLETED = "initial_setup_completed"
     private const val KEY_NOTIFICATION_PERMISSION_PROMPT_SHOWN =
         "notification_permission_prompt_shown"
+    private const val KEY_PHONE1_CLASSIC_C_SPLIT_ENABLED = "phone1_classic_c_split_enabled"
     private const val KEY_PHONE4B_EMULATION_ENABLED = "phone4b_emulation_enabled"
     private const val KEY_DEBUG_DEVICE_PROFILE_OVERRIDE = "debug_device_profile_override"
     private const val KEY_DETAILED_HOME_ENABLED = "detailed_home_enabled"
@@ -34,6 +35,7 @@ object SettingsPreferences {
             peakHoldEnabled = state.peakHoldEnabled,
             glyphMode = state.glyphMode,
             fillOtherGlyphLights = state.fillOtherGlyphLights,
+            phone1ClassicCSplitEnabled = state.phone1ClassicCSplitEnabled,
             binaryMode = state.binaryMode,
             baseIndicatorEnabled = state.baseIndicatorEnabled,
             recordingLightIncluded = state.recordingLightIncluded,
@@ -99,6 +101,10 @@ object SettingsPreferences {
             peakHoldEnabled = prefs.getBoolean("peak_hold_enabled", defaults.peakHoldEnabled),
             glyphMode = prefs.getString("glyph_mode", defaults.glyphMode) ?: defaults.glyphMode,
             fillOtherGlyphLights = prefs.getBoolean("fill_other_glyph_lights", defaults.fillOtherGlyphLights),
+            phone1ClassicCSplitEnabled = prefs.getBoolean(
+                KEY_PHONE1_CLASSIC_C_SPLIT_ENABLED,
+                defaults.phone1ClassicCSplitEnabled
+            ),
             binaryMode = prefs.getBoolean("binary_mode", defaults.binaryMode),
             baseIndicatorEnabled = prefs.getBoolean("base_indicator_enabled", defaults.baseIndicatorEnabled),
             recordingLightIncluded = prefs.getBoolean(
@@ -176,6 +182,10 @@ object SettingsPreferences {
             .putBoolean("peak_hold_enabled", parameters.peakHoldEnabled)
             .putString("glyph_mode", parameters.glyphMode)
             .putBoolean("fill_other_glyph_lights", parameters.fillOtherGlyphLights)
+            .putBoolean(
+                KEY_PHONE1_CLASSIC_C_SPLIT_ENABLED,
+                parameters.phone1ClassicCSplitEnabled
+            )
             .putBoolean("binary_mode", parameters.binaryMode)
             .putBoolean("base_indicator_enabled", parameters.baseIndicatorEnabled)
             .putBoolean("recording_light_included", parameters.recordingLightIncluded)

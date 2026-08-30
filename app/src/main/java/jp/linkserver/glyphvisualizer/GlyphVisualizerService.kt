@@ -78,6 +78,8 @@ class GlyphVisualizerService : Service() {
         private const val EXTRA_PEAK_HOLD_ENABLED = "extra_peak_hold_enabled"
         private const val EXTRA_GLYPH_MODE = "extra_glyph_mode"
         private const val EXTRA_FILL_OTHER_GLYPH_LIGHTS = "extra_fill_other_glyph_lights"
+        private const val EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED =
+            "extra_phone1_classic_c_split_enabled"
         private const val EXTRA_BINARY_MODE = "extra_binary_mode"
         private const val EXTRA_BASE_INDICATOR_ENABLED = "extra_base_indicator_enabled"
         private const val EXTRA_RECORDING_LIGHT_INCLUDED = "extra_recording_light_included"
@@ -128,6 +130,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             fillOtherGlyphLights: Boolean,
+            phone1ClassicCSplitEnabled: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -161,6 +164,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
@@ -208,6 +212,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             fillOtherGlyphLights: Boolean,
+            phone1ClassicCSplitEnabled: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -242,6 +247,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
@@ -286,6 +292,7 @@ class GlyphVisualizerService : Service() {
             peakHoldEnabled: Boolean,
             glyphMode: String,
             fillOtherGlyphLights: Boolean,
+            phone1ClassicCSplitEnabled: Boolean,
             binaryMode: Boolean,
             baseIndicatorEnabled: Boolean,
             levelAutoScale: Boolean,
@@ -321,6 +328,7 @@ class GlyphVisualizerService : Service() {
                 putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 putExtra(EXTRA_GLYPH_MODE, glyphMode)
                 putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
                 putExtra(EXTRA_BINARY_MODE, binaryMode)
                 putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 recordingLightIncluded?.let {
@@ -383,6 +391,7 @@ class GlyphVisualizerService : Service() {
     private var peakHoldEnabled = true
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var fillOtherGlyphLights = false
+    private var phone1ClassicCSplitEnabled = false
     private var binaryMode = false
     private var baseIndicatorEnabled = false
     private var recordingLightIncluded = false
@@ -454,6 +463,7 @@ class GlyphVisualizerService : Service() {
         val reverseDirection: Boolean,
         val glyphMode: String,
         val fillOtherGlyphLights: Boolean,
+        val phone1ClassicCSplitEnabled: Boolean,
         val binaryMode: Boolean,
         val baseIndicatorEnabled: Boolean,
         val recordingLightIncluded: Boolean,
@@ -609,6 +619,10 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                     glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                     fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                    phone1ClassicCSplitEnabled = intent.getBooleanExtra(
+                        EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
+                        phone1ClassicCSplitEnabled
+                    )
                     binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                     baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                     recordingLightIncluded = intent.getBooleanExtra(
@@ -698,6 +712,10 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                phone1ClassicCSplitEnabled = intent.getBooleanExtra(
+                    EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
+                    phone1ClassicCSplitEnabled
+                )
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 recordingLightIncluded = intent.getBooleanExtra(
@@ -767,6 +785,10 @@ class GlyphVisualizerService : Service() {
                 peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
                 glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
                 fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
+                phone1ClassicCSplitEnabled = intent.getBooleanExtra(
+                    EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
+                    phone1ClassicCSplitEnabled
+                )
                 binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
                 baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
                 recordingLightIncluded = intent.getBooleanExtra(
@@ -820,6 +842,7 @@ class GlyphVisualizerService : Service() {
                         peakHoldEnabled = peakHoldEnabled,
                         glyphMode = glyphMode,
                         fillOtherGlyphLights = fillOtherGlyphLights,
+                        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                         binaryMode = binaryMode,
                         baseIndicatorEnabled = baseIndicatorEnabled,
                         recordingLightIncluded = recordingLightIncluded,
@@ -1011,6 +1034,7 @@ class GlyphVisualizerService : Service() {
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
                             fillOtherGlyphLights = fillOtherGlyphLights,
+                            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
@@ -1187,6 +1211,7 @@ class GlyphVisualizerService : Service() {
                             peakHoldEnabled = peakHoldEnabled,
                             glyphMode = glyphMode,
                             fillOtherGlyphLights = fillOtherGlyphLights,
+                            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                             binaryMode = binaryMode,
                             levelAutoScale = levelAutoScale,
                             spectrumAutoScale = spectrumAutoScale,
@@ -1722,6 +1747,7 @@ class GlyphVisualizerService : Service() {
                     peakHoldEnabled = peakHoldEnabled,
                 glyphMode = glyphMode,
                 fillOtherGlyphLights = fillOtherGlyphLights,
+                phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                 binaryMode = binaryMode,
                 levelAutoScale = levelAutoScale,
                 spectrumAutoScale = spectrumAutoScale,
@@ -1763,6 +1789,7 @@ class GlyphVisualizerService : Service() {
             reverseDirection = reverseDirection,
             glyphMode = glyphMode,
             fillOtherGlyphLights = fillOtherGlyphLights,
+            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
             binaryMode = binaryMode,
             baseIndicatorEnabled = baseIndicatorEnabled,
             recordingLightIncluded = recordingLightIncluded,
@@ -1788,6 +1815,7 @@ class GlyphVisualizerService : Service() {
             setReverseDirection(snapshot.reverseDirection)
             setGlyphMode(snapshot.glyphMode)
             setFillOtherGlyphLightsEnabled(snapshot.fillOtherGlyphLights)
+            setPhone1ClassicCSplitEnabled(snapshot.phone1ClassicCSplitEnabled)
             setBinaryMode(snapshot.binaryMode)
             setBaseIndicatorEnabled(snapshot.baseIndicatorEnabled)
             setRecordingLightIncluded(snapshot.recordingLightIncluded)

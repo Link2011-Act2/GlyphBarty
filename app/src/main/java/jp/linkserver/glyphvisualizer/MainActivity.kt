@@ -337,6 +337,7 @@ class MainActivity : ComponentActivity() {
             importedState.copy(
                 baseIndicatorEnabled = CaptureUiStore.state.baseIndicatorEnabled,
                 recordingLightIncluded = CaptureUiStore.state.recordingLightIncluded,
+                phone1ClassicCSplitEnabled = CaptureUiStore.state.phone1ClassicCSplitEnabled,
                 phone4bEmulationEnabled = CaptureUiStore.state.phone4bEmulationEnabled,
                 debugDeviceProfileOverride = CaptureUiStore.state.debugDeviceProfileOverride
             )
@@ -369,6 +370,7 @@ class MainActivity : ComponentActivity() {
             peakHoldEnabled = uiState.peakHoldEnabled,
             glyphMode = uiState.glyphMode,
             fillOtherGlyphLights = uiState.fillOtherGlyphLights,
+            phone1ClassicCSplitEnabled = uiState.phone1ClassicCSplitEnabled,
             binaryMode = uiState.binaryMode,
             baseIndicatorEnabled = uiState.baseIndicatorEnabled,
             levelAutoScale = uiState.levelAutoScale,
@@ -506,6 +508,7 @@ class MainActivity : ComponentActivity() {
                     activeMode = uiState.activeMode,
                     glyphMode = uiState.glyphMode,
                     fillOtherGlyphLights = uiState.fillOtherGlyphLights,
+                    phone1ClassicCSplitEnabled = uiState.phone1ClassicCSplitEnabled,
                     deviceProfile = effectiveDeviceProfile,
                     actualDeviceProfile = deviceProfile,
                     isPhone3Device = effectiveDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX,
@@ -702,6 +705,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -748,6 +752,7 @@ class MainActivity : ComponentActivity() {
                                 updated.peakHoldEnabled,
                                 updated.glyphMode,
                                 updated.fillOtherGlyphLights,
+                                updated.phone1ClassicCSplitEnabled,
                                 updated.binaryMode,
                                 updated.baseIndicatorEnabled,
                                 updated.levelAutoScale,
@@ -846,6 +851,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -873,6 +879,10 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { it.copy(fillOtherGlyphLights = enabled) }
                         syncCurrentParameters()
                     },
+                    onPhone1ClassicCSplitEnabledChanged = { enabled ->
+                        CaptureUiStore.update { it.copy(phone1ClassicCSplitEnabled = enabled) }
+                        syncCurrentParameters()
+                    },
                     onBinaryModeChanged = { newValue ->
                         CaptureUiStore.update { it.copy(binaryMode = newValue) }
                         val updated = CaptureUiStore.state
@@ -888,6 +898,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -923,6 +934,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -958,6 +970,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -993,6 +1006,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -1036,6 +1050,7 @@ class MainActivity : ComponentActivity() {
                             updated.peakHoldEnabled,
                             updated.glyphMode,
                             updated.fillOtherGlyphLights,
+                            updated.phone1ClassicCSplitEnabled,
                             updated.binaryMode,
                             updated.baseIndicatorEnabled,
                             updated.levelAutoScale,
@@ -1298,6 +1313,7 @@ class MainActivity : ComponentActivity() {
             routeAware.peakHoldEnabled,
             routeAware.glyphMode,
             routeAware.fillOtherGlyphLights,
+            routeAware.phone1ClassicCSplitEnabled,
             routeAware.binaryMode,
             routeAware.baseIndicatorEnabled,
             routeAware.levelAutoScale,
@@ -1373,6 +1389,7 @@ class MainActivity : ComponentActivity() {
             updated.peakHoldEnabled,
             updated.glyphMode,
             updated.fillOtherGlyphLights,
+            updated.phone1ClassicCSplitEnabled,
             updated.binaryMode,
             updated.baseIndicatorEnabled,
             updated.levelAutoScale,
@@ -1521,6 +1538,7 @@ class MainActivity : ComponentActivity() {
             updated.peakHoldEnabled,
             updated.glyphMode,
             updated.fillOtherGlyphLights,
+            updated.phone1ClassicCSplitEnabled,
             updated.binaryMode,
             updated.baseIndicatorEnabled,
             updated.levelAutoScale,
@@ -1683,6 +1701,7 @@ class MainActivity : ComponentActivity() {
                 uiState.peakHoldEnabled,
                 uiState.glyphMode,
                 uiState.fillOtherGlyphLights,
+                uiState.phone1ClassicCSplitEnabled,
                 uiState.binaryMode,
                 uiState.baseIndicatorEnabled,
                 uiState.levelAutoScale,
@@ -1760,6 +1779,7 @@ private fun GlyphVisualizerApp(
     activeMode: String,
     glyphMode: String,
     fillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     deviceProfile: GlyphDeviceProfile,
     actualDeviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
@@ -1833,6 +1853,7 @@ private fun GlyphVisualizerApp(
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
@@ -2003,6 +2024,7 @@ private fun GlyphVisualizerApp(
                             deviceProfile = deviceProfile,
                             binaryMode = binaryMode,
                             fillOtherGlyphLights = fillOtherGlyphLights,
+                            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                             baseIndicatorEnabled = baseIndicatorEnabled,
                             recordingLightIncluded = recordingLightIncluded,
                             reverseDirection = reverseDirection,
@@ -2020,6 +2042,7 @@ private fun GlyphVisualizerApp(
                             onStopClick = onStopClick,
                             onGlyphModeChanged = onGlyphModeChanged,
                             onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                            onPhone1ClassicCSplitEnabledChanged = onPhone1ClassicCSplitEnabledChanged,
                             onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                             onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
                             onOpenDetails = { screen = Screen.DETAILS },
@@ -2052,6 +2075,7 @@ private fun GlyphVisualizerApp(
                         activeMode = activeMode,
                         glyphMode = glyphMode,
                         fillOtherGlyphLights = fillOtherGlyphLights,
+                        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                         deviceProfile = deviceProfile,
                         isPhone3Device = isPhone3Device,
                         isPhone4aProDevice = isPhone4aProDevice,
@@ -2099,6 +2123,7 @@ private fun GlyphVisualizerApp(
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
                         onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                        onPhone1ClassicCSplitEnabledChanged = onPhone1ClassicCSplitEnabledChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
                         onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
                         onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
@@ -2600,6 +2625,7 @@ private fun MainScreenContent(
     activeMode: String,
     glyphMode: String,
     fillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
@@ -2647,6 +2673,7 @@ private fun MainScreenContent(
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
@@ -2692,6 +2719,7 @@ private fun MainScreenContent(
             reverseDirection = reverseDirection,
             glyphMode = glyphMode,
             fillOtherGlyphLights = fillOtherGlyphLights,
+            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
             deviceProfile = deviceProfile,
             binaryMode = binaryMode,
             matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
@@ -2734,6 +2762,7 @@ private fun MainScreenContent(
             onReverseDirectionChanged = onReverseDirectionChanged,
             onGlyphModeChanged = onGlyphModeChanged,
             onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+            onPhone1ClassicCSplitEnabledChanged = onPhone1ClassicCSplitEnabledChanged,
             onBinaryModeChanged = onBinaryModeChanged,
             onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
             onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
@@ -2935,6 +2964,7 @@ private fun MainScreenContent(
                         activeMode = activeMode,
                         glyphMode = glyphMode,
                         fillOtherGlyphLights = fillOtherGlyphLights,
+                        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
                         deviceProfile = deviceProfile,
                         isPhone3Device = isPhone3Device,
                         isPhone4aProDevice = isPhone4aProDevice,
@@ -2970,6 +3000,7 @@ private fun MainScreenContent(
                         onReverseDirectionChanged = onReverseDirectionChanged,
                         onGlyphModeChanged = onGlyphModeChanged,
                         onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                        onPhone1ClassicCSplitEnabledChanged = onPhone1ClassicCSplitEnabledChanged,
                         onBinaryModeChanged = onBinaryModeChanged,
                         onMatrixSmoothMotionEnabledChanged = onMatrixSmoothMotionEnabledChanged,
                         onOscilloscopeAutoTimeAxisEnabledChanged = onOscilloscopeAutoTimeAxisEnabledChanged,
@@ -4922,6 +4953,7 @@ private fun ControlCard(
     activeMode: String,
     glyphMode: String,
     fillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     deviceProfile: GlyphDeviceProfile,
     isPhone3Device: Boolean,
     isPhone4aProDevice: Boolean,
@@ -4954,6 +4986,7 @@ private fun ControlCard(
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
@@ -4983,6 +5016,7 @@ private fun ControlCard(
         GlyphDeviceProfile.PHONE2,
         GlyphDeviceProfile.PHONE2A
     )
+    val supportsPhone1ClassicCSplit = deviceProfile == GlyphDeviceProfile.PHONE1
     val isMatrixDevice = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE3_MATRIX,
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
@@ -5340,6 +5374,35 @@ private fun ControlCard(
                                 null
                             },
                             enabled = fillOtherGlyphLightsEnabledForMode
+                        )
+                    }
+                }
+            }
+
+            if (supportsPhone1ClassicCSplit) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.phone1_classic_c_split_title),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            text = stringResource(R.string.phone1_classic_c_split_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.width(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Checkbox(
+                            checked = phone1ClassicCSplitEnabled,
+                            onCheckedChange = onPhone1ClassicCSplitEnabledChanged
                         )
                     }
                 }
@@ -5857,6 +5920,7 @@ private fun GlyphVisualizerPreview() {
             activeMode = stringResource(R.string.mode_visualizer),
             glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
             fillOtherGlyphLights = false,
+            phone1ClassicCSplitEnabled = false,
             deviceProfile = GlyphDeviceCatalog.currentProfile(),
             actualDeviceProfile = GlyphDeviceCatalog.currentProfile(),
             isPhone3Device = GlyphDeviceCatalog.currentProfile() == GlyphDeviceProfile.PHONE3_MATRIX,
@@ -5930,6 +5994,7 @@ private fun GlyphVisualizerPreview() {
             onReverseDirectionChanged = {},
             onGlyphModeChanged = {},
             onFillOtherGlyphLightsChanged = {},
+            onPhone1ClassicCSplitEnabledChanged = {},
             onBinaryModeChanged = {},
             onLevelAutoScaleChanged = {},
             onSpectrumAutoScaleChanged = {},

@@ -132,6 +132,7 @@ internal fun ExperimentalDetailsScreenContent(
     reverseDirection: Boolean,
     glyphMode: String,
     fillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
     deviceProfile: GlyphDeviceProfile,
     binaryMode: Boolean,
     matrixSmoothMotionEnabled: Boolean,
@@ -174,6 +175,7 @@ internal fun ExperimentalDetailsScreenContent(
     onReverseDirectionChanged: (Boolean) -> Unit,
     onGlyphModeChanged: (String) -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onBinaryModeChanged: (Boolean) -> Unit,
     onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
     onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
@@ -218,6 +220,7 @@ internal fun ExperimentalDetailsScreenContent(
         GlyphDeviceProfile.PHONE2A
     )
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
+    val supportsPhone1ClassicCSplit = deviceProfile == GlyphDeviceProfile.PHONE1
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
         glyphRenderMode != GlyphPatternRenderMode.CLASSIC
@@ -426,6 +429,8 @@ internal fun ExperimentalDetailsScreenContent(
                                 patternLabel = patternLabel,
                                 fillOtherGlyphLights = fillOtherGlyphLights,
                                 showFillOtherGlyphLights = fillOtherGlyphLightsEnabledForMode,
+                                phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+                                showPhone1ClassicCSplit = supportsPhone1ClassicCSplit,
                                 recordingLightBehaviorLabel = recordingLightBehaviorLabel,
                                 supportsRecordingLightBehavior = supportsRecordingLightBehavior,
                                 glyphMode = glyphMode,
@@ -449,6 +454,8 @@ internal fun ExperimentalDetailsScreenContent(
                                 onStopClick = onStopClick,
                                 onOpenPattern = { showPatternSheet = true },
                                 onFillOtherGlyphLightsChanged = onFillOtherGlyphLightsChanged,
+                                onPhone1ClassicCSplitEnabledChanged =
+                                    onPhone1ClassicCSplitEnabledChanged,
                                 onOpenRecordingLight = { showRecordingLightDialog = true },
                                 nothingStyleEnabled = nothingStyleEnabled
                             )
@@ -636,6 +643,8 @@ private fun ExperimentalDetailsLiveTab(
     patternLabel: String,
     fillOtherGlyphLights: Boolean,
     showFillOtherGlyphLights: Boolean,
+    phone1ClassicCSplitEnabled: Boolean,
+    showPhone1ClassicCSplit: Boolean,
     recordingLightBehaviorLabel: String,
     supportsRecordingLightBehavior: Boolean,
     glyphMode: String,
@@ -659,6 +668,7 @@ private fun ExperimentalDetailsLiveTab(
     onStopClick: () -> Unit,
     onOpenPattern: () -> Unit,
     onFillOtherGlyphLightsChanged: (Boolean) -> Unit,
+    onPhone1ClassicCSplitEnabledChanged: (Boolean) -> Unit,
     onOpenRecordingLight: () -> Unit,
     nothingStyleEnabled: Boolean
 ) {
@@ -766,7 +776,11 @@ private fun ExperimentalDetailsLiveTab(
                 description = patternLabel,
                 onClick = onOpenPattern,
                 nothingStyle = nothingStyleEnabled,
-                position = if (showFillOtherGlyphLights || supportsRecordingLightBehavior) {
+                position = if (
+                    showFillOtherGlyphLights ||
+                    showPhone1ClassicCSplit ||
+                    supportsRecordingLightBehavior
+                ) {
                     SettingsGroupPosition.Middle
                 } else {
                     SettingsGroupPosition.Bottom
@@ -779,6 +793,21 @@ private fun ExperimentalDetailsLiveTab(
                     description = stringResource(R.string.fill_other_glyph_lights_desc),
                     checked = fillOtherGlyphLights,
                     onCheckedChange = onFillOtherGlyphLightsChanged,
+                    nothingStyle = nothingStyleEnabled,
+                    position = if (showPhone1ClassicCSplit || supportsRecordingLightBehavior) {
+                        SettingsGroupPosition.Middle
+                    } else {
+                        SettingsGroupPosition.Bottom
+                    }
+                )
+            }
+            if (showPhone1ClassicCSplit) {
+                SettingsDividerGap()
+                SettingsToggleEntry(
+                    title = stringResource(R.string.phone1_classic_c_split_title),
+                    description = stringResource(R.string.phone1_classic_c_split_desc),
+                    checked = phone1ClassicCSplitEnabled,
+                    onCheckedChange = onPhone1ClassicCSplitEnabledChanged,
                     nothingStyle = nothingStyleEnabled,
                     position = if (supportsRecordingLightBehavior) {
                         SettingsGroupPosition.Middle

@@ -65,6 +65,7 @@ class GlyphTileService : TileService() {
                 peakHoldEnabled = resolved.peakHoldEnabled,
                 glyphMode = resolved.glyphMode,
                 fillOtherGlyphLights = resolved.fillOtherGlyphLights,
+                phone1ClassicCSplitEnabled = resolved.phone1ClassicCSplitEnabled,
                 binaryMode = resolved.binaryMode,
                 baseIndicatorEnabled = resolved.baseIndicatorEnabled,
                 recordingLightIncluded = resolved.recordingLightIncluded,

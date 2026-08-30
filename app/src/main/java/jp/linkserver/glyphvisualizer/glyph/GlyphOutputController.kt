@@ -6,6 +6,7 @@ interface GlyphOutputController {
     fun setReverseDirection(reverse: Boolean)
     fun setGlyphMode(mode: String)
     fun setFillOtherGlyphLightsEnabled(enabled: Boolean) {}
+    fun setPhone1ClassicCSplitEnabled(enabled: Boolean) {}
     fun setBinaryMode(binary: Boolean)
     fun setBaseIndicatorEnabled(enabled: Boolean) {}
     fun setRecordingLightIncluded(enabled: Boolean) {}

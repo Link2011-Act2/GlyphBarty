@@ -28,6 +28,7 @@ data class CaptureUiState(
     val activeMode: String = "IDLE",
     val glyphMode: String = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice(),
     val fillOtherGlyphLights: Boolean = false,
+    val phone1ClassicCSplitEnabled: Boolean = false,
     val binaryMode: Boolean = false,
     val baseIndicatorEnabled: Boolean = false,
     val recordingLightIncluded: Boolean = false,
