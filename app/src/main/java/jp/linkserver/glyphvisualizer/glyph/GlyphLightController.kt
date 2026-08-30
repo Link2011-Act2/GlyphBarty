@@ -34,8 +34,9 @@ class GlyphLightController(
         private const val ALL_BRIGHTNESS_ON_THRESHOLD = 0.075f
         private const val ALL_BRIGHTNESS_OFF_THRESHOLD = 0.045f
         private const val ALL_BRIGHTNESS_CURVE_FLOOR = 0.06f
-        private const val ALL_BRIGHTNESS_MIN_LIGHT = 240
+        private const val ALL_BRIGHTNESS_MIN_LIGHT = 32
         private const val ALL_BRIGHTNESS_RESPONSE_GAMMA = 1.8f
+        private const val ALL_BRIGHTNESS_BOOST_EXPONENT = 1.5f
         private const val LINEAR_PEAK_BASE_BRIGHTNESS_RATIO = 0.34f
         private const val LINEAR_PEAK_FALLOFF_PER_SECOND = 1.25f
         private const val PULSE_TRAIN_BASE_BRIGHTNESS_RATIO = 0.28f
@@ -1326,11 +1327,11 @@ class GlyphLightController(
         val normalized = ((clamped - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
             .coerceIn(0f, 1f)
         val shaped = normalized.pow(outputGamma)
-        val brightness = if (binaryMode) {
-            MAX_LIGHT
-        } else {
-            (ALL_BRIGHTNESS_MIN_LIGHT + ((MAX_LIGHT - ALL_BRIGHTNESS_MIN_LIGHT) * shaped)).roundToInt()
-        }
+        val brightness = allBrightnessBrightness(
+            shaped = shaped,
+            applyBrightnessBoost = spec.profile != GlyphDeviceProfile.PHONE3_MATRIX &&
+                spec.profile != GlyphDeviceProfile.PHONE4A_PRO_MATRIX
+        )
         fullGlyphBrightness.fill(brightness)
         submitFrame(fullGlyphBrightness)
     }
@@ -1348,11 +1349,7 @@ class GlyphLightController(
         val normalized = ((clamped - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
             .coerceIn(0f, 1f)
         val shaped = normalized.pow(outputGamma)
-        val brightness = if (binaryMode) {
-            MAX_LIGHT
-        } else {
-            (ALL_BRIGHTNESS_MIN_LIGHT + ((MAX_LIGHT - ALL_BRIGHTNESS_MIN_LIGHT) * shaped)).roundToInt()
-        }
+        val brightness = allBrightnessBrightness(shaped = shaped)
         for (channel in range) {
             if (channel in colors.indices) {
                 colors[channel] = brightness
@@ -1400,6 +1397,28 @@ class GlyphLightController(
         } else {
             0f
         }
+    }
+
+    private fun allBrightnessBrightness(
+        shaped: Float,
+        applyBrightnessBoost: Boolean = true
+    ): Int {
+        if (binaryMode) return MAX_LIGHT
+
+        val finalShape = if (applyBrightnessBoost) {
+            boostAllBrightness(shaped)
+        } else {
+            shaped.coerceIn(0f, 1f)
+        }
+        return (ALL_BRIGHTNESS_MIN_LIGHT +
+            ((MAX_LIGHT - ALL_BRIGHTNESS_MIN_LIGHT) * finalShape))
+            .roundToInt()
+            .coerceIn(ALL_BRIGHTNESS_MIN_LIGHT, MAX_LIGHT)
+    }
+
+    private fun boostAllBrightness(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return 1f - (1f - clamped).pow(ALL_BRIGHTNESS_BOOST_EXPONENT)
     }
 
     private fun resetAllBrightnessScaleTracking() {
