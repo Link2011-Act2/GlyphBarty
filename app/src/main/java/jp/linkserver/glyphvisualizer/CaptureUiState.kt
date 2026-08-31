@@ -17,7 +17,7 @@ data class CaptureUiState(
     val noiseGate: Float = 0.08f,
     val dynamics: Float = 1.45f,
     val outputGamma: Float = 1.8f,
-    val toneFocus: Float = -0.2f,
+    val toneFocus: Float = -0.1f,
     val smoothing: Float = 0.30f,
     val smoothingBalance: Float = 0f,
     val reverseDirection: Boolean = false,

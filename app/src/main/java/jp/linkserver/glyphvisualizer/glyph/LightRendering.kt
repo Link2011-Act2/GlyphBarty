@@ -60,6 +60,17 @@ internal object SignalScalingPipeline {
 }
 
 internal object LightPatternRenderer {
+    fun spectrumBrightness(
+        shaped: Float,
+        binaryMode: Boolean,
+        fullBrightness: Int,
+        boostExponent: Float
+    ): Int {
+        if (binaryMode) return if (shaped >= 0.5f) fullBrightness else 0
+        val boosted = SignalScalingPipeline.boost(shaped, boostExponent)
+        return (boosted * fullBrightness).roundToInt().coerceIn(0, fullBrightness)
+    }
+
     fun renderLinear(
         colors: IntArray,
         range: IntRange,

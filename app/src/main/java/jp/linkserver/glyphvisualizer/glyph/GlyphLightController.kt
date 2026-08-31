@@ -45,6 +45,7 @@ class GlyphLightController(
         private const val PULSE_TRAIN_TRIGGER_DELTA = 0.08f
         private const val PULSE_TRAIN_SPEED_PER_SECOND = 1.8f
         private const val PULSE_TRAIN_BRIGHTNESS_FALLOFF = 0.42f
+        internal const val SPECTRUM_BRIGHTNESS_BOOST_EXPONENT = 1.5f
         private const val SPECTRUM_MARKER_RESPONSE_PER_SECOND = 9f
         private const val SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS = 0.8f
         private const val SPECTRUM_MARKER_PHONE4A_MAX_RADIUS_SEGMENTS = 2.5f
@@ -1168,11 +1169,12 @@ class GlyphLightController(
             val bandValue = sampleSpectrumAt(position)
             val weighted = (bandValue * level).coerceIn(0f, 1f)
             val shaped = weighted.pow(outputGamma)
-            val brightness = if (binaryMode) {
-                if (shaped >= 0.5f) MAX_LIGHT else 0
-            } else {
-                (shaped * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
-            }
+            val brightness = LightPatternRenderer.spectrumBrightness(
+                shaped = shaped,
+                binaryMode = binaryMode,
+                fullBrightness = MAX_LIGHT,
+                boostExponent = SPECTRUM_BRIGHTNESS_BOOST_EXPONENT
+            )
             if (brightness > colors[channel]) {
                 colors[channel] = brightness
             }

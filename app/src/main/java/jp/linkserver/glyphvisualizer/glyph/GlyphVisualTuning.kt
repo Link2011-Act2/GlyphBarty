@@ -20,9 +20,9 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_D1_LINEAR) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_D1_LINEAR_PEAK) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_D1_CENTER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_D1_SPECTRUM) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_D1_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_CLASSIC) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE1, GlyphPatternRegistry.P2_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (2)
         key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_C1_LINEAR) to GlyphVisualTuning(),
@@ -31,46 +31,46 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_D1_LINEAR) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_D1_LINEAR_PEAK) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_D1_CENTER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_C1_SPECTRUM) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_D1_SPECTRUM) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_C1_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
+        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_D1_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_CLASSIC) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE2, GlyphPatternRegistry.P2_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (2a)
         key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_C_LINEAR) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_C_LINEAR_PEAK) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_C_CENTER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_C_SPECTRUM) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_C_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_CLASSIC) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE2A, GlyphPatternRegistry.P2A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (3a)
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_C_LINEAR) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_C_LINEAR_PEAK) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_C_CENTER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_C_SPECTRUM) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_C_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CAB_LINEAR) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CAB_LINEAR_PEAK) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CAB_CENTER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CAB_SPECTRUM) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CAB_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_CLASSIC) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (4a)
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR) to GlyphVisualTuning(dynamics = 0.3f),
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR_PEAK) to GlyphVisualTuning(dynamics = 0.3f),
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_CENTER) to GlyphVisualTuning(dynamics = 0.6f),
-        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM_MARKER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
+        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM_MARKER) to GlyphVisualTuning(dynamics = 0.8f),
+        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (4b)
         key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_LINEAR) to GlyphVisualTuning(dynamics = 0.3f),
         key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_LINEAR_PEAK) to GlyphVisualTuning(dynamics = 0.3f),
         key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_CENTER) to GlyphVisualTuning(dynamics = 0.7f),
-        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_SPECTRUM) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_SPECTRUM_MARKER) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
+        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_SPECTRUM_MARKER) to GlyphVisualTuning(dynamics = 0.8f),
+        key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (3) matrix
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_BAR) to GlyphVisualTuning(),
@@ -89,7 +89,7 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_WAVE_FIELD) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SKYLINE) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_PULSE_GRID) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS) to GlyphVisualTuning(),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (4a) Pro matrix
         key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_BAR) to GlyphVisualTuning(),
@@ -107,7 +107,7 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_WAVE_FIELD) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_SKYLINE) to GlyphVisualTuning(),
         key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_PULSE_GRID) to GlyphVisualTuning(),
-        key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS) to GlyphVisualTuning()
+        key(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f)
     )
 
     private fun key(

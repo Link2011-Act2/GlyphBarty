@@ -947,11 +947,11 @@ private fun ExperimentalDetailsTuneTab(
                     ParameterSlider(
                         title = stringResource(R.string.param_tone_focus_title),
                         valueText = when {
-                            toneFocus < -0.1f -> stringResource(
+                            toneFocus <= -0.1f -> stringResource(
                                 R.string.param_tone_focus_bass,
                                 (toneFocus * -100).toInt()
                             )
-                            toneFocus > 0.1f -> stringResource(
+                            toneFocus >= 0.1f -> stringResource(
                                 R.string.param_tone_focus_treble,
                                 (toneFocus * 100).toInt()
                             )

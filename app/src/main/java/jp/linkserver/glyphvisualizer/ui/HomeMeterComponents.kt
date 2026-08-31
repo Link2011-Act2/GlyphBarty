@@ -470,11 +470,11 @@ internal fun HeroCard(
                     )
                     Text(
                         text = when {
-                            toneFocus < -0.1f -> stringResource(
+                            toneFocus <= -0.1f -> stringResource(
                                 R.string.hero_tone_focus_bass,
                                 (toneFocus * -100).toInt()
                             )
-                            toneFocus > 0.1f -> stringResource(
+                            toneFocus >= 0.1f -> stringResource(
                                 R.string.hero_tone_focus_treble,
                                 (toneFocus * 100).toInt()
                             )
@@ -1267,4 +1267,3 @@ private fun SpectrumCanvas(spectrumBands: FloatArray) {
         }
     }
 }
-

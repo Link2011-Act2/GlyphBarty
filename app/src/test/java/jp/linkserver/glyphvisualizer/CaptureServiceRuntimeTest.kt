@@ -12,6 +12,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class CaptureServiceRuntimeTest {
     @Test
+    fun toneFocusDefaultsToTenPercentBassAcrossUiAndServiceFallbacks() {
+        assertEquals(-0.1f, SettingsPreferences.defaultParameters().toneFocus, 0.0001f)
+        assertEquals(-0.1f, defaultServiceCaptureConfig().toneFocus, 0.0001f)
+    }
+
+    @Test
     fun sessionCoordinator_keepsSourceAndInvalidatesOldRequestGenerations() {
         val coordinator = CaptureSessionCoordinator()
 
