@@ -22,6 +22,25 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+private data class MatrixRenderInput(
+    val nowMs: Long,
+    val renderMode: GlyphPatternRenderMode,
+    val renderLevel: Float,
+    val openReelPlayback: MediaSessionPlaybackGate.PlaybackSnapshot?,
+    val renderingSilenceDrain: Boolean,
+    val rippleDrainProgress: Float,
+    val frameIntervalMs: Long
+)
+
+private sealed interface MatrixRenderResult {
+    data object ReuseLastFrame : MatrixRenderResult
+
+    data class GeneratedFrame(
+        val deviceFrame: IntArray,
+        val silenceDrainComplete: Boolean
+    ) : MatrixRenderResult
+}
+
 class GlyphMatrixController(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit,
@@ -155,6 +174,7 @@ class GlyphMatrixController(
     private var lastOpenReelUpdateMs = 0L
     private var openReelDisplayedProgress = Float.NaN
     private var pulseGridSeed = 0
+    private val renderEngine = MatrixRenderEngine()
     private val callback = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
             runOnOwnerThread { handleServiceConnected() }
@@ -717,6 +737,45 @@ class GlyphMatrixController(
         if (now - lastRenderAt < frameIntervalMs) return
         lastRenderAt = now
 
+        when (
+            val result = renderEngine.render(
+                MatrixRenderInput(
+                    nowMs = now,
+                    renderMode = renderMode,
+                    renderLevel = renderLevel,
+                    openReelPlayback = openReelPlayback,
+                    renderingSilenceDrain = renderingSilenceDrain,
+                    rippleDrainProgress = rippleDrainProgress,
+                    frameIntervalMs = frameIntervalMs
+                )
+            )
+        ) {
+            MatrixRenderResult.ReuseLastFrame -> deliverLastMatrixFrame()
+            is MatrixRenderResult.GeneratedFrame -> {
+                submitMatrixFrame(result.deviceFrame)
+                if (
+                    renderingSilenceDrain &&
+                    result.silenceDrainComplete &&
+                    isSessionOpen &&
+                    !matrixReleasedForSilence
+                ) {
+                    releaseMatrixForSilence()
+                }
+            }
+        }
+    }
+
+    // Frame generation only. SDK/session operations stay in the outer controller.
+    private inner class MatrixRenderEngine {
+        fun render(input: MatrixRenderInput): MatrixRenderResult {
+            val now = input.nowMs
+            val renderMode = input.renderMode
+            val renderLevel = input.renderLevel
+            val openReelPlayback = input.openReelPlayback
+            val renderingSilenceDrain = input.renderingSilenceDrain
+            val rippleDrainProgress = input.rippleDrainProgress
+            val frameIntervalMs = input.frameIntervalMs
+
         val litRows = (renderLevel * matrixLength).roundToInt().coerceIn(0, matrixLength)
         val renderBrightness = matrixBrightnessFor(renderLevel)
         lastLitRows = litRows
@@ -783,32 +842,16 @@ class GlyphMatrixController(
                     allBrightness = allBrightnessFrameBrightness
                 )
             }
-            if (renderSignature != null && renderSignature == lastRenderSignature) {
-                if (lastSentFrameBuffer.isNotEmpty()) {
-                    if (previewDeviceProfile != null) {
-                        submitMatrixFrame(lastSentFrameBuffer)
-                    } else {
-                        mirrorMatrixPreviewFrame(lastSentFrameBuffer)
-                    }
-                }
-                return
+            if (MatrixFrameOptimizer.shouldReuseFrame(renderSignature, lastRenderSignature)) {
+                return MatrixRenderResult.ReuseLastFrame
             }
             lastRenderSignature = renderSignature ?: Long.MIN_VALUE
         } else {
             lastRenderSignature = Long.MIN_VALUE
         }
 
-        val supportsDiffRendering =
-            experimentalPerformanceOptimizationsEnabled && when (renderMode) {
-                GlyphPatternRenderMode.MATRIX_BAR,
-                GlyphPatternRenderMode.MATRIX_FIELD,
-                GlyphPatternRenderMode.MATRIX_CIRCLE,
-                GlyphPatternRenderMode.MATRIX_SPECTRUM,
-                GlyphPatternRenderMode.MATRIX_SPECTRUM_CENTER,
-                GlyphPatternRenderMode.MATRIX_SPECTRUM_BOTTOM,
-                GlyphPatternRenderMode.ALL_BRIGHTNESS -> true
-                else -> false
-            }
+        val supportsDiffRendering = experimentalPerformanceOptimizationsEnabled &&
+            MatrixFrameOptimizer.supportsDiffRendering(renderMode)
         val diffModeContinuing = supportsDiffRendering && lastRenderedMode == renderMode
 
         if (!diffModeContinuing && renderMode != GlyphPatternRenderMode.ALL_BRIGHTNESS) {
@@ -855,15 +898,16 @@ class GlyphMatrixController(
                 return
             }
 
-            for (row in 0 until matrixLength) {
-                val brightness = rowBrightnessForMeter(row)
-                if (brightness <= 0) continue
-                val y = if (reverseDirection) row else (matrixLength - 1 - row)
-                val rowOffset = y * matrixLength
-                for (x in startX until endXExclusive) {
-                    frameBuffer[rowOffset + x] = brightness
-                }
-            }
+            MatrixBarPatternRenderer.render(
+                frame = frameBuffer,
+                matrixLength = matrixLength,
+                centerX = centerX,
+                barWidth = barWidth,
+                fullRows = fullRows,
+                edgeRowBrightness = edgeRowBrightness,
+                reverseDirection = reverseDirection,
+                colorOn = COLOR_ON
+            )
         }
 
         fun drawSpectrum(centerLowToHigh: Boolean, anchorBottom: Boolean = false) {
@@ -1537,18 +1581,25 @@ class GlyphMatrixController(
                 // 行ごとに full / partial / off を持たせ、Linear のように先端だけ半点灯させる
                 if (supportsDiffRendering) {
                     ensureRowBrightnessCache()
-                }
-                for (row in 0 until matrixLength) {
-                    val brightness = rowBrightnessForMeter(row)
-                    val y = if (reverseDirection) row else (matrixLength - 1 - row)
-                    if (supportsDiffRendering && diffModeContinuing && lastRowBrightnessByRow[y] == brightness) continue
-                    val rowOffset = y * matrixLength
-                    for (x in 0 until matrixLength) {
-                        frameBuffer[rowOffset + x] = brightness
-                    }
-                    if (supportsDiffRendering) {
+                    for (row in 0 until matrixLength) {
+                        val brightness = rowBrightnessForMeter(row)
+                        val y = if (reverseDirection) row else (matrixLength - 1 - row)
+                        if (diffModeContinuing && lastRowBrightnessByRow[y] == brightness) continue
+                        val rowOffset = y * matrixLength
+                        for (x in 0 until matrixLength) {
+                            frameBuffer[rowOffset + x] = brightness
+                        }
                         lastRowBrightnessByRow[y] = brightness
                     }
+                } else {
+                    MatrixFieldPatternRenderer.render(
+                        frame = frameBuffer,
+                        matrixLength = matrixLength,
+                        fullRows = fullRows,
+                        edgeRowBrightness = edgeRowBrightness,
+                        reverseDirection = reverseDirection,
+                        colorOn = COLOR_ON
+                    )
                 }
             }
             GlyphPatternRenderMode.MATRIX_CIRCLE -> {
@@ -1616,7 +1667,7 @@ class GlyphMatrixController(
             GlyphPatternRenderMode.MATRIX_SKYLINE -> drawSkyline()
             GlyphPatternRenderMode.MATRIX_PULSE_GRID -> drawPulseGrid()
             GlyphPatternRenderMode.ALL_BRIGHTNESS -> {
-                frameBuffer.fill(allBrightnessFrameBrightness)
+                MatrixAllBrightnessPatternRenderer.render(frameBuffer, allBrightnessFrameBrightness)
                 lastMatrixBrightness = allBrightnessFrameBrightness
                 if (allBrightnessFrameBrightness == COLOR_OFF) {
                     lastPreviewLevel = 0f
@@ -1626,15 +1677,19 @@ class GlyphMatrixController(
         }
         lastRenderedMode = renderMode
 
-        val deviceFrame = frameForPhysicalDevice()
-        submitMatrixFrame(deviceFrame)
-        if (
-            renderingSilenceDrain &&
-            silenceDrainComplete &&
-            isSessionOpen &&
-            !matrixReleasedForSilence
-        ) {
-            releaseMatrixForSilence()
+            return MatrixRenderResult.GeneratedFrame(
+                deviceFrame = frameForPhysicalDevice(),
+                silenceDrainComplete = silenceDrainComplete
+            )
+        }
+    }
+
+    private fun deliverLastMatrixFrame() {
+        if (lastSentFrameBuffer.isEmpty()) return
+        if (previewDeviceProfile != null) {
+            submitMatrixFrame(lastSentFrameBuffer)
+        } else {
+            mirrorMatrixPreviewFrame(lastSentFrameBuffer)
         }
     }
 

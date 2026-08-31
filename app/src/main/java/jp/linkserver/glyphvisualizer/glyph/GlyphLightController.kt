@@ -227,6 +227,7 @@ class GlyphLightController(
     private var fullGlyphBrightness = IntArray(0)
     private var lastSentFrame = IntArray(0)
     private var blankFrame = IntArray(0)
+    private val renderEngine = LightRenderEngine()
     private val baseIndicatorRenderers: List<BaseIndicatorRenderer> = listOf(
         Phone4SeriesBaseIndicatorRenderer()
     )
@@ -650,7 +651,8 @@ class GlyphLightController(
         val spec = deviceSpec ?: return
 
         try {
-            renderLightPattern(spec, renderLevel)
+            val frame = renderEngine.render(spec, renderLevel)
+            if (frame != null) submitFrame(frame)
         } catch (_: GlyphException) {
         }
     }
@@ -752,54 +754,56 @@ class GlyphLightController(
         return GlyphPatternRegistry.isLevelAutoScale(glyphMode)
     }
 
-    private fun renderLightPattern(spec: DeviceSpec, level: Float) {
-        val recipe = GlyphPatternRegistry.recipeFor(glyphMode)
-            ?: GlyphPatternRegistry.recipeFor(GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice())
-            ?: return
-        val linearPeakLevelForFrame = if (recipe.renderMode == GlyphPatternRenderMode.LINEAR_PEAK) {
-            updateLinearPeakLevel(level)
-        } else {
-            0f
-        }
-        val pulseTrainBrightnessForFrame = if (recipe.renderMode == GlyphPatternRenderMode.PULSE_TRAIN) {
-            pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
-        } else {
-            0f
-        }
-        val ranges = resolveLightRanges(spec, recipe.lightZones)
-
-        if (
-            spec.profile == GlyphDeviceProfile.PHONE4A ||
-            spec.profile == GlyphDeviceProfile.PHONE4B
-        ) {
-            updatePhone4SeriesFrame(spec) { colors ->
-                applyRecipeToColors(
-                    colors = colors,
-                    ranges = ranges,
-                    renderMode = recipe.renderMode,
-                    level = level,
-                    linearPeakLevel = linearPeakLevelForFrame,
-                    pulseTrainBrightness = pulseTrainBrightnessForFrame
-                )
+    // Selects a pattern and builds its frame; submitting remains a controller responsibility.
+    private inner class LightRenderEngine {
+        fun render(spec: DeviceSpec, level: Float): IntArray? {
+            val recipe = GlyphPatternRegistry.recipeFor(glyphMode)
+                ?: GlyphPatternRegistry.recipeFor(GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice())
+                ?: return null
+            val linearPeakLevelForFrame = if (recipe.renderMode == GlyphPatternRenderMode.LINEAR_PEAK) {
+                updateLinearPeakLevel(level)
+            } else {
+                0f
             }
-            return
-        }
+            val pulseTrainBrightnessForFrame = if (recipe.renderMode == GlyphPatternRenderMode.PULSE_TRAIN) {
+                pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
+            } else {
+                0f
+            }
+            val ranges = resolveLightRanges(spec, recipe.lightZones)
 
-        when (recipe.renderMode) {
-            GlyphPatternRenderMode.LINEAR -> updateLinearRanges(level, ranges)
-            GlyphPatternRenderMode.LINEAR_PEAK -> updateLinearPeakRanges(level, linearPeakLevelForFrame, ranges)
-            GlyphPatternRenderMode.PULSE_TRAIN -> updatePulseTrainRanges(level, ranges)
-            GlyphPatternRenderMode.CENTER -> {
-                if (ranges.size <= 1) {
-                    updateCenterRange(level, ranges.firstOrNull() ?: spec.cRange)
-                } else {
-                    updateCenterRanges(level, ranges)
+            if (
+                spec.profile == GlyphDeviceProfile.PHONE4A ||
+                spec.profile == GlyphDeviceProfile.PHONE4B
+            ) {
+                return buildPhone4SeriesFrame(spec) { colors ->
+                    applyRecipeToColors(
+                        colors = colors,
+                        ranges = ranges,
+                        renderMode = recipe.renderMode,
+                        level = level,
+                        linearPeakLevel = linearPeakLevelForFrame,
+                        pulseTrainBrightness = pulseTrainBrightnessForFrame
+                    )
                 }
             }
-            GlyphPatternRenderMode.SPECTRUM -> updateSpectrumRanges(level, ranges)
-            GlyphPatternRenderMode.CLASSIC -> updateClassicSpectrum(level, spec)
-            GlyphPatternRenderMode.ALL_BRIGHTNESS -> updateAllBrightness(level)
-            else -> updateLinearRanges(level, ranges.ifEmpty { listOf(spec.cRange) })
+
+            return when (recipe.renderMode) {
+                GlyphPatternRenderMode.LINEAR -> buildLinearRangesFrame(spec, level, ranges)
+                GlyphPatternRenderMode.LINEAR_PEAK -> buildLinearPeakRangesFrame(spec, level, linearPeakLevelForFrame, ranges)
+                GlyphPatternRenderMode.PULSE_TRAIN -> buildPulseTrainRangesFrame(spec, level, ranges)
+                GlyphPatternRenderMode.CENTER -> {
+                    if (ranges.size <= 1) {
+                        buildCenterRangeFrame(spec, level, ranges.firstOrNull() ?: spec.cRange)
+                    } else {
+                        buildCenterRangesFrame(spec, level, ranges)
+                    }
+                }
+                GlyphPatternRenderMode.SPECTRUM -> buildSpectrumRangesFrame(spec, level, ranges)
+                GlyphPatternRenderMode.CLASSIC -> buildClassicSpectrumFrame(level, spec)
+                GlyphPatternRenderMode.ALL_BRIGHTNESS -> buildAllBrightnessFrame(spec, level)
+                else -> buildLinearRangesFrame(spec, level, ranges.ifEmpty { listOf(spec.cRange) })
+            }
         }
     }
 
@@ -865,14 +869,12 @@ class GlyphLightController(
         )
     }
 
-    private fun updateLinearRanges(level: Float, ranges: List<IntRange>) {
-        val spec = deviceSpec ?: return
-        if (ranges.isEmpty()) return
+    private fun buildLinearRangesFrame(spec: DeviceSpec, level: Float, ranges: List<IntRange>): IntArray? {
+        if (ranges.isEmpty()) return null
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val colors = IntArray(spec.channelCount)
@@ -880,18 +882,21 @@ class GlyphLightController(
             applyLinearRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        submitFrame(colors)
+        return colors
     }
 
-    private fun updateLinearPeakRanges(level: Float, peakLevel: Float, ranges: List<IntRange>) {
-        val spec = deviceSpec ?: return
-        if (ranges.isEmpty()) return
+    private fun buildLinearPeakRangesFrame(
+        spec: DeviceSpec,
+        level: Float,
+        peakLevel: Float,
+        ranges: List<IntRange>
+    ): IntArray? {
+        if (ranges.isEmpty()) return null
 
         val clamped = level.coerceIn(0f, 1f)
         val peak = peakLevel.coerceIn(0f, 1f)
         if (clamped <= 0.001f && peak <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val colors = IntArray(spec.channelCount)
@@ -899,18 +904,16 @@ class GlyphLightController(
             applyLinearPeakRange(colors, range, clamped, peak)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        submitFrame(colors)
+        return colors
     }
 
-    private fun updatePulseTrainRanges(level: Float, ranges: List<IntRange>) {
-        val spec = deviceSpec ?: return
-        if (ranges.isEmpty()) return
+    private fun buildPulseTrainRangesFrame(spec: DeviceSpec, level: Float, ranges: List<IntRange>): IntArray? {
+        if (ranges.isEmpty()) return null
 
         val clamped = level.coerceIn(0f, 1f)
         val pulseBrightness = pulseTrainPulses.maxOfOrNull { it.brightness } ?: 0f
         if (clamped <= 0.001f && pulseBrightness <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val colors = IntArray(spec.channelCount)
@@ -918,28 +921,26 @@ class GlyphLightController(
             applyPulseTrainRange(colors, range, clamped, pulseBrightness)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        submitFrame(colors)
+        return colors
     }
 
     private fun applyLinearRange(colors: IntArray, range: IntRange, level: Float) {
         val count = range.count()
         if (count <= 0) return
 
-        val virtualLit = level * count
-        val fullLit = virtualLit.toInt().coerceIn(0, count)
-        val edgeBrightness = if (binaryMode) 0 else ((virtualLit - fullLit) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
-
-        val channels = if (shouldReverseLightOrder()) range.reversed().toList() else range.toList()
-        channels.forEachIndexed { index, channel ->
-            val brightness = when {
-                index < fullLit -> MAX_LIGHT
-                index == fullLit && fullLit < count -> edgeBrightness
-                else -> 0
-            }
-            if (brightness > 0 && channel in colors.indices) {
-                colors[channel] = brightness
-            }
-        }
+        val scale = SignalScalingPipeline.meter(
+            level = level,
+            slotCount = count,
+            binaryMode = binaryMode,
+            fullBrightness = MAX_LIGHT
+        )
+        LightPatternRenderer.renderLinear(
+            colors = colors,
+            range = range,
+            scale = scale,
+            reverseDirection = shouldReverseLightOrder(),
+            fullBrightness = MAX_LIGHT
+        )
     }
 
     private fun applyPulseTrainRange(colors: IntArray, range: IntRange, level: Float, pulseTrainBrightness: Float) {
@@ -998,14 +999,12 @@ class GlyphLightController(
         }
     }
 
-    private fun updateSpectrumRanges(level: Float, ranges: List<IntRange>) {
-        val spec = deviceSpec ?: return
-        if (ranges.isEmpty()) return
+    private fun buildSpectrumRangesFrame(spec: DeviceSpec, level: Float, ranges: List<IntRange>): IntArray? {
+        if (ranges.isEmpty()) return null
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val colors = IntArray(spec.channelCount)
@@ -1013,10 +1012,10 @@ class GlyphLightController(
             applySpectrumRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        submitFrame(colors)
+        return colors
     }
 
-    private fun updateClassicSpectrum(level: Float, spec: DeviceSpec) {
+    private fun buildClassicSpectrumFrame(level: Float, spec: DeviceSpec): IntArray {
         val clamped = level.coerceIn(0f, 1f)
         val colors = IntArray(spec.channelCount)
         applyClassicSpectrum(
@@ -1025,7 +1024,7 @@ class GlyphLightController(
             level = clamped,
             smoothingState = classicPatternSmoothingState
         )
-        submitFrame(colors)
+        return colors
     }
 
     private fun applyClassicSpectrum(
@@ -1071,8 +1070,7 @@ class GlyphLightController(
     }
 
     private fun boostClassicBrightness(value: Float): Float {
-        val clamped = value.coerceIn(0f, 1f)
-        return 1f - (1f - clamped).pow(CLASSIC_BRIGHTNESS_BOOST_EXPONENT)
+        return SignalScalingPipeline.boost(value, CLASSIC_BRIGHTNESS_BOOST_EXPONENT)
     }
 
     private fun sampleClassicSpectrumAt(position: Float): Float {
@@ -1310,8 +1308,7 @@ class GlyphLightController(
         }
     }
 
-    private fun updateAllBrightness(level: Float) {
-        val spec = deviceSpec ?: return
+    private fun buildAllBrightnessFrame(spec: DeviceSpec, level: Float): IntArray {
         val clamped = level.coerceIn(0f, 1f)
         if (
             isAllBrightnessDisplayOff(
@@ -1321,8 +1318,7 @@ class GlyphLightController(
                 adaptiveGateOn = allBrightnessGateOn
             )
         ) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
         val normalized = ((clamped - ALL_BRIGHTNESS_CURVE_FLOOR) / (1f - ALL_BRIGHTNESS_CURVE_FLOOR))
             .coerceIn(0f, 1f)
@@ -1332,8 +1328,8 @@ class GlyphLightController(
             applyBrightnessBoost = spec.profile != GlyphDeviceProfile.PHONE3_MATRIX &&
                 spec.profile != GlyphDeviceProfile.PHONE4A_PRO_MATRIX
         )
-        fullGlyphBrightness.fill(brightness)
-        submitFrame(fullGlyphBrightness)
+        LightPatternRenderer.renderAllBrightness(fullGlyphBrightness, brightness)
+        return fullGlyphBrightness
     }
 
     private fun applyAllBrightnessRange(colors: IntArray, range: IntRange, level: Float) {
@@ -1417,8 +1413,7 @@ class GlyphLightController(
     }
 
     private fun boostAllBrightness(value: Float): Float {
-        val clamped = value.coerceIn(0f, 1f)
-        return 1f - (1f - clamped).pow(ALL_BRIGHTNESS_BOOST_EXPONENT)
+        return SignalScalingPipeline.boost(value, ALL_BRIGHTNESS_BOOST_EXPONENT)
     }
 
     private fun resetAllBrightnessScaleTracking() {
@@ -1432,17 +1427,14 @@ class GlyphLightController(
         return deviceSpec?.profile ?: previewDeviceProfile ?: GlyphDeviceCatalog.currentProfile()
     }
 
-    private fun updateCenterRange(level: Float, channelRange: IntRange) {
-        val spec = deviceSpec ?: return
+    private fun buildCenterRangeFrame(spec: DeviceSpec, level: Float, channelRange: IntRange): IntArray? {
         if (!spec.centerSupported || channelRange.count() < 2) {
-            updateLinearRanges(level, listOf(channelRange))
-            return
+            return buildLinearRangesFrame(spec, level, listOf(channelRange))
         }
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val d1CenterChannel = spec.d1CenterChannel
@@ -1480,8 +1472,7 @@ class GlyphLightController(
             }
 
             applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
-            submitFrame(colors)
-            return
+            return colors
         }
 
         val pairCount = channelRange.count() / 2
@@ -1504,17 +1495,15 @@ class GlyphLightController(
             }
         }
         applyFillOtherGlyphLights(colors, spec, listOf(channelRange), clamped)
-        submitFrame(colors)
+        return colors
     }
 
-    private fun updateCenterRanges(level: Float, ranges: List<IntRange>) {
-        val spec = deviceSpec ?: return
-        if (ranges.isEmpty()) return
+    private fun buildCenterRangesFrame(spec: DeviceSpec, level: Float, ranges: List<IntRange>): IntArray? {
+        if (ranges.isEmpty()) return null
 
         val clamped = level.coerceIn(0f, 1f)
         if (clamped <= 0.001f) {
-            submitBlankFrame(spec)
-            return
+            return blankFrameFor(spec)
         }
 
         val colors = IntArray(spec.channelCount)
@@ -1522,7 +1511,7 @@ class GlyphLightController(
             applyCenterRange(colors, range, clamped)
         }
         applyFillOtherGlyphLights(colors, spec, ranges, clamped)
-        submitFrame(colors)
+        return colors
     }
 
     private fun applyCenterRange(colors: IntArray, channelRange: IntRange, level: Float) {
@@ -1530,24 +1519,19 @@ class GlyphLightController(
         if (count < 1) return
 
         val slots = centerPairSlots(channelRange.toList(), isCenterDirectionReversed())
-        val virtualSlots = level * slots.size
-        val fullSlots = virtualSlots.toInt().coerceIn(0, slots.size)
-        val edgeBrightness = if (binaryMode) {
-            0
-        } else {
-            ((virtualSlots - fullSlots) * MAX_LIGHT).roundToInt().coerceIn(0, MAX_LIGHT)
-        }
-
-        slots.forEachIndexed { index, slotChannels ->
-            val brightness = brightnessForCenterSlot(index, fullSlots, edgeBrightness)
-            if (brightness > 0) {
-                slotChannels.forEach { channel ->
-                    if (channel in channelRange && channel in colors.indices) {
-                        colors[channel] = brightness
-                    }
-                }
-            }
-        }
+        val scale = SignalScalingPipeline.meter(
+            level = level,
+            slotCount = slots.size,
+            binaryMode = binaryMode,
+            fullBrightness = MAX_LIGHT
+        )
+        LightPatternRenderer.renderCenterSlots(
+            colors = colors,
+            slots = slots,
+            scale = scale,
+            fullBrightness = MAX_LIGHT,
+            allowedRange = channelRange
+        )
     }
 
     private fun centerPairSlots(channels: List<Int>, reversed: Boolean): List<List<Int>> {
@@ -1571,11 +1555,12 @@ class GlyphLightController(
     }
 
     private fun brightnessForCenterSlot(index: Int, fullSlots: Int, edgeBrightness: Int): Int {
-        return when {
-            index < fullSlots -> MAX_LIGHT
-            index == fullSlots -> edgeBrightness
-            else -> 0
-        }
+        return SignalScalingPipeline.brightnessForSlot(
+            index = index,
+            fullSlots = fullSlots,
+            edgeBrightness = edgeBrightness,
+            fullBrightness = MAX_LIGHT
+        )
     }
 
     private fun isCenterDirectionReversed(): Boolean = reverseDirection
@@ -1615,18 +1600,23 @@ class GlyphLightController(
     }
 
     private fun submitBlankFrame(spec: DeviceSpec) {
+        submitFrame(blankFrameFor(spec))
+    }
+
+    private fun blankFrameFor(spec: DeviceSpec): IntArray {
         lastPreviewLevel = 0f
         val requiredSize = frameChannelCount(spec)
         if (blankFrame.size != requiredSize) {
             blankFrame = IntArray(requiredSize)
         }
-        submitFrame(blankFrame)
+        return blankFrame
     }
 
     private fun submitSilenceFrame(spec: DeviceSpec, renderMode: GlyphPatternRenderMode?) {
         if (renderMode == GlyphPatternRenderMode.CLASSIC) {
             lastPreviewLevel = 0f
-            renderLightPattern(spec, 0f)
+            val frame = renderEngine.render(spec, 0f)
+            if (frame != null) submitFrame(frame)
             return
         }
 
@@ -1682,10 +1672,10 @@ class GlyphLightController(
         releaseSessionForSilence()
     }
 
-    private fun updatePhone4SeriesFrame(
+    private fun buildPhone4SeriesFrame(
         spec: DeviceSpec,
         populateMain: (IntArray) -> Unit
-    ) {
+    ): IntArray {
         val colors = IntArray(frameChannelCount(spec))
         populateMain(colors)
         if (baseIndicatorEnabled) {
@@ -1694,7 +1684,7 @@ class GlyphLightController(
         if (colors.none { it > 0 }) {
             lastPreviewLevel = 0f
         }
-        submitFrame(colors)
+        return colors
     }
 
     private fun effectiveMainRange(spec: DeviceSpec): IntRange {
