@@ -96,10 +96,12 @@ class SettingsPreferencesCharacterizationTest {
         )
 
         SettingsPreferences.save(application, source)
+        val persisted = SettingsPreferences.loadPersisted(application)
         val loaded = SettingsPreferences.load(application)
 
+        assertEquals(PersistedSettingsSchema.fromState(source), persisted)
         assertPersistentSettingsEqual(SettingsPreferences.parameterStateOf(source), loaded)
-        assertTrue(preferences().all.keys.containsAll(EXISTING_PREFERENCE_KEYS))
+        assertEquals(EXISTING_PREFERENCE_KEYS, preferences().all.keys)
         assertTrue(preferences().all["sensitivity"] is Float)
         assertTrue(preferences().all["reverse_direction"] is Boolean)
         assertTrue(preferences().all["glyph_mode"] is String)
@@ -169,25 +171,105 @@ class SettingsPreferencesCharacterizationTest {
     }
 
     @Test
-    fun save_preservesUnknownDormantValuesWhileKeepingCurrentDormantFlagNormalization() {
+    fun load_separatesLegacyPersistedValuesFromEffectiveValues() {
         preferences().edit()
-            .putString("future_dormant_setting", "keep-me")
+            .putBoolean("base_indicator_enabled", true)
+            .putBoolean("recording_light_included", true)
             .putBoolean("turn_off_when_back_down", true)
             .putBoolean("main_screen_ui_isolation_enabled", false)
+            .commit()
+
+        val persisted = SettingsPreferences.loadPersisted(application)
+        val effective = SettingsPreferences.loadEffective(application)
+
+        assertTrue(persisted.baseIndicatorEnabled)
+        assertTrue(persisted.recordingLightIncluded)
+        assertTrue(persisted.turnOffWhenBackDown)
+        assertFalse(persisted.mainScreenUiIsolationEnabled)
+        assertEquals(persisted, effective.persisted)
+        assertTrue(effective.state.baseIndicatorEnabled)
+        assertFalse(effective.state.recordingLightIncluded)
+        assertFalse(effective.state.turnOffWhenBackDown)
+        assertTrue(effective.state.mainScreenUiIsolationEnabled)
+    }
+
+    @Test
+    fun save_preservesUnknownAndDormantStoredValuesWhileUsingEffectiveNormalization() {
+        preferences().edit()
+            .putString("future_dormant_setting", "keep-me")
+            .putBoolean("base_indicator_enabled", true)
+            .putBoolean("recording_light_included", true)
+            .putBoolean("turn_off_when_back_down", true)
+            .putBoolean("main_screen_ui_isolation_enabled", false)
+            .putString("debug_device_profile_override", GlyphDeviceProfile.PHONE3A.name)
+            .putBoolean("show_phone1_glyph_debug_controls_everywhere", true)
             .putBoolean("phone4b_emulation_enabled", true)
             .putBoolean("experimental_visualizer_stabilization_enabled", true)
             .commit()
 
         val loaded = SettingsPreferences.load(application)
-        SettingsPreferences.save(application, loaded)
+        SettingsPreferences.save(application, loaded.copy(sensitivity = 2.1f))
+        val persisted = SettingsPreferences.loadPersisted(application)
 
+        assertTrue(loaded.baseIndicatorEnabled)
+        assertFalse(loaded.recordingLightIncluded)
         assertFalse(loaded.turnOffWhenBackDown)
         assertTrue(loaded.mainScreenUiIsolationEnabled)
         assertTrue(loaded.phone4bEmulationEnabled)
         assertTrue(loaded.experimentalVisualizerStabilizationEnabled)
+        assertTrue(persisted.baseIndicatorEnabled)
+        assertTrue(persisted.recordingLightIncluded)
+        assertTrue(persisted.turnOffWhenBackDown)
+        assertFalse(persisted.mainScreenUiIsolationEnabled)
+        assertEquals(GlyphDeviceProfile.PHONE3A, persisted.debugDeviceProfileOverride)
+        assertTrue(persisted.showPhone1GlyphDebugControlsEverywhere)
+        assertFloatEquals(2.1f, persisted.sensitivity)
         assertEquals("keep-me", preferences().getString("future_dormant_setting", null))
-        assertFalse(preferences().getBoolean("turn_off_when_back_down", true))
-        assertTrue(preferences().getBoolean("main_screen_ui_isolation_enabled", false))
+        assertTrue(preferences().getBoolean("turn_off_when_back_down", false))
+        assertFalse(preferences().getBoolean("main_screen_ui_isolation_enabled", true))
+    }
+
+    @Test
+    fun import_readsLegacyBareAndVersionOneExportJson() {
+        val parameters = """
+            {
+              "sensitivity": 2.05,
+              "noiseGate": 0.12,
+              "dynamics": 1.61,
+              "outputGamma": 2.0,
+              "toneFocus": 0.25,
+              "smoothing": 0.41,
+              "smoothingBalance": -0.15,
+              "glyphMode": "legacy-mode",
+              "autoScaleWindowSeconds": 28.0,
+              "autoScaleOffset": -0.06,
+              "oscilloscopeAutoTimeAxisEnabled": true
+            }
+        """.trimIndent()
+        val versionOneExport = """
+            {
+              "format": "glyph_barty_parameters",
+              "version": 1,
+              "parameters": $parameters
+            }
+        """.trimIndent()
+
+        val bareImported = SettingsPreferences.importJson(parameters)
+        val versionOneImported = SettingsPreferences.importJson(versionOneExport)
+
+        assertPersistentSettingsEqual(bareImported, versionOneImported)
+        assertFloatEquals(2.05f, bareImported.sensitivity)
+        assertFloatEquals(0.12f, bareImported.noiseGate)
+        assertFloatEquals(1.61f, bareImported.dynamics)
+        assertFloatEquals(2f, bareImported.outputGamma)
+        assertFloatEquals(0.25f, bareImported.toneFocus)
+        assertFloatEquals(0.41f, bareImported.smoothing)
+        assertFloatEquals(-0.15f, bareImported.smoothingBalance)
+        assertEquals("legacy-mode", bareImported.glyphMode)
+        assertFloatEquals(28f, bareImported.autoScaleWindowSeconds)
+        assertFloatEquals(-0.06f, bareImported.autoScaleOffset)
+        assertTrue(bareImported.oscilloscopeAutoTimeAxisEnabled)
+        assertEquals(CaptureUiState().reverseDirection, bareImported.reverseDirection)
     }
 
     @Test
