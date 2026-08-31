@@ -61,10 +61,9 @@ import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
+import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,7 +107,8 @@ fun AboutScreen(
         updateStatus = if (manual) context.getString(R.string.about_update_checking) else null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                checkGitHubReleaseUpdate(
+                AppUpdateRepository.checkAndRecord(
+                    context = context,
                     repositoryUrl = repositoryUrl,
                     showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
                 )
@@ -116,7 +116,6 @@ fun AboutScreen(
             checkingUpdates = false
             result
                 .onSuccess { updateInfo ->
-                    markUpdateCheckFinished(context)
                     if (updateInfo != null) {
                         updateStatus = context.getString(R.string.about_update_available, updateInfo.tagName)
                         onUpdateAvailable(updateInfo)

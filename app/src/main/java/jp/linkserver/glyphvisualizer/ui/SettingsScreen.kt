@@ -31,7 +31,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,44 +108,20 @@ fun SettingsScreen(
     val materialLabel = stringResource(R.string.settings_ui_mode_material)
     val compactHomeLabel = stringResource(R.string.settings_home_screen_compact)
     val detailedHomeLabel = stringResource(R.string.settings_home_screen_detailed)
-    var localMediaProjectionEnabled by rememberSaveable { mutableStateOf(mediaProjectionEnabled) }
-    var localGlyphMeterPreviewEnabled by rememberSaveable { mutableStateOf(glyphMeterPreviewEnabled) }
-    var localMeterVisibleEnabled by rememberSaveable { mutableStateOf(meterVisibleEnabled) }
-    var localLightweightMeterEnabled by rememberSaveable { mutableStateOf(lightweightMeterEnabled) }
-    var localSpectrumMeterEnabled by rememberSaveable { mutableStateOf(spectrumMeterEnabled) }
-    var localNativeMeterViewEnabled by rememberSaveable { mutableStateOf(nativeMeterViewEnabled) }
-    var localAutomaticUpdateCheckEnabled by rememberSaveable { mutableStateOf(automaticUpdateCheckEnabled) }
     var localShowLatestForTesting by rememberSaveable {
         mutableStateOf(isShowLatestReleaseForTestingEnabled(context))
     }
     var localIgnoreCheckIntervalForTesting by rememberSaveable {
         mutableStateOf(isUpdateCheckIntervalIgnoredForTesting(context))
     }
-    var localMediaPlaybackOnlyEnabled by rememberSaveable { mutableStateOf(mediaPlaybackOnlyEnabled) }
-    var localExperimentalVisualizerStabilizationEnabled by rememberSaveable {
-        mutableStateOf(experimentalVisualizerStabilizationEnabled)
-    }
-    var localExperimentalVisualizerSignalWatchdogEnabled by rememberSaveable {
-        mutableStateOf(experimentalVisualizerSignalWatchdogEnabled)
-    }
-    var localAutoEnablePhone1GlyphDebugOnStart by rememberSaveable {
-        mutableStateOf(autoEnablePhone1GlyphDebugOnStart)
-    }
-    var localLegacyUiEnabled by rememberSaveable {
-        mutableStateOf(!experimentalMainUiEnabled)
-    }
-    var localDetailedHomeEnabled by rememberSaveable {
-        mutableStateOf(detailedHomeEnabled)
-    }
-    var localNothingStyleEnabled by rememberSaveable { mutableStateOf(nothingStyleEnabled) }
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
     var showHomeScreenDialog by rememberSaveable { mutableStateOf(false) }
     var showMeterStyleDialog by rememberSaveable { mutableStateOf(false) }
     val meterStyleMode = when {
-        !localMeterVisibleEnabled -> MeterStyleMode.HIDDEN
-        localLightweightMeterEnabled -> MeterStyleMode.LIGHTWEIGHT
-        localSpectrumMeterEnabled -> MeterStyleMode.SPECTRUM
-        localGlyphMeterPreviewEnabled -> MeterStyleMode.FAITHFUL
+        !meterVisibleEnabled -> MeterStyleMode.HIDDEN
+        lightweightMeterEnabled -> MeterStyleMode.LIGHTWEIGHT
+        spectrumMeterEnabled -> MeterStyleMode.SPECTRUM
+        glyphMeterPreviewEnabled -> MeterStyleMode.FAITHFUL
         else -> MeterStyleMode.CLASSIC
     }
     val meterStyleSummary = when (meterStyleMode) {
@@ -188,57 +163,13 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(mediaProjectionEnabled) {
-        localMediaProjectionEnabled = mediaProjectionEnabled
-    }
-    LaunchedEffect(glyphMeterPreviewEnabled) {
-        localGlyphMeterPreviewEnabled = glyphMeterPreviewEnabled
-    }
-    LaunchedEffect(meterVisibleEnabled) {
-        localMeterVisibleEnabled = meterVisibleEnabled
-    }
-    LaunchedEffect(lightweightMeterEnabled) {
-        localLightweightMeterEnabled = lightweightMeterEnabled
-    }
-    LaunchedEffect(spectrumMeterEnabled) {
-        localSpectrumMeterEnabled = spectrumMeterEnabled
-    }
-    LaunchedEffect(nativeMeterViewEnabled) {
-        localNativeMeterViewEnabled = nativeMeterViewEnabled
-    }
-    LaunchedEffect(automaticUpdateCheckEnabled) {
-        localAutomaticUpdateCheckEnabled = automaticUpdateCheckEnabled
-    }
-    LaunchedEffect(mediaPlaybackOnlyEnabled) {
-        localMediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled
-    }
-    LaunchedEffect(experimentalVisualizerStabilizationEnabled) {
-        localExperimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled
-    }
-    LaunchedEffect(experimentalVisualizerSignalWatchdogEnabled) {
-        localExperimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled
-    }
-    LaunchedEffect(autoEnablePhone1GlyphDebugOnStart) {
-        localAutoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart
-    }
-    LaunchedEffect(experimentalMainUiEnabled) {
-        localLegacyUiEnabled = !experimentalMainUiEnabled
-    }
-    LaunchedEffect(detailedHomeEnabled) {
-        localDetailedHomeEnabled = detailedHomeEnabled
-    }
-    LaunchedEffect(nothingStyleEnabled) {
-        localNothingStyleEnabled = nothingStyleEnabled
-    }
-
     if (showUiModeDialog) {
         UiModeDialog(
-            selectedNothingStyle = localNothingStyleEnabled,
+            selectedNothingStyle = nothingStyleEnabled,
             nothingLabel = nothingLabel,
             materialLabel = materialLabel,
             onDismiss = { showUiModeDialog = false },
             onOptionSelected = { checked ->
-                localNothingStyleEnabled = checked
                 onNothingStyleEnabledChanged(checked)
                 showUiModeDialog = false
             }
@@ -246,12 +177,11 @@ fun SettingsScreen(
     }
     if (showHomeScreenDialog) {
         HomeScreenDialog(
-            detailedHomeEnabled = localDetailedHomeEnabled,
+            detailedHomeEnabled = detailedHomeEnabled,
             compactLabel = compactHomeLabel,
             detailedLabel = detailedHomeLabel,
             onDismiss = { showHomeScreenDialog = false },
             onOptionSelected = { enabled ->
-                localDetailedHomeEnabled = enabled
                 onDetailedHomeEnabledChanged(enabled)
                 showHomeScreenDialog = false
             }
@@ -266,10 +196,6 @@ fun SettingsScreen(
                 val lightweight = mode == MeterStyleMode.LIGHTWEIGHT
                 val spectrum = mode == MeterStyleMode.SPECTRUM
                 val faithful = mode == MeterStyleMode.FAITHFUL || spectrum
-                localMeterVisibleEnabled = visible
-                localLightweightMeterEnabled = lightweight
-                localSpectrumMeterEnabled = spectrum
-                localGlyphMeterPreviewEnabled = faithful
                 onMeterStyleChanged(visible, lightweight, spectrum, faithful)
                 showMeterStyleDialog = false
             }
@@ -283,7 +209,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_screen_title),
                 onBack = onBack,
                 titleFontFamily = settingsTitleFontFamily,
-                nothingStyleEnabled = localNothingStyleEnabled
+                nothingStyleEnabled = nothingStyleEnabled
             )
         }
     ) { padding ->
@@ -307,7 +233,7 @@ fun SettingsScreen(
                             Toast.makeText(context, openFailedText, Toast.LENGTH_SHORT).show()
                         }
                     },
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
                 SettingsDividerGap()
@@ -329,7 +255,7 @@ fun SettingsScreen(
                             ).show()
                         }
                     },
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = if (showAutoEnablePhone1GlyphDebugOnStart) {
                         SettingsGroupPosition.Middle
                     } else {
@@ -341,12 +267,9 @@ fun SettingsScreen(
                     SettingsToggleEntry(
                         title = stringResource(R.string.settings_phone1_debug_auto_enable_title),
                         description = stringResource(R.string.settings_phone1_debug_auto_enable_desc),
-                        checked = localAutoEnablePhone1GlyphDebugOnStart,
-                        onCheckedChange = { checked ->
-                            localAutoEnablePhone1GlyphDebugOnStart = checked
-                            onAutoEnablePhone1GlyphDebugOnStartChanged(checked)
-                        },
-                        nothingStyle = localNothingStyleEnabled,
+                        checked = autoEnablePhone1GlyphDebugOnStart,
+                        onCheckedChange = onAutoEnablePhone1GlyphDebugOnStartChanged,
+                        nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Bottom
                     )
                 }
@@ -357,34 +280,31 @@ fun SettingsScreen(
             ) {
                 SettingsEntry(
                     title = stringResource(R.string.settings_ui_mode_title),
-                    description = if (localNothingStyleEnabled) nothingLabel else materialLabel,
+                    description = if (nothingStyleEnabled) nothingLabel else materialLabel,
                     onClick = { showUiModeDialog = true },
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
                 SettingsDividerGap()
                 SettingsEntry(
                     title = stringResource(R.string.settings_home_screen_title),
-                    description = if (localDetailedHomeEnabled) {
+                    description = if (detailedHomeEnabled) {
                         detailedHomeLabel
                     } else {
                         compactHomeLabel
                     },
                     onClick = { showHomeScreenDialog = true },
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle,
-                    enabled = !localLegacyUiEnabled
+                    enabled = experimentalMainUiEnabled
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_experimental_main_ui_title),
                     description = stringResource(R.string.settings_experimental_main_ui_desc),
-                    checked = localLegacyUiEnabled,
-                    onCheckedChange = { checked ->
-                        localLegacyUiEnabled = checked
-                        onExperimentalMainUiEnabledChanged(!checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = !experimentalMainUiEnabled,
+                    onCheckedChange = { checked -> onExperimentalMainUiEnabledChanged(!checked) },
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
@@ -392,19 +312,16 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_meter_style_title),
                     description = meterStyleSummary,
                     onClick = { showMeterStyleDialog = true },
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_native_meter_view_title),
                     description = stringResource(R.string.settings_native_meter_view_desc),
-                    checked = localNativeMeterViewEnabled,
-                    onCheckedChange = { checked ->
-                        localNativeMeterViewEnabled = checked
-                        onNativeMeterViewEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = nativeMeterViewEnabled,
+                    onCheckedChange = onNativeMeterViewEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Bottom
                 )
             }
@@ -415,50 +332,36 @@ fun SettingsScreen(
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_media_playback_only_title),
                     description = mediaPlaybackOnlyDescription,
-                    checked = localMediaPlaybackOnlyEnabled,
-                    onCheckedChange = { checked ->
-                        if (!checked) {
-                            localMediaPlaybackOnlyEnabled = false
-                        }
-                        onMediaPlaybackOnlyEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = mediaPlaybackOnlyEnabled,
+                    onCheckedChange = onMediaPlaybackOnlyEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Top
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_visualizer_stabilization_title),
                     description = stringResource(R.string.settings_visualizer_stabilization_desc),
-                    checked = localExperimentalVisualizerStabilizationEnabled,
-                    onCheckedChange = { checked ->
-                        localExperimentalVisualizerStabilizationEnabled = checked
-                        onExperimentalVisualizerStabilizationEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = experimentalVisualizerStabilizationEnabled,
+                    onCheckedChange = onExperimentalVisualizerStabilizationEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_visualizer_signal_watchdog_title),
                     description = stringResource(R.string.settings_visualizer_signal_watchdog_desc),
-                    checked = localExperimentalVisualizerSignalWatchdogEnabled,
-                    onCheckedChange = { checked ->
-                        localExperimentalVisualizerSignalWatchdogEnabled = checked
-                        onExperimentalVisualizerSignalWatchdogEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = experimentalVisualizerSignalWatchdogEnabled,
+                    onCheckedChange = onExperimentalVisualizerSignalWatchdogEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_media_projection_title),
                     description = stringResource(R.string.settings_media_projection_desc),
-                    checked = localMediaProjectionEnabled,
-                    onCheckedChange = { checked ->
-                        localMediaProjectionEnabled = checked
-                        onMediaProjectionEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = mediaProjectionEnabled,
+                    onCheckedChange = onMediaProjectionEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Bottom
                 )
             }
@@ -469,12 +372,9 @@ fun SettingsScreen(
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_automatic_update_check_title),
                     description = stringResource(R.string.settings_automatic_update_check_desc),
-                    checked = localAutomaticUpdateCheckEnabled,
-                    onCheckedChange = { checked ->
-                        localAutomaticUpdateCheckEnabled = checked
-                        onAutomaticUpdateCheckEnabledChanged(checked)
-                    },
-                    nothingStyle = localNothingStyleEnabled,
+                    checked = automaticUpdateCheckEnabled,
+                    onCheckedChange = onAutomaticUpdateCheckEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Single
                 )
             }
@@ -487,7 +387,7 @@ fun SettingsScreen(
                         title = stringResource(R.string.settings_experimental_features_title),
                         description = stringResource(R.string.settings_experimental_features_desc),
                         onClick = onExperimentalFeatures,
-                        nothingStyle = localNothingStyleEnabled,
+                        nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Top
                     )
                     SettingsDividerGap()
@@ -499,7 +399,7 @@ fun SettingsScreen(
                             localShowLatestForTesting = enabled
                             setShowLatestReleaseForTestingEnabled(context, enabled)
                         },
-                        nothingStyle = localNothingStyleEnabled,
+                        nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Middle
                     )
                     SettingsDividerGap()
@@ -511,7 +411,7 @@ fun SettingsScreen(
                             localIgnoreCheckIntervalForTesting = enabled
                             setUpdateCheckIntervalIgnoredForTesting(context, enabled)
                         },
-                        nothingStyle = localNothingStyleEnabled,
+                        nothingStyle = nothingStyleEnabled,
                         position = SettingsGroupPosition.Bottom
                     )
                 }
@@ -524,7 +424,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_about_title),
                     description = stringResource(R.string.settings_about_desc),
                     onClick = onAbout,
-                    nothingStyle = localNothingStyleEnabled,
+                    nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Single
                 )
             }
