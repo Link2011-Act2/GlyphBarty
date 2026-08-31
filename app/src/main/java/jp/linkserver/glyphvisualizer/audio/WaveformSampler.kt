@@ -2,35 +2,36 @@ package jp.linkserver.glyphvisualizer.audio
 
 import kotlin.math.abs
 
-object WaveformSampler {
-    private const val ZERO_CROSS_SYNC_ENABLED = true
-    private const val FIXED_WINDOW_MULTIPLIER = 7
-    private const val AUTO_MIN_WINDOW_MULTIPLIER = 2
-    private const val AUTO_MAX_WINDOW_MULTIPLIER = 160
-    private const val AUTO_WINDOW_SMOOTHING = 0.28f
-    private const val AUTO_HISTORY_CAPACITY = 8_192
-    @Volatile
-    private var autoTimeAxisEnabled: Boolean = false
-    @Volatile
-    private var currentAutoTimeAxisMultiplier = 1f
+class WaveformSamplerSession internal constructor(
+    private val autoTimeAxisEnabledProvider: () -> Boolean,
+    private val onMultiplierChanged: (Float) -> Unit = {}
+) {
+    private companion object {
+        const val ZERO_CROSS_SYNC_ENABLED = true
+        const val FIXED_WINDOW_MULTIPLIER = 7
+        const val AUTO_MIN_WINDOW_MULTIPLIER = 2
+        const val AUTO_MAX_WINDOW_MULTIPLIER = 160
+        const val AUTO_WINDOW_SMOOTHING = 0.28f
+        const val AUTO_HISTORY_CAPACITY = 8_192
+    }
+
+    private var autoTimeAxisEnabled = autoTimeAxisEnabledProvider()
     private var smoothedAutoDisplayLength = 0f
     private var waveformHistory = FloatArray(0)
 
-    fun setAutoTimeAxisEnabled(enabled: Boolean) {
+    private fun refreshAutoTimeAxisSetting() {
+        val enabled = autoTimeAxisEnabledProvider()
         val changed = autoTimeAxisEnabled != enabled
         autoTimeAxisEnabled = enabled
         if (changed) {
             smoothedAutoDisplayLength = 0f
             waveformHistory = FloatArray(0)
-            currentAutoTimeAxisMultiplier = 1f
+            onMultiplierChanged(1f)
         }
     }
 
-    fun currentAutoTimeAxisMultiplier(): Float {
-        return currentAutoTimeAxisMultiplier
-    }
-
     fun downsample(samples: FloatArray, targetCount: Int = 25): FloatArray {
+        refreshAutoTimeAxisSetting()
         if (targetCount <= 0 || samples.isEmpty()) return FloatArray(0)
         if (samples.size == targetCount) return samples.copyOf()
         val sourceSamples = if (autoTimeAxisEnabled) {
@@ -47,11 +48,12 @@ object WaveformSampler {
         } else {
             fixedDisplayLength
         }
-        currentAutoTimeAxisMultiplier = if (autoTimeAxisEnabled) {
+        val currentAutoTimeAxisMultiplier = if (autoTimeAxisEnabled) {
             displayLength / fixedDisplayLength.toFloat()
         } else {
             1f
         }
+        onMultiplierChanged(currentAutoTimeAxisMultiplier)
         val sourceLength = displayLength.coerceAtMost(sourceSamples.size).coerceAtLeast(1)
         val sourceStart = if (ZERO_CROSS_SYNC_ENABLED) {
             findDisplayStart(sourceSamples, sourceLength, autoTimeAxisEnabled)
@@ -174,5 +176,85 @@ object WaveformSampler {
             }
         }
         return if (bestStart >= 0) bestStart else defaultStart
+    }
+}
+
+class WaveformSamplerCaptureSession internal constructor(
+    val mono: WaveformSamplerSession,
+    val left: WaveformSamplerSession,
+    val right: WaveformSamplerSession,
+    private val closeAction: () -> Unit
+) : AutoCloseable {
+    @Volatile
+    private var closed = false
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        closeAction()
+    }
+}
+
+/** Compatibility facade for the existing setting and UI readout; sample history is session-owned. */
+object WaveformSampler {
+    private val stateLock = Any()
+
+    @Volatile
+    private var autoTimeAxisEnabled = false
+
+    @Volatile
+    private var currentAutoTimeAxisMultiplier = 1f
+
+    private var nextCaptureSessionId = 0L
+    private var activeCaptureSessionId = 0L
+
+    fun setAutoTimeAxisEnabled(enabled: Boolean) {
+        val changed = autoTimeAxisEnabled != enabled
+        autoTimeAxisEnabled = enabled
+        if (changed) {
+            currentAutoTimeAxisMultiplier = 1f
+        }
+    }
+
+    fun currentAutoTimeAxisMultiplier(): Float = currentAutoTimeAxisMultiplier
+
+    fun createCaptureSession(): WaveformSamplerCaptureSession {
+        val captureSessionId = synchronized(stateLock) {
+            (++nextCaptureSessionId).also {
+                activeCaptureSessionId = it
+                currentAutoTimeAxisMultiplier = 1f
+            }
+        }
+        fun createChannel(): WaveformSamplerSession =
+            WaveformSamplerSession(
+                autoTimeAxisEnabledProvider = { autoTimeAxisEnabled },
+                onMultiplierChanged = { multiplier ->
+                    publishMultiplier(captureSessionId, multiplier)
+                }
+            )
+
+        return WaveformSamplerCaptureSession(
+            mono = createChannel(),
+            left = createChannel(),
+            right = createChannel(),
+            closeAction = { closeCaptureSession(captureSessionId) }
+        )
+    }
+
+    private fun publishMultiplier(captureSessionId: Long, multiplier: Float) {
+        synchronized(stateLock) {
+            if (activeCaptureSessionId == captureSessionId) {
+                currentAutoTimeAxisMultiplier = multiplier
+            }
+        }
+    }
+
+    private fun closeCaptureSession(captureSessionId: Long) {
+        synchronized(stateLock) {
+            if (activeCaptureSessionId == captureSessionId) {
+                activeCaptureSessionId = 0L
+                currentAutoTimeAxisMultiplier = 1f
+            }
+        }
     }
 }

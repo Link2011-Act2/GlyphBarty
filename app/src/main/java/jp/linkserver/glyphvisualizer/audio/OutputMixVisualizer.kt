@@ -41,14 +41,62 @@ class OutputMixVisualizer(
         private const val STARTUP_SIGNAL_GRACE_MS = 1_800L
         private const val RUNNING_SIGNAL_STALL_MS = 5_000L
         private const val STARTUP_SIGNAL_MIN_LEVEL = 0.0015f
+        private const val WORKER_STOP_JOIN_TIMEOUT_MS = 150L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var visualizer: Visualizer? = null
-    private var workerThread: Thread? = null
+    private val stateLock = Any()
+    private val sessionOwner = AudioCaptureSessionOwner()
+    private var activeSession: OutputMixCaptureSession? = null
 
-    @Volatile
-    private var isRunning = false
+    private inner class OutputMixCaptureSession(
+        val generation: AudioCaptureGeneration,
+        val waveformSamplers: WaveformSamplerCaptureSession
+    ) {
+        private val resourceLock = Any()
+
+        @Volatile
+        var workerThread: Thread? = null
+
+        private var visualizer: Visualizer? = null
+
+        fun attachVisualizer(candidate: Visualizer): Boolean = synchronized(resourceLock) {
+            if (!generation.shouldRun()) {
+                false
+            } else {
+                visualizer = candidate
+                true
+            }
+        }
+
+        fun stopAndRelease() {
+            val threadToStop = workerThread
+            threadToStop?.interrupt()
+            if (threadToStop != null && threadToStop !== Thread.currentThread()) {
+                try {
+                    threadToStop.join(WORKER_STOP_JOIN_TIMEOUT_MS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+            releaseResources()
+        }
+
+        fun releaseResources() {
+            val visualizerToRelease = synchronized(resourceLock) {
+                visualizer.also { visualizer = null }
+            }
+            try {
+                visualizerToRelease?.enabled = false
+            } catch (_: Throwable) {
+            }
+            try {
+                visualizerToRelease?.release()
+            } catch (_: Throwable) {
+            }
+            waveformSamplers.close()
+        }
+    }
 
     fun start(
         sensitivityProvider: () -> Float,
@@ -62,35 +110,35 @@ class OutputMixVisualizer(
         experimentalPerformanceOptimizationsEnabled: Boolean,
         dispatchLevelChangesOnMain: Boolean,
         onStateChanged: (String) -> Unit,
-        onLevelChanged: (
-            level: Float,
-            peak: Float,
-            lowEnergy: Float,
-            highEnergy: Float,
-            leftLevel: Float,
-            rightLevel: Float,
-            spectrumBands: FloatArray,
-            phone4aBaseBandLevel: Float,
-            waveformSamples: FloatArray,
-            leftWaveformSamples: FloatArray,
-            rightWaveformSamples: FloatArray
-        ) -> Unit,
+        onLevelChanged: AudioLevelCallback,
         onStartFailed: (reason: StartFailureReason) -> Unit = {},
         onSignalStalled: () -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
         stop()
         val startAt = SystemClock.elapsedRealtime()
+        val generation = sessionOwner.begin()
+        val session = OutputMixCaptureSession(
+            generation = generation,
+            waveformSamplers = WaveformSampler.createCaptureSession()
+        )
 
         return try {
-            isRunning = true
-            workerThread = thread(start = true, isDaemon = true, name = "output-mix-visualizer") {
+            val worker = thread(
+                start = false,
+                isDaemon = true,
+                name = "output-mix-visualizer"
+            ) {
                 var activeStarted = false
                 try {
                     AppLogger.i(TAG, "Starting Visualizer(0) output-mix capture. ${AudioRouteDiagnostics.snapshot(context)}")
                     var routeProbe = captureRouteProbe()
                     if (experimentalVisualizerStabilizationEnabled) {
-                        routeProbe = waitForStablePlaybackRoute(routeProbe, startAt)
+                        routeProbe = waitForStablePlaybackRoute(
+                            initialProbe = routeProbe,
+                            startAt = startAt,
+                            generation = generation
+                        )
                     }
                     val bluetoothLikelyConnected = routeProbe.bluetoothLikelyConnected
                     val musicActive = routeProbe.musicActive
@@ -114,7 +162,9 @@ class OutputMixVisualizer(
                             "Visualizer(0) prepare wait finished in ${SystemClock.elapsedRealtime() - startAt}ms"
                         )
                     }
-                    if (!isRunning || Thread.currentThread().isInterrupted) return@thread
+                    if (!generation.shouldRun() || Thread.currentThread().isInterrupted) {
+                        return@thread
+                    }
 
                     var instance: Visualizer? = null
                     var lastError: Throwable? = null
@@ -126,7 +176,7 @@ class OutputMixVisualizer(
                         else -> 3
                     }
                     for (attemptIndex in 0 until initAttempts) {
-                        if (!isRunning || Thread.currentThread().isInterrupted) break
+                        if (!generation.shouldRun() || Thread.currentThread().isInterrupted) break
                         try {
                             instance = Visualizer(0)
                             AppLogger.i(
@@ -154,7 +204,17 @@ class OutputMixVisualizer(
                             Thread.sleep(retryDelayMs)
                         }
                     }
-                    if (!isRunning || Thread.currentThread().isInterrupted) return@thread
+                    if (!generation.shouldRun() || Thread.currentThread().isInterrupted) {
+                        try {
+                            instance?.enabled = false
+                        } catch (_: Throwable) {
+                        }
+                        try {
+                            instance?.release()
+                        } catch (_: Throwable) {
+                        }
+                        return@thread
+                    }
                     if (instance == null) {
                         throw VisualizerCreationFailedException(
                             cause = lastError,
@@ -162,6 +222,17 @@ class OutputMixVisualizer(
                         )
                     }
                     val vis = instance!!
+                    if (!session.attachVisualizer(vis)) {
+                        try {
+                            vis.enabled = false
+                        } catch (_: Throwable) {
+                        }
+                        try {
+                            vis.release()
+                        } catch (_: Throwable) {
+                        }
+                        return@thread
+                    }
                     val captureSize = Visualizer.getCaptureSizeRange()[1]
                     try {
                         vis.enabled = false
@@ -186,7 +257,6 @@ class OutputMixVisualizer(
                         TAG,
                         "Visualizer configured: captureSize=$captureSize samplingHz=$samplingHz spectrumSampleRate=$spectrumSampleRate totalStartMs=${SystemClock.elapsedRealtime() - startAt}"
                     )
-                    visualizer = vis
                     activeStarted = true
                     val activeSinceMs = SystemClock.elapsedRealtime()
                     var lastSignalSeenAtMs = activeSinceMs
@@ -194,7 +264,7 @@ class OutputMixVisualizer(
                     var startupStallReported = false
                     var runningStallReported = false
                     mainHandler.post {
-                        if (isRunning) {
+                        generation.runIfRunningCurrent {
                             onStateChanged(context.getString(R.string.status_output_mix_listening))
                         }
                     }
@@ -202,15 +272,13 @@ class OutputMixVisualizer(
                     val waveform = ByteArray(captureSize)
                     val monoSamples = FloatArray(captureSize)
                     val spectrumSamples = FloatArray(captureSize / spectrumDecimation)
-                    var lastSpectrumAnalysis = SpectrumAnalyzer.AnalysisResult(FloatArray(25), 0f, 0f)
-                    var lastSpectrumAnalysisAtMs = 0L
+                    val spectrumProcessor = SpectrumAnalysisProcessor()
                     val measurement = Visualizer.MeasurementPeakRms()
-                    var smoothedLevel = 0f
-                    var displayedLevel = 0f
+                    val levelEnvelopeProcessor = LevelEnvelopeProcessor()
                     var waveformErrorLogged = false
                     var measurementErrorLogged = false
 
-                    while (isRunning && !Thread.currentThread().isInterrupted) {
+                    while (generation.shouldRun() && !Thread.currentThread().isInterrupted) {
                         var waveformRms = 0f
                         var waveformPeak = 0f
                         var lowEnergy = 0f
@@ -281,8 +349,11 @@ class OutputMixVisualizer(
                                 TAG,
                                 "Visualizer reached active state but produced no signal; requesting startup retry. ${AudioRouteDiagnostics.snapshot(context)}"
                             )
-                            isRunning = false
-                            mainHandler.post { onSignalStalled() }
+                            if (generation.stopWorkerIfCurrent()) {
+                                mainHandler.post {
+                                    generation.runIfCurrent { onSignalStalled() }
+                                }
+                            }
                             break
                         }
                         if (
@@ -297,83 +368,56 @@ class OutputMixVisualizer(
                                 TAG,
                                 "Visualizer signal disappeared while music is active; requesting restart. ${AudioRouteDiagnostics.snapshot(context)}"
                             )
-                            isRunning = false
-                            mainHandler.post { onSignalStalled() }
+                            if (generation.stopWorkerIfCurrent()) {
+                                mainHandler.post {
+                                    generation.runIfCurrent { onSignalStalled() }
+                                }
+                            }
                             break
                         }
-                        val toneFocus = toneFocusProvider().coerceIn(-1f, 1f)
-                        val focusedLevel = when {
-                            toneFocus < 0f -> {
-                                val bassMix = -toneFocus
-                                (baseLevel * (1f - bassMix)) + (lowEnergy * bassMix)
-                            }
-                            toneFocus > 0f -> {
-                                val trebleMix = toneFocus
-                                (baseLevel * (1f - trebleMix)) + (highEnergy * trebleMix)
-                            }
-                            else -> baseLevel
-                        }
-                        val rawLevel = focusedLevel * sensitivityProvider()
-                        val gate = noiseGateProvider().coerceIn(0f, 0.95f)
-                        val gated = ((rawLevel - gate) / (1f - gate)).coerceIn(0f, 1f)
-                        val bounded = gated.pow(dynamicsProvider().coerceIn(0.6f, 2.4f)).coerceIn(0f, 1f)
-                        val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
-                        val noReleaseSmoothing = smoothing >= 0.54f
-                        val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                        val release = if (noReleaseSmoothing) {
-                            1f
-                        } else {
-                            (smoothing * 1.25f).coerceIn(0.0625f, 0.75f)
-                        }
-                        if (bounded > smoothedLevel) {
-                            smoothedLevel = bounded
-                        } else {
-                            smoothedLevel += (bounded - smoothedLevel) * primarySmoothing
-                        }
-                        if (smoothedLevel > displayedLevel) {
-                            displayedLevel = smoothedLevel
-                        } else {
-                            displayedLevel += (smoothedLevel - displayedLevel) * release
-                        }
-                        val peakValue = displayedLevel
+                        val envelope = levelEnvelopeProcessor.process(
+                            LevelEnvelopeInput(
+                                baseLevel = baseLevel,
+                                lowEnergy = lowEnergy,
+                                highEnergy = highEnergy,
+                                sensitivity = sensitivityProvider(),
+                                noiseGate = noiseGateProvider(),
+                                dynamics = dynamicsProvider(),
+                                toneFocus = toneFocusProvider(),
+                                smoothing = smoothingProvider()
+                            )
+                        )
                         // Decimate monoSamples for spectrum analysis
                         for (i in spectrumSamples.indices) {
                             spectrumSamples[i] = monoSamples[i * spectrumDecimation]
                         }
                         val nowMs = SystemClock.elapsedRealtime()
-                        val shouldRefreshSpectrum =
-                            !experimentalPerformanceOptimizationsEnabled ||
-                                lastSpectrumAnalysisAtMs <= 0L ||
-                                (nowMs - lastSpectrumAnalysisAtMs) >= 33L
-                        val spectrumAnalysis = if (shouldRefreshSpectrum) {
-                            SpectrumAnalyzer.analyzeLogBands(
-                                samples = spectrumSamples,
-                                sampleRateHz = spectrumSampleRate,
-                                bandCount = 25
-                            ).also {
-                                lastSpectrumAnalysis = it
-                                lastSpectrumAnalysisAtMs = nowMs
-                            }
-                        } else {
-                            lastSpectrumAnalysis
-                        }
-                        val downsampledWaveform = WaveformSampler.downsample(monoSamples)
-                        val deliveredLevel = displayedLevel
-                        val deliveredPeak = peakValue
+                        val spectrumAnalysis = spectrumProcessor.analyze(
+                            samples = spectrumSamples,
+                            sampleRateHz = spectrumSampleRate,
+                            performanceOptimizationsEnabled =
+                                experimentalPerformanceOptimizationsEnabled,
+                            nowMs = nowMs
+                        )
+                        val downsampledWaveform =
+                            session.waveformSamplers.mono.downsample(monoSamples)
+                        val frame = AudioAnalysisFrame(
+                            level = envelope.level,
+                            peak = envelope.peak,
+                            lowEnergy = lowEnergy,
+                            highEnergy = highEnergy,
+                            leftLevel = envelope.level,
+                            rightLevel = envelope.level,
+                            spectrumBands = spectrumAnalysis.bands,
+                            phone4aBaseBandLevel = spectrumAnalysis.rangePeak,
+                            waveformSamples = downsampledWaveform,
+                            leftWaveformSamples = downsampledWaveform,
+                            rightWaveformSamples = downsampledWaveform
+                        )
                         val deliverLevelChange = Runnable {
-                            onLevelChanged(
-                                deliveredLevel,
-                                deliveredPeak,
-                                lowEnergy,
-                                highEnergy,
-                                deliveredLevel,
-                                deliveredLevel,
-                                spectrumAnalysis.bands,
-                                spectrumAnalysis.rangePeak,
-                                downsampledWaveform,
-                                downsampledWaveform,
-                                downsampledWaveform
-                            )
+                            generation.runIfRunningCurrent {
+                                frame.deliverTo(onLevelChanged)
+                            }
                         }
                         if (dispatchLevelChangesOnMain) {
                             mainHandler.post(deliverLevelChange)
@@ -391,61 +435,74 @@ class OutputMixVisualizer(
                     Thread.currentThread().interrupt()
                 } catch (error: Throwable) {
                     AppLogger.e(TAG, "output-mix-visualizer worker crashed", error)
-                    if (isRunning) {
-                        isRunning = false
+                    if (generation.stopWorkerIfCurrent()) {
                         mainHandler.post {
-                            if (activeStarted) {
-                                onCrashed()
-                            } else {
-                                onStartFailed(
-                                    when {
-                                        error is VisualizerCreationFailedException &&
-                                            error.unrecoverableSpatializerConflict ->
-                                            StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
-                                        error is VisualizerCreationFailedException ->
-                                            StartFailureReason.VISUALIZER_CREATION_FAILED
-                                        else -> StartFailureReason.OTHER
-                                    }
-                                )
+                            generation.runIfCurrent {
+                                if (activeStarted) {
+                                    onCrashed()
+                                } else {
+                                    onStartFailed(
+                                        when {
+                                            error is VisualizerCreationFailedException &&
+                                                error.unrecoverableSpatializerConflict ->
+                                                StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
+
+                                            error is VisualizerCreationFailedException ->
+                                                StartFailureReason.VISUALIZER_CREATION_FAILED
+
+                                            else -> StartFailureReason.OTHER
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
+                } finally {
+                    session.releaseResources()
                 }
             }
+            session.workerThread = worker
+            val installed = generation.runIfRunningCurrent {
+                synchronized(stateLock) {
+                    activeSession = session
+                }
+            }
+            if (!installed) {
+                session.stopAndRelease()
+                return false
+            }
+            worker.start()
             true
         } catch (error: Throwable) {
-            stop()
             AppLogger.e(TAG, "Output-mix visualizer failed to start", error)
-            onStateChanged(
-                context.getString(
-                    R.string.status_output_mix_start_failed,
-                    error.message ?: context.getString(R.string.status_unknown_error)
+            synchronized(stateLock) {
+                if (activeSession?.generation === generation) {
+                    activeSession = null
+                }
+            }
+            session.stopAndRelease()
+            generation.runIfRunningCurrent {
+                onStateChanged(
+                    context.getString(
+                        R.string.status_output_mix_start_failed,
+                        error.message ?: context.getString(R.string.status_unknown_error)
+                    )
                 )
-            )
+            }
+            sessionOwner.finish(generation)
             false
         }
     }
 
     fun stop() {
         AppLogger.i(TAG, "Stopping Visualizer(0) output-mix capture")
-        isRunning = false
-        val t = workerThread
-        workerThread = null
-        t?.interrupt()
-        try {
-            t?.join(150)      // release() 前にスレッド終了を待つ
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+        val stoppedGeneration = sessionOwner.stopCurrent()
+        val sessionToStop = synchronized(stateLock) {
+            activeSession?.takeIf { it.generation === stoppedGeneration }?.also {
+                activeSession = null
+            }
         }
-        try {
-            visualizer?.enabled = false
-        } catch (_: Throwable) {
-        }
-        try {
-            visualizer?.release()
-        } catch (_: Throwable) {
-        }
-        visualizer = null
+        sessionToStop?.stopAndRelease()
     }
 
     private data class RouteProbe(
@@ -477,7 +534,11 @@ class OutputMixVisualizer(
         )
     }
 
-    private fun waitForStablePlaybackRoute(initialProbe: RouteProbe, startAt: Long): RouteProbe {
+    private fun waitForStablePlaybackRoute(
+        initialProbe: RouteProbe,
+        startAt: Long,
+        generation: AudioCaptureGeneration
+    ): RouteProbe {
         var latest = initialProbe
         var stableSinceMs = SystemClock.uptimeMillis()
         val requiredStableMs = when {
@@ -492,7 +553,11 @@ class OutputMixVisualizer(
             TAG,
             "Experimental visualizer stabilization enabled; waiting for route stability (requiredStableMs=$requiredStableMs remoteSubmix=${initialProbe.remoteSubmixPresent})"
         )
-        while (isRunning && !Thread.currentThread().isInterrupted && SystemClock.uptimeMillis() < deadlineMs) {
+        while (
+            generation.shouldRun() &&
+            !Thread.currentThread().isInterrupted &&
+            SystemClock.uptimeMillis() < deadlineMs
+        ) {
             Thread.sleep(EXPERIMENTAL_STABILITY_POLL_MS)
             val probe = captureRouteProbe()
             val stable =

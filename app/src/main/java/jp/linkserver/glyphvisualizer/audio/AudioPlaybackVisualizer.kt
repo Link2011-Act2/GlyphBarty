@@ -19,7 +19,6 @@ import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.pow
 import kotlin.math.sqrt
 
 class AudioPlaybackVisualizer(
@@ -33,15 +32,45 @@ class AudioPlaybackVisualizer(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stateLock = Any()
+    private val sessionOwner = AudioCaptureSessionOwner()
 
-    @Volatile
-    private var isRunning = false
+    private var activeSession: PlaybackCaptureSession? = null
 
-    private var activeSessionId = 0L
-    private var workerThread: Thread? = null
-    private var audioRecord: AudioRecord? = null
-    private var mediaProjection: MediaProjection? = null
-    private var mediaProjectionCallback: MediaProjection.Callback? = null
+    private inner class PlaybackCaptureSession(
+        val generation: AudioCaptureGeneration,
+        val audioRecord: AudioRecord,
+        val mediaProjection: MediaProjection,
+        val mediaProjectionCallback: MediaProjection.Callback,
+        val waveformSamplers: WaveformSamplerCaptureSession
+    ) {
+        @Volatile
+        var workerThread: Thread? = null
+
+        fun stopAndRelease() {
+            try {
+                mediaProjection.unregisterCallback(mediaProjectionCallback)
+            } catch (_: Throwable) {
+            }
+            try {
+                audioRecord.stop()
+            } catch (_: Throwable) {
+            }
+
+            val threadToStop = workerThread
+            threadToStop?.interrupt()
+            if (threadToStop != null && threadToStop !== Thread.currentThread()) {
+                try {
+                    threadToStop.join(WORKER_STOP_JOIN_TIMEOUT_MS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+
+            safeReleaseAudioRecord(audioRecord)
+            safeStopProjection(mediaProjection, null)
+            waveformSamplers.close()
+        }
+    }
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO is checked immediately before AudioRecord creation.
     fun start(
@@ -56,19 +85,7 @@ class AudioPlaybackVisualizer(
         experimentalPerformanceOptimizationsEnabled: Boolean,
         dispatchLevelChangesOnMain: Boolean,
         onStateChanged: (String) -> Unit,
-        onLevelChanged: (
-            level: Float,
-            peak: Float,
-            lowEnergy: Float,
-            highEnergy: Float,
-            leftLevel: Float,
-            rightLevel: Float,
-            spectrumBands: FloatArray,
-            phone4aBaseBandLevel: Float,
-            waveformSamples: FloatArray,
-            leftWaveformSamples: FloatArray,
-            rightWaveformSamples: FloatArray
-        ) -> Unit,
+        onLevelChanged: AudioLevelCallback,
         onCaptureFailed: (Throwable) -> Unit = {}
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -86,21 +103,22 @@ class AudioPlaybackVisualizer(
             return false
         }
 
-        val sessionId = synchronized(stateLock) {
-            activeSessionId += 1L
-            activeSessionId
-        }
+        val generation = sessionOwner.begin()
 
         var projection: MediaProjection? = null
         var projectionCallback: MediaProjection.Callback? = null
         var record: AudioRecord? = null
+        var waveformSamplers: WaveformSamplerCaptureSession? = null
 
         try {
             val projectionManager = context.getSystemService(MediaProjectionManager::class.java)
             projection = projectionManager?.getMediaProjection(resultCode, data)
             val activeProjection = projection
             if (activeProjection == null) {
-                onStateChanged(context.getString(R.string.status_media_projection_unavailable))
+                generation.runIfRunningCurrent {
+                    onStateChanged(context.getString(R.string.status_media_projection_unavailable))
+                }
+                sessionOwner.finish(generation)
                 return false
             }
 
@@ -157,7 +175,12 @@ class AudioPlaybackVisualizer(
             if (built?.first?.state != AudioRecord.STATE_INITIALIZED) {
                 safeReleaseAudioRecord(built?.first)
                 safeStopProjection(activeProjection, null)
-                onStateChanged(context.getString(R.string.status_audio_record_initialization_failed))
+                generation.runIfRunningCurrent {
+                    onStateChanged(
+                        context.getString(R.string.status_audio_record_initialization_failed)
+                    )
+                }
+                sessionOwner.finish(generation)
                 return false
             }
 
@@ -167,7 +190,7 @@ class AudioPlaybackVisualizer(
             projectionCallback = object : MediaProjection.Callback() {
                 override fun onStop() {
                     reportRuntimeFailure(
-                        sessionId = sessionId,
+                        generation = generation,
                         error = IllegalStateException("MediaProjection stopped unexpectedly"),
                         onCaptureFailed = onCaptureFailed
                     )
@@ -179,17 +202,25 @@ class AudioPlaybackVisualizer(
                 throw IllegalStateException("AudioRecord did not enter the recording state")
             }
 
+            val sessionSamplers = WaveformSampler.createCaptureSession()
+            waveformSamplers = sessionSamplers
+            val session = PlaybackCaptureSession(
+                generation = generation,
+                audioRecord = activeRecord,
+                mediaProjection = activeProjection,
+                mediaProjectionCallback = projectionCallback,
+                waveformSamplers = sessionSamplers
+            )
+
             val worker = Thread({
                 try {
                     val sampleBuffer = ShortArray(bufferSize / 2)
-                    var lastSpectrumAnalysis = SpectrumAnalyzer.AnalysisResult(FloatArray(25), 0f, 0f)
-                    var lastSpectrumAnalysisAtMs = 0L
-                    var smoothedLevel = 0f
-                    var displayedLevel = 0f
+                    val spectrumProcessor = SpectrumAnalysisProcessor()
+                    val levelEnvelopeProcessor = LevelEnvelopeProcessor()
                     var displayedLeft = 0f
                     var displayedRight = 0f
 
-                    while (isSessionRunning(sessionId) && !Thread.currentThread().isInterrupted) {
+                    while (generation.shouldRun() && !Thread.currentThread().isInterrupted) {
                         val read = activeRecord.read(sampleBuffer, 0, sampleBuffer.size)
                         if (read < 0) {
                             throw IllegalStateException("AudioRecord.read failed with code $read")
@@ -250,90 +281,52 @@ class AudioPlaybackVisualizer(
                         val leftLevel = sqrt(leftSquareSum / frames).toFloat().coerceIn(0f, 1f)
                         val rightLevel = sqrt(rightSquareSum / frames).toFloat().coerceIn(0f, 1f)
                         val baseLevel = ((rms * 0.52f) + (maxAmplitude * 0.22f) + (lowEnergy * 0.16f) + (highEnergy * 0.10f))
-                        val toneFocus = toneFocusProvider().coerceIn(-1f, 1f)
-                        val focusedLevel = when {
-                            toneFocus < 0f -> {
-                                val bassMix = -toneFocus
-                                (baseLevel * (1f - bassMix)) + (lowEnergy * bassMix)
-                            }
-                            toneFocus > 0f -> {
-                                val trebleMix = toneFocus
-                                (baseLevel * (1f - trebleMix)) + (highEnergy * trebleMix)
-                            }
-                            else -> baseLevel
-                        }
-                        val normalized = focusedLevel * sensitivityProvider()
-                        val gate = noiseGateProvider().coerceIn(0f, 0.95f)
-                        val gated = ((normalized - gate) / (1f - gate)).coerceIn(0f, 1f)
-                        val bounded = gated.pow(dynamicsProvider().coerceIn(0.6f, 2.4f)).coerceIn(0f, 1f)
-                        val smoothing = smoothingProvider().coerceIn(0.05f, 0.6f)
-                        val noReleaseSmoothing = smoothing >= 0.54f
-                        val primarySmoothing = if (noReleaseSmoothing) 1f else (smoothing * 0.6f).coerceIn(0.04f, 0.4f)
-                        val release = if (noReleaseSmoothing) {
-                            1f
-                        } else {
-                            (smoothing * 1.25f).coerceIn(0.0625f, 0.75f)
-                        }
-                        if (bounded > smoothedLevel) {
-                            smoothedLevel = bounded
-                        } else {
-                            smoothedLevel += (bounded - smoothedLevel) * primarySmoothing
-                        }
-                        if (smoothedLevel > displayedLevel) {
-                            displayedLevel = smoothedLevel
-                        } else {
-                            displayedLevel += (smoothedLevel - displayedLevel) * release
-                        }
+                        val envelope = levelEnvelopeProcessor.process(
+                            LevelEnvelopeInput(
+                                baseLevel = baseLevel,
+                                lowEnergy = lowEnergy,
+                                highEnergy = highEnergy,
+                                sensitivity = sensitivityProvider(),
+                                noiseGate = noiseGateProvider(),
+                                dynamics = dynamicsProvider(),
+                                toneFocus = toneFocusProvider(),
+                                smoothing = smoothingProvider()
+                            )
+                        )
                         if (leftLevel > displayedLeft) {
                             displayedLeft = leftLevel
                         } else {
-                            displayedLeft += (leftLevel - displayedLeft) * release
+                            displayedLeft += (leftLevel - displayedLeft) * envelope.release
                         }
                         if (rightLevel > displayedRight) {
                             displayedRight = rightLevel
                         } else {
-                            displayedRight += (rightLevel - displayedRight) * release
+                            displayedRight += (rightLevel - displayedRight) * envelope.release
                         }
-                        val peakValue = displayedLevel
                         val nowMs = android.os.SystemClock.elapsedRealtime()
-                        val shouldRefreshSpectrum =
-                            !experimentalPerformanceOptimizationsEnabled ||
-                                lastSpectrumAnalysisAtMs <= 0L ||
-                                (nowMs - lastSpectrumAnalysisAtMs) >= 33L
-                        val spectrumAnalysis = if (shouldRefreshSpectrum) {
-                            SpectrumAnalyzer.analyzeLogBands(
-                                samples = monoSamples,
-                                sampleRateHz = 44_100,
-                                bandCount = 25
-                            ).also {
-                                lastSpectrumAnalysis = it
-                                lastSpectrumAnalysisAtMs = nowMs
-                            }
-                        } else {
-                            lastSpectrumAnalysis
-                        }
-                        val waveformSamples = WaveformSampler.downsample(monoSamples)
-                        val leftWaveformSamples = WaveformSampler.downsample(leftSamples)
-                        val rightWaveformSamples = WaveformSampler.downsample(rightSamples)
-                        val deliveredLevel = displayedLevel
-                        val deliveredPeak = peakValue
-                        val deliveredLeft = displayedLeft
-                        val deliveredRight = displayedRight
+                        val spectrumAnalysis = spectrumProcessor.analyze(
+                            samples = monoSamples,
+                            sampleRateHz = 44_100,
+                            performanceOptimizationsEnabled =
+                                experimentalPerformanceOptimizationsEnabled,
+                            nowMs = nowMs
+                        )
+                        val frame = AudioAnalysisFrame(
+                            level = envelope.level,
+                            peak = envelope.peak,
+                            lowEnergy = lowEnergy,
+                            highEnergy = highEnergy,
+                            leftLevel = displayedLeft,
+                            rightLevel = displayedRight,
+                            spectrumBands = spectrumAnalysis.bands,
+                            phone4aBaseBandLevel = spectrumAnalysis.rangePeak,
+                            waveformSamples = sessionSamplers.mono.downsample(monoSamples),
+                            leftWaveformSamples = sessionSamplers.left.downsample(leftSamples),
+                            rightWaveformSamples = sessionSamplers.right.downsample(rightSamples)
+                        )
                         val deliverLevelChange = Runnable {
-                            if (isSessionRunning(sessionId)) {
-                                onLevelChanged(
-                                    deliveredLevel,
-                                    deliveredPeak,
-                                    lowEnergy,
-                                    highEnergy,
-                                    deliveredLeft,
-                                    deliveredRight,
-                                    spectrumAnalysis.bands,
-                                    spectrumAnalysis.rangePeak,
-                                    waveformSamples,
-                                    leftWaveformSamples,
-                                    rightWaveformSamples
-                                )
+                            generation.runIfRunningCurrent {
+                                frame.deliverTo(onLevelChanged)
                             }
                         }
                         if (dispatchLevelChangesOnMain) {
@@ -345,117 +338,74 @@ class AudioPlaybackVisualizer(
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                 } catch (error: Throwable) {
-                    reportRuntimeFailure(sessionId, error, onCaptureFailed)
+                    reportRuntimeFailure(generation, error, onCaptureFailed)
                 }
             }, "glyph-audio-visualizer").apply {
                 isDaemon = true
             }
+            session.workerThread = worker
 
-            synchronized(stateLock) {
-                mediaProjection = activeProjection
-                mediaProjectionCallback = projectionCallback
-                audioRecord = activeRecord
-                workerThread = worker
-                isRunning = true
+            val installed = generation.runIfRunningCurrent {
+                synchronized(stateLock) {
+                    activeSession = session
+                }
+            }
+            if (!installed) {
+                session.stopAndRelease()
+                return false
             }
             worker.start()
-            onStateChanged(context.getString(R.string.status_playback_listening))
+            generation.runIfRunningCurrent {
+                onStateChanged(context.getString(R.string.status_playback_listening))
+            }
 
             return true
         } catch (error: Throwable) {
             AppLogger.e(TAG, "Audio playback capture failed to start", error)
             synchronized(stateLock) {
-                if (activeSessionId == sessionId) {
-                    isRunning = false
-                    workerThread = null
-                    audioRecord = null
-                    mediaProjection = null
-                    mediaProjectionCallback = null
+                if (activeSession?.generation === generation) {
+                    activeSession = null
                 }
             }
             safeReleaseAudioRecord(record)
             safeStopProjection(projection, projectionCallback)
-            onStateChanged(
-                when (error) {
-                    is SecurityException -> context.getString(R.string.status_mic_permission_required)
-                    else -> context.getString(R.string.status_audio_record_initialization_failed)
-                }
-            )
+            waveformSamplers?.close()
+            generation.runIfRunningCurrent {
+                onStateChanged(
+                    when (error) {
+                        is SecurityException ->
+                            context.getString(R.string.status_mic_permission_required)
+
+                        else ->
+                            context.getString(R.string.status_audio_record_initialization_failed)
+                    }
+                )
+            }
+            sessionOwner.finish(generation)
             return false
         }
     }
 
     fun stop() {
-        val threadToStop: Thread?
-        val recordToRelease: AudioRecord?
-        val projectionToStop: MediaProjection?
-        val callbackToUnregister: MediaProjection.Callback?
-
-        synchronized(stateLock) {
-            isRunning = false
-            activeSessionId += 1L
-            threadToStop = workerThread
-            recordToRelease = audioRecord
-            projectionToStop = mediaProjection
-            callbackToUnregister = mediaProjectionCallback
-            workerThread = null
-            audioRecord = null
-            mediaProjection = null
-            mediaProjectionCallback = null
-        }
-
-        try {
-            if (projectionToStop != null && callbackToUnregister != null) {
-                projectionToStop.unregisterCallback(callbackToUnregister)
-            }
-        } catch (_: Throwable) {
-        }
-
-        try {
-            recordToRelease?.stop()
-        } catch (_: Throwable) {
-        }
-
-        threadToStop?.interrupt()
-        if (threadToStop != null && threadToStop !== Thread.currentThread()) {
-            try {
-                threadToStop.join(WORKER_STOP_JOIN_TIMEOUT_MS)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
+        val stoppedGeneration = sessionOwner.stopCurrent()
+        val sessionToStop = synchronized(stateLock) {
+            activeSession?.takeIf { it.generation === stoppedGeneration }?.also {
+                activeSession = null
             }
         }
-
-        safeReleaseAudioRecord(recordToRelease)
-        safeStopProjection(projectionToStop, null)
-    }
-
-    private fun isSessionRunning(sessionId: Long): Boolean {
-        return synchronized(stateLock) {
-            isRunning && activeSessionId == sessionId
-        }
+        sessionToStop?.stopAndRelease()
     }
 
     private fun reportRuntimeFailure(
-        sessionId: Long,
+        generation: AudioCaptureGeneration,
         error: Throwable,
         onCaptureFailed: (Throwable) -> Unit
     ) {
-        val shouldReport = synchronized(stateLock) {
-            if (!isRunning || activeSessionId != sessionId) {
-                false
-            } else {
-                isRunning = false
-                true
-            }
-        }
-        if (!shouldReport) return
+        if (!generation.stopWorkerIfCurrent()) return
 
         AppLogger.e(TAG, "Audio playback capture stopped unexpectedly", error)
         mainHandler.post {
-            val isStillCurrentSession = synchronized(stateLock) {
-                activeSessionId == sessionId
-            }
-            if (isStillCurrentSession) {
+            generation.runIfCurrent {
                 onCaptureFailed(error)
             }
         }
