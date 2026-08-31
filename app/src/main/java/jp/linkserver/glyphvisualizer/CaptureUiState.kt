@@ -106,20 +106,16 @@ fun CaptureUiState.withRecordingLightBehavior(
     recordingLightIncluded = behavior.recordingLightIncluded
 )
 
-data class CaptureLiveFrame(
-    val level: Float = 0f,
-    val peak: Float = 0f,
-    val meterSegments: Int = 0,
-    val spectrumBands: FloatArray = FloatArray(0)
-)
-
 object CaptureUiStore {
     private const val TAG = "CaptureUiStore"
     private const val DEBUG_UI_VISIBILITY_LOGS = false
     private const val DIRECT_FRAME_DISPATCH_LOG_INTERVAL_MS = 5_000L
-    var state by mutableStateOf(CaptureUiState())
+    private val stateRepository = CaptureStateRepository()
+    private val frameRepository = CaptureFrameRepository()
+    private val stateUpdateLock = Any()
+    var state by mutableStateOf(stateRepository.state())
         private set
-    var liveFrame by mutableStateOf(CaptureLiveFrame())
+    var liveFrame by mutableStateOf(frameRepository.latest())
         private set
     @Volatile
     private var uiVisible: Boolean = false
@@ -130,8 +126,29 @@ object CaptureUiStore {
     private var directMeterFrameDispatchCount = 0
     private var lastDirectMeterFrameDispatchLogAtMs = 0L
 
+    val captureParameters: CaptureParameters
+        get() = stateRepository.slices().parameters
+
+    val uiPreferences: UiPreferences
+        get() = stateRepository.slices().uiPreferences
+
+    val runtimeState: CaptureRuntimeState
+        get() = stateRepository.slices().runtime
+
     fun update(transform: (CaptureUiState) -> CaptureUiState) {
-        val nextState = transform(state)
+        synchronized(stateUpdateLock) {
+            val nextState = stateRepository.update(transform)
+            publishFacadeState(nextState)
+        }
+    }
+
+    fun updateRuntime(transform: (CaptureRuntimeState) -> CaptureRuntimeState) {
+        synchronized(stateUpdateLock) {
+            publishFacadeState(stateRepository.updateRuntime(transform))
+        }
+    }
+
+    private fun publishFacadeState(nextState: CaptureUiState) {
         meterVisibleForPublishing = nextState.meterVisibleEnabled
         state = nextState
     }
@@ -161,15 +178,17 @@ object CaptureUiStore {
             meterSegments = meterSegments,
             spectrumBands = spectrumBands
         )
-        liveFrame = nextFrame
+        liveFrame = frameRepository.publish(nextFrame)
         publishDirectMeterFrame(nextFrame)
         if (!state.mainScreenUiIsolationEnabled) {
-            state = state.copy(
-                level = level,
-                peak = peak,
-                meterSegments = meterSegments,
-                spectrumBands = spectrumBands
-            )
+            update { current ->
+                current.copy(
+                    level = level,
+                    peak = peak,
+                    meterSegments = meterSegments,
+                    spectrumBands = spectrumBands
+                )
+            }
         }
     }
 
@@ -185,7 +204,7 @@ object CaptureUiStore {
             meterSegments = meterSegments,
             spectrumBands = spectrumBands
         )
-        liveFrame = nextFrame
+        liveFrame = frameRepository.publish(nextFrame)
         publishDirectMeterFrame(nextFrame)
     }
 
@@ -196,30 +215,34 @@ object CaptureUiStore {
             meterSegments = source.meterSegments,
             spectrumBands = source.spectrumBands
         )
-        liveFrame = nextFrame
+        liveFrame = frameRepository.publish(nextFrame)
         publishDirectMeterFrame(nextFrame)
     }
 
     fun applyLiveFrameToState() {
         val frame = liveFrame
-        state = state.copy(
-            level = frame.level,
-            peak = frame.peak,
-            meterSegments = frame.meterSegments,
-            spectrumBands = frame.spectrumBands
-        )
+        update { current ->
+            current.copy(
+                level = frame.level,
+                peak = frame.peak,
+                meterSegments = frame.meterSegments,
+                spectrumBands = frame.spectrumBands
+            )
+        }
     }
 
     fun resetLevels(statusText: String = state.statusText, activeMode: String = "IDLE") {
-        state = state.copy(
-            statusText = statusText,
-            level = 0f,
-            peak = 0f,
-            isCapturing = false,
-            meterSegments = 0,
-            activeMode = activeMode
-        )
-        liveFrame = CaptureLiveFrame()
+        update { current ->
+            current.copy(
+                statusText = statusText,
+                level = 0f,
+                peak = 0f,
+                isCapturing = false,
+                meterSegments = 0,
+                activeMode = activeMode
+            )
+        }
+        liveFrame = frameRepository.publish(CaptureLiveFrame())
         publishDirectMeterFrame(liveFrame)
     }
 

@@ -67,6 +67,38 @@ fun CaptureUiState.toCaptureConfig(): CaptureConfig = CaptureConfig(
     turnOffWhenBackDown = turnOffWhenBackDown
 )
 
+internal fun CaptureConfig.applyToUiState(state: CaptureUiState): CaptureUiState = state.copy(
+    sensitivity = sensitivity,
+    noiseGate = noiseGate,
+    dynamics = dynamics,
+    outputGamma = outputGamma,
+    toneFocus = toneFocus,
+    smoothing = smoothing,
+    smoothingBalance = smoothingBalance,
+    reverseDirection = reverseDirection,
+    peakHoldEnabled = peakHoldEnabled,
+    glyphMode = glyphMode,
+    fillOtherGlyphLights = fillOtherGlyphLights,
+    phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+    binaryMode = binaryMode,
+    baseIndicatorEnabled = baseIndicatorEnabled,
+    recordingLightIncluded = recordingLightIncluded,
+    levelAutoScale = levelAutoScale,
+    spectrumAutoScale = spectrumAutoScale,
+    allBrightnessAutoScale = allBrightnessAutoScale,
+    autoScaleWindowSeconds = autoScaleWindowSeconds,
+    autoScaleOffset = autoScaleOffset,
+    latencyMs = latencyMs,
+    mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+    experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
+    experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
+    experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+    experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+    matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+    oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+    turnOffWhenBackDown = turnOffWhenBackDown
+)
+
 sealed interface CaptureCommand {
     data class StartVisualizer(
         val config: CaptureConfig,
@@ -361,7 +393,7 @@ object CaptureCommandGateway {
                 R.string.status_visualizer_service_start_failed,
                 error.message ?: context.getString(R.string.status_unknown_error)
             )
-            CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
+            CaptureUiStore.updateRuntime { it.copy(statusText = msg, logMessage = msg) }
         }
     }
 
@@ -380,7 +412,7 @@ object CaptureCommandGateway {
                 R.string.status_media_projection_service_start_failed,
                 error.message ?: context.getString(R.string.status_unknown_error)
             )
-            CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
+            CaptureUiStore.updateRuntime { it.copy(statusText = msg, logMessage = msg) }
         }
     }
 
@@ -415,7 +447,7 @@ object CaptureCommandGateway {
     }
 
     private fun dispatchUpdate(context: Context, command: CaptureCommand.UpdateConfig) {
-        if (!CaptureUiStore.state.isCapturing) return
+        if (!CaptureUiStore.runtimeState.isCapturing) return
         try {
             context.startService(CaptureIntentCommandCodec.encode(context, command))
         } catch (error: Throwable) {

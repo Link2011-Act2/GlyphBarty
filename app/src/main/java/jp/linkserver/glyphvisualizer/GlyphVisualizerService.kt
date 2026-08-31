@@ -1,16 +1,10 @@
 package jp.linkserver.glyphvisualizer
 
-import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -18,14 +12,12 @@ import android.hardware.SensorManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.service.quicksettings.TileService
-import androidx.core.app.NotificationCompat
 import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
@@ -56,11 +48,6 @@ class GlyphVisualizerService : Service() {
     companion object {
         private const val TAG = "GlyphVisualizerSvc"
         private const val DEBUG_UI_VISIBILITY_LOGS = false
-        private const val CHANNEL_ID = "glyph_visualizer"
-        private const val NOTIFICATION_ID = 42
-        private const val ALERT_CHANNEL_ID = "glyph_visualizer_alerts"
-        private const val ALERT_NOTIFICATION_ID = 43
-
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
         private const val ACTIVE_MODE_VISUALIZER = "VISUALIZER"
@@ -313,46 +300,51 @@ class GlyphVisualizerService : Service() {
     private lateinit var audioPlaybackVisualizer: AudioPlaybackVisualizer
     private lateinit var outputMixVisualizer: OutputMixVisualizer
 
-    private var sensitivity = 1.75f
-    private var noiseGate = 0.08f
-    private var dynamics = 1.45f
-    private var outputGamma = 1.8f
-    private var toneFocus = -0.2f
-    private var smoothing = 0.55f
-    private var smoothingBalance = 0f
-    private var reverseDirection = false
-    private var peakHoldEnabled = true
-    private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
-    private var fillOtherGlyphLights = false
-    private var phone1ClassicCSplitEnabled = false
-    private var binaryMode = false
-    private var baseIndicatorEnabled = false
-    private var recordingLightIncluded = false
-    private var levelAutoScale = true
-    private var spectrumAutoScale = true
-    private var allBrightnessAutoScale = true
-    private var autoScaleWindowSeconds = 30f
-    private var autoScaleOffset = 0f
     @Volatile
-    private var latencyMs = 0f
-    @Volatile
-    private var mediaPlaybackOnlyEnabled = false
-    private var experimentalVisualizerStabilizationEnabled = false
-    private var experimentalVisualizerSignalWatchdogEnabled = false
-    private var experimentalSpectrumDecayEnabled = false
-    private var experimentalPerformanceOptimizationsEnabled = true
-    private var matrixSmoothMotionEnabled = false
-    private var oscilloscopeAutoTimeAxisEnabled = false
-    private var turnOffWhenBackDown = false
+    private var captureConfig = defaultServiceCaptureConfig()
+    private val sensitivity get() = captureConfig.sensitivity
+    private val noiseGate get() = captureConfig.noiseGate
+    private val dynamics get() = captureConfig.dynamics
+    private val outputGamma get() = captureConfig.outputGamma
+    private val toneFocus get() = captureConfig.toneFocus
+    private val smoothing get() = captureConfig.smoothing
+    private val smoothingBalance get() = captureConfig.smoothingBalance
+    private val reverseDirection get() = captureConfig.reverseDirection
+    private val peakHoldEnabled get() = captureConfig.peakHoldEnabled
+    private val glyphMode get() = captureConfig.glyphMode
+    private val fillOtherGlyphLights get() = captureConfig.fillOtherGlyphLights
+    private val phone1ClassicCSplitEnabled get() = captureConfig.phone1ClassicCSplitEnabled
+    private val binaryMode get() = captureConfig.binaryMode
+    private val baseIndicatorEnabled get() = captureConfig.baseIndicatorEnabled
+    private val recordingLightIncluded get() = captureConfig.recordingLightIncluded
+    private val levelAutoScale get() = captureConfig.levelAutoScale
+    private val spectrumAutoScale get() = captureConfig.spectrumAutoScale
+    private val allBrightnessAutoScale get() = captureConfig.allBrightnessAutoScale
+    private val autoScaleWindowSeconds get() = captureConfig.autoScaleWindowSeconds
+    private val autoScaleOffset get() = captureConfig.autoScaleOffset
+    private val latencyMs get() = captureConfig.latencyMs
+    private val mediaPlaybackOnlyEnabled get() = captureConfig.mediaPlaybackOnlyEnabled
+    private val experimentalVisualizerStabilizationEnabled
+        get() = captureConfig.experimentalVisualizerStabilizationEnabled
+    private val experimentalVisualizerSignalWatchdogEnabled
+        get() = captureConfig.experimentalVisualizerSignalWatchdogEnabled
+    private val experimentalSpectrumDecayEnabled get() = captureConfig.experimentalSpectrumDecayEnabled
+    private val experimentalPerformanceOptimizationsEnabled
+        get() = captureConfig.experimentalPerformanceOptimizationsEnabled
+    private val matrixSmoothMotionEnabled get() = captureConfig.matrixSmoothMotionEnabled
+    private val oscilloscopeAutoTimeAxisEnabled get() = captureConfig.oscilloscopeAutoTimeAxisEnabled
+    private val turnOffWhenBackDown get() = captureConfig.turnOffWhenBackDown
     @Volatile
     private var isBackDownSuppressed = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var matrixOutputThread: HandlerThread? = null
     private var matrixOutputHandler: Handler? = null
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private var visualizerStartRequestId = 0
-    private var visualizerStartActionAtMs = 0L
-    private var visualizerStartSource = VisualizerStartSource.APP
+    private val captureSessionCoordinator = CaptureSessionCoordinator()
+    private val visualizerStartRequestId get() = captureSessionCoordinator.snapshot().requestId
+    private val visualizerStartActionAtMs get() = captureSessionCoordinator.snapshot().startActionAtMs
+    private val visualizerStartSource get() = captureSessionCoordinator.snapshot().startSource
+    private lateinit var notificationController: CaptureNotificationController
     private var audioDeviceCallbackRegistered = false
     private var lastAudioRouteSignature: String? = null
     private var suppressRouteRestartUntilMs = 0L
@@ -413,11 +405,11 @@ class GlyphVisualizerService : Service() {
         val autoScaleOffset: Float,
         val visualTuningOverride: GlyphVisualTuning?
     )
-    private val pendingLevelFrames = ArrayDeque<DelayedLevelFrame>()
+    private val pendingLevelFrames = LatencyFrameScheduler<DelayedLevelFrame> { it.dueAtMs }
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
     private var latestLevelFrame: DelayedLevelFrame? = null
     private val matrixFrameLock = Any()
-    private val pendingMatrixFrames = ArrayDeque<QueuedMatrixFrame>()
+    private val pendingMatrixFrames = LatencyFrameScheduler<QueuedMatrixFrame> { it.frame.dueAtMs }
     private var latestMatrixLevelFrame: DelayedLevelFrame? = null
     private var matrixFrameEpoch = 0L
     private var matrixDrainScheduled = false
@@ -427,7 +419,7 @@ class GlyphVisualizerService : Service() {
     private var matrixUiPublishScheduled = false
     private val matrixUiPublishRunnable = Runnable { drainLatestMatrixUiFrame() }
     private val glyphWarmupResyncRunnable = Runnable {
-        if (CaptureUiStore.state.activeMode == ACTIVE_MODE_IDLE) return@Runnable
+        if (CaptureUiStore.runtimeState.activeMode == ACTIVE_MODE_IDLE) return@Runnable
         applyGlyphControllerSettings()
         if (usesMatrixOutputThread()) {
             replayLatestMatrixFrame()
@@ -439,8 +431,7 @@ class GlyphVisualizerService : Service() {
     private var gravitySensor: Sensor? = null
     private val restartVisualizerForRouteChangeRunnable = Runnable {
         if (!shouldRestartVisualizerForRouteChange()) return@Runnable
-        visualizerStartRequestId += 1
-        val requestId = visualizerStartRequestId
+        val requestId = captureSessionCoordinator.invalidate().requestId
         AppLogger.i(
             TAG,
             "Restarting Visualizer(0) after route change. requestId=$requestId ${AudioRouteDiagnostics.snapshot(this)}"
@@ -484,8 +475,9 @@ class GlyphVisualizerService : Service() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
-        createNotificationChannel()
-        val savedSettings = SettingsPreferences.load(this)
+        notificationController = CaptureNotificationController(this)
+        notificationController.createChannels()
+        val savedSettings = SettingsPreferences.loadEffective(this).state
         val actualDeviceProfile = GlyphDeviceCatalog.currentProfile()
         val outputDeviceProfile = GlyphDeviceCatalog.effectiveOutputProfile(
             actualProfile = actualDeviceProfile,
@@ -533,25 +525,26 @@ class GlyphVisualizerService : Service() {
             is CaptureCommand.StartVisualizer -> {
                 try {
                     val actionReceivedAt = SystemClock.elapsedRealtime()
-                    visualizerStartRequestId += 1
-                    visualizerStartActionAtMs = actionReceivedAt
-                    visualizerStartSource = command.source
+                    val session = captureSessionCoordinator.beginVisualizer(
+                        source = command.source,
+                        actionAtMs = actionReceivedAt
+                    )
                     clearSpatialAudioWarning()
                     applyCaptureConfig(command.config)
                     applyGlyphControllerSettings()
                     AppLogger.i(
                         TAG,
-                        "ACTION_START_VISUALIZER received: requestId=$visualizerStartRequestId source=$visualizerStartSource glyphMode=$glyphMode btLikely=${
+                        "ACTION_START_VISUALIZER received: requestId=${session.requestId} source=${session.startSource} glyphMode=$glyphMode btLikely=${
                             AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
                         } musicActive=${AudioRouteDiagnostics.isMusicActive(this)}"
                     )
                     startServiceNotification(getString(R.string.notification_mode_visualizer))
                     AppLogger.i(
                         TAG,
-                        "Foreground notification posted for visualizer: requestId=$visualizerStartRequestId elapsedMs=${SystemClock.elapsedRealtime() - actionReceivedAt}"
+                        "Foreground notification posted for visualizer: requestId=${session.requestId} elapsedMs=${SystemClock.elapsedRealtime() - actionReceivedAt}"
                     )
                     scheduleGlyphWarmupResync()
-                    startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1)
+                    startVisualizerMode(requestId = session.requestId, attempt = 1)
                 } catch (error: SecurityException) {
                     // パーミッション不足は即座に失敗（リトライ不要）
                     val msg = getString(
@@ -559,7 +552,7 @@ class GlyphVisualizerService : Service() {
                         error.message ?: getString(R.string.status_unknown_error)
                     )
                     AppLogger.e(TAG, "ACTION_START_VISUALIZER permission denied", error)
-                    CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
+                    CaptureUiStore.updateRuntime { it.copy(statusText = msg, logMessage = msg) }
                     safeStopForeground()
                     stopSelf()
                 } catch (error: Throwable) {
@@ -576,7 +569,7 @@ class GlyphVisualizerService : Service() {
             }
 
             is CaptureCommand.StartMediaProjection -> {
-                visualizerStartRequestId += 1
+                captureSessionCoordinator.invalidate()
                 applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
                 if (command.resultCode != 0 && command.data != null) {
@@ -590,7 +583,7 @@ class GlyphVisualizerService : Service() {
             }
 
             is CaptureCommand.UpdateConfig -> {
-                if (!CaptureUiStore.state.isCapturing) {
+                if (!CaptureUiStore.runtimeState.isCapturing) {
                     AppLogger.i(TAG, "Discarding settings update because capture is no longer active")
                     stopSelf(startId)
                     return START_NOT_STICKY
@@ -598,12 +591,12 @@ class GlyphVisualizerService : Service() {
                 applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
                 CaptureUiStore.update { state ->
-                    command.config.applyToPublishedUiState(state)
+                    command.config.applyToServicePublishedUiState(state)
                 }
             }
 
             CaptureCommand.Stop -> {
-                visualizerStartRequestId += 1
+                captureSessionCoordinator.invalidate()
                 try {
                     stopCapture(getString(R.string.status_capture_stopped_ready))
                 } catch (error: Throwable) {
@@ -618,115 +611,16 @@ class GlyphVisualizerService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun currentCaptureConfig(): CaptureConfig = CaptureConfig(
-        sensitivity = sensitivity,
-        noiseGate = noiseGate,
-        dynamics = dynamics,
-        outputGamma = outputGamma,
-        toneFocus = toneFocus,
-        smoothing = smoothing,
-        smoothingBalance = smoothingBalance,
-        reverseDirection = reverseDirection,
-        peakHoldEnabled = peakHoldEnabled,
-        glyphMode = glyphMode,
-        fillOtherGlyphLights = fillOtherGlyphLights,
-        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-        binaryMode = binaryMode,
-        baseIndicatorEnabled = baseIndicatorEnabled,
-        recordingLightIncluded = recordingLightIncluded,
-        levelAutoScale = levelAutoScale,
-        spectrumAutoScale = spectrumAutoScale,
-        allBrightnessAutoScale = allBrightnessAutoScale,
-        autoScaleWindowSeconds = autoScaleWindowSeconds,
-        autoScaleOffset = autoScaleOffset,
-        latencyMs = latencyMs,
-        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-        experimentalVisualizerStabilizationEnabled =
-            experimentalVisualizerStabilizationEnabled,
-        experimentalVisualizerSignalWatchdogEnabled =
-            experimentalVisualizerSignalWatchdogEnabled,
-        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-        experimentalPerformanceOptimizationsEnabled =
-            experimentalPerformanceOptimizationsEnabled,
-        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
-        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-        turnOffWhenBackDown = turnOffWhenBackDown
-    )
+    private fun currentCaptureConfig(): CaptureConfig = captureConfig
 
     private fun applyCaptureConfig(config: CaptureConfig) {
-        sensitivity = config.sensitivity
-        noiseGate = config.noiseGate
-        dynamics = config.dynamics
-        outputGamma = config.outputGamma
-        toneFocus = config.toneFocus
-        smoothing = config.smoothing
-        smoothingBalance = config.smoothingBalance
-        reverseDirection = config.reverseDirection
-        peakHoldEnabled = config.peakHoldEnabled
-        glyphMode = config.glyphMode
-        fillOtherGlyphLights = config.fillOtherGlyphLights
-        phone1ClassicCSplitEnabled = config.phone1ClassicCSplitEnabled
-        binaryMode = config.binaryMode
-        baseIndicatorEnabled = config.baseIndicatorEnabled
-        recordingLightIncluded = config.recordingLightIncluded
-        levelAutoScale = config.levelAutoScale
-        spectrumAutoScale = config.spectrumAutoScale
-        allBrightnessAutoScale = config.allBrightnessAutoScale
-        autoScaleWindowSeconds = config.autoScaleWindowSeconds
-        autoScaleOffset = config.autoScaleOffset
-        latencyMs = config.latencyMs
-        mediaPlaybackOnlyEnabled = config.mediaPlaybackOnlyEnabled
-        experimentalVisualizerStabilizationEnabled =
-            config.experimentalVisualizerStabilizationEnabled
-        experimentalVisualizerSignalWatchdogEnabled =
-            config.experimentalVisualizerSignalWatchdogEnabled
-        experimentalSpectrumDecayEnabled = config.experimentalSpectrumDecayEnabled
-        experimentalPerformanceOptimizationsEnabled =
-            config.experimentalPerformanceOptimizationsEnabled
-        matrixSmoothMotionEnabled = config.matrixSmoothMotionEnabled
-        oscilloscopeAutoTimeAxisEnabled = config.oscilloscopeAutoTimeAxisEnabled
+        captureConfig = config
         WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
-        turnOffWhenBackDown = config.turnOffWhenBackDown
-    }
-
-    private fun CaptureConfig.applyToPublishedUiState(state: CaptureUiState): CaptureUiState {
-        return state.copy(
-            sensitivity = sensitivity,
-            noiseGate = noiseGate,
-            dynamics = dynamics,
-            outputGamma = outputGamma,
-            toneFocus = toneFocus,
-            smoothing = smoothing,
-            smoothingBalance = smoothingBalance,
-            reverseDirection = reverseDirection,
-            peakHoldEnabled = peakHoldEnabled,
-            glyphMode = glyphMode,
-            fillOtherGlyphLights = fillOtherGlyphLights,
-            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-            binaryMode = binaryMode,
-            baseIndicatorEnabled = baseIndicatorEnabled,
-            recordingLightIncluded = recordingLightIncluded,
-            levelAutoScale = levelAutoScale,
-            spectrumAutoScale = spectrumAutoScale,
-            autoScaleWindowSeconds = autoScaleWindowSeconds,
-            autoScaleOffset = autoScaleOffset,
-            allBrightnessAutoScale = allBrightnessAutoScale,
-            mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-            experimentalVisualizerStabilizationEnabled =
-                experimentalVisualizerStabilizationEnabled,
-            experimentalVisualizerSignalWatchdogEnabled =
-                experimentalVisualizerSignalWatchdogEnabled,
-            experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-            experimentalPerformanceOptimizationsEnabled =
-                experimentalPerformanceOptimizationsEnabled,
-            oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-            turnOffWhenBackDown = turnOffWhenBackDown
-        )
     }
 
     override fun onDestroy() {
         try {
-            stopCapture(CaptureUiStore.state.statusText)
+            stopCapture(CaptureUiStore.runtimeState.statusText)
         } catch (error: Throwable) {
             AppLogger.w(TAG, "stopCapture failed in onDestroy", error)
         }
@@ -776,7 +670,7 @@ class GlyphVisualizerService : Service() {
 
     private fun publishGlyphControllerStatus(status: String) {
         val publish = {
-            CaptureUiStore.update { it.copy(statusText = status) }
+            CaptureUiStore.updateRuntime { it.copy(statusText = status) }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
             publish()
@@ -866,36 +760,11 @@ class GlyphVisualizerService : Service() {
                         if (visualizerStartActionAtMs > 0L) now - visualizerStartActionAtMs else -1L
                     } attemptDurationMs=${now - startAttemptAt} status=$status"
                 )
-                CaptureUiStore.update {
-                    it.copy(
+                CaptureUiStore.update { state ->
+                    captureConfig.applyToStartedUiState(
+                        state = state,
                         statusText = status,
-                        isCapturing = true,
-                        activeMode = ACTIVE_MODE_VISUALIZER,
-                        sensitivity = sensitivity,
-                            noiseGate = noiseGate,
-                            dynamics = dynamics,
-                            outputGamma = outputGamma,
-                            toneFocus = toneFocus,
-                        smoothing = smoothing,
-                        reverseDirection = reverseDirection,
-                            peakHoldEnabled = peakHoldEnabled,
-                            glyphMode = glyphMode,
-                            fillOtherGlyphLights = fillOtherGlyphLights,
-                            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-                            binaryMode = binaryMode,
-                            levelAutoScale = levelAutoScale,
-                            spectrumAutoScale = spectrumAutoScale,
-                            allBrightnessAutoScale = allBrightnessAutoScale,
-                            autoScaleWindowSeconds = autoScaleWindowSeconds,
-                        autoScaleOffset = autoScaleOffset,
-                        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-                        experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
-                        experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
-                        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-                        experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
-                        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
-                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-                        turnOffWhenBackDown = turnOffWhenBackDown
+                        activeMode = ACTIVE_MODE_VISUALIZER
                     )
                 }
                 notifyTile()
@@ -935,7 +804,7 @@ class GlyphVisualizerService : Service() {
                         TAG,
                         "Visualizer async start failed: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
                     )
-                    CaptureUiStore.update {
+                    CaptureUiStore.updateRuntime {
                         it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
                     }
                     mainHandler.postDelayed(
@@ -963,7 +832,7 @@ class GlyphVisualizerService : Service() {
                         TAG,
                         "Visualizer active-without-signal detected: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
                     )
-                    CaptureUiStore.update {
+                    CaptureUiStore.updateRuntime {
                         it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
                     }
                     mainHandler.postDelayed(
@@ -978,7 +847,7 @@ class GlyphVisualizerService : Service() {
                         }"
                     )
                     val msg = getString(R.string.status_visualizer_try_media_projection)
-                    CaptureUiStore.update { it.copy(statusText = msg, logMessage = msg) }
+                    CaptureUiStore.updateRuntime { it.copy(statusText = msg, logMessage = msg) }
                     stopCapture(msg)
                     safeStopForeground()
                     stopSelf()
@@ -988,7 +857,7 @@ class GlyphVisualizerService : Service() {
                 // ワーカースレッドが予期せずクラッシュした場合、自動再起動
                 if (requestId == visualizerStartRequestId) {
                     AppLogger.w(TAG, "Visualizer worker crashed, auto-restarting")
-                    visualizerStartRequestId += 1
+                    captureSessionCoordinator.invalidate()
                     mainHandler.postDelayed(
                         { startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1) },
                         200L
@@ -1005,7 +874,7 @@ class GlyphVisualizerService : Service() {
                     TAG,
                     "Visualizer start attempt failed: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
                 )
-                CaptureUiStore.update {
+                CaptureUiStore.updateRuntime {
                     it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
                 }
                 mainHandler.postDelayed(
@@ -1043,36 +912,11 @@ class GlyphVisualizerService : Service() {
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             dispatchLevelChangesOnMain = !usesMatrixOutputThread(),
             onStateChanged = { status ->
-                CaptureUiStore.update {
-                    it.copy(
+                CaptureUiStore.update { state ->
+                    captureConfig.applyToStartedUiState(
+                        state = state,
                         statusText = status,
-                        isCapturing = true,
-                        activeMode = ACTIVE_MODE_MEDIA_PROJECTION,
-                        sensitivity = sensitivity,
-                            noiseGate = noiseGate,
-                            dynamics = dynamics,
-                            outputGamma = outputGamma,
-                            toneFocus = toneFocus,
-                        smoothing = smoothing,
-                        reverseDirection = reverseDirection,
-                            peakHoldEnabled = peakHoldEnabled,
-                            glyphMode = glyphMode,
-                            fillOtherGlyphLights = fillOtherGlyphLights,
-                            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-                            binaryMode = binaryMode,
-                            levelAutoScale = levelAutoScale,
-                            spectrumAutoScale = spectrumAutoScale,
-                            allBrightnessAutoScale = allBrightnessAutoScale,
-                            autoScaleWindowSeconds = autoScaleWindowSeconds,
-                            autoScaleOffset = autoScaleOffset,
-                            mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-                            experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
-                            experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
-                            experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-                            experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
-                            matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
-                            oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-                            turnOffWhenBackDown = turnOffWhenBackDown
+                        activeMode = ACTIVE_MODE_MEDIA_PROJECTION
                     )
                 }
                 notifyTile()
@@ -1175,7 +1019,7 @@ class GlyphVisualizerService : Service() {
             enqueueMatrixFrame(frame)
         } else {
             latestLevelFrame = frame
-            pendingLevelFrames.addLast(frame)
+            pendingLevelFrames.enqueue(frame)
             drainPendingLevelFrames()
         }
     }
@@ -1183,14 +1027,10 @@ class GlyphVisualizerService : Service() {
     private fun drainPendingLevelFrames(forceAll: Boolean = false) {
         mainHandler.removeCallbacks(latencyDrainRunnable)
         val now = SystemClock.uptimeMillis()
-        while (pendingLevelFrames.isNotEmpty()) {
-            val next = pendingLevelFrames.first()
-            if (!forceAll && next.dueAtMs > now) {
-                mainHandler.postDelayed(latencyDrainRunnable, next.dueAtMs - now)
-                return
-            }
-            pendingLevelFrames.removeFirst()
-            renderLevelFrame(next)
+        val drain = pendingLevelFrames.drainAllDue(nowMs = now, forceAll = forceAll)
+        drain.frames.forEach(::renderLevelFrame)
+        drain.nextDueAtMs?.let { dueAtMs ->
+            mainHandler.postDelayed(latencyDrainRunnable, (dueAtMs - now).coerceAtLeast(0L))
         }
     }
 
@@ -1198,7 +1038,7 @@ class GlyphVisualizerService : Service() {
         val handler = matrixOutputHandler ?: return
         var shouldSchedule = false
         synchronized(matrixFrameLock) {
-            pendingMatrixFrames.addLast(QueuedMatrixFrame(matrixFrameEpoch, frame))
+            pendingMatrixFrames.enqueue(QueuedMatrixFrame(matrixFrameEpoch, frame))
             latestMatrixLevelFrame = frame
             if (!matrixDrainScheduled) {
                 matrixDrainScheduled = true
@@ -1220,17 +1060,10 @@ class GlyphVisualizerService : Service() {
         var nextDueAtMs: Long? = null
         synchronized(matrixFrameLock) {
             drainEpoch = matrixFrameEpoch
-            while (pendingMatrixFrames.isNotEmpty()) {
-                val next = pendingMatrixFrames.first()
-                if (next.epoch != drainEpoch) {
-                    pendingMatrixFrames.removeFirst()
-                    continue
-                }
-                if (next.frame.dueAtMs > now) break
-                latestDueFrame = pendingMatrixFrames.removeFirst().frame
-            }
+            val drain = pendingMatrixFrames.drainLatestDue(now) { it.epoch == drainEpoch }
+            latestDueFrame = drain.frames.singleOrNull()?.frame
+            nextDueAtMs = drain.nextDueAtMs
             if (latestDueFrame == null) {
-                nextDueAtMs = pendingMatrixFrames.firstOrNull()?.frame?.dueAtMs
                 if (nextDueAtMs == null) {
                     matrixDrainScheduled = false
                 }
@@ -1259,7 +1092,7 @@ class GlyphVisualizerService : Service() {
 
         synchronized(matrixFrameLock) {
             if (matrixFrameEpoch != drainEpoch) return
-            nextDueAtMs = pendingMatrixFrames.firstOrNull()?.frame?.dueAtMs
+            nextDueAtMs = pendingMatrixFrames.nextDueAtMs()
             if (nextDueAtMs == null) {
                 matrixDrainScheduled = false
             }
@@ -1574,42 +1407,14 @@ class GlyphVisualizerService : Service() {
         pendingLevelFrames.clear()
         latestLevelFrame = null
         GlyphAnalysisFrameStore.clear()
-        CaptureUiStore.update {
-            it.copy(
-                level = 0f,
-                peak = 0f,
-                meterSegments = 0,
-                spectrumBands = FloatArray(0),
-                isCapturing = false,
-                activeMode = ACTIVE_MODE_IDLE,
-                statusText = if (clearStatus) getString(R.string.status_capture_stopped_ready) else it.statusText,
-                sensitivity = sensitivity,
-                noiseGate = noiseGate,
-                dynamics = dynamics,
-                outputGamma = outputGamma,
-                toneFocus = toneFocus,
-                smoothing = smoothing,
-                smoothingBalance = smoothingBalance,
-                reverseDirection = reverseDirection,
-                    peakHoldEnabled = peakHoldEnabled,
-                glyphMode = glyphMode,
-                fillOtherGlyphLights = fillOtherGlyphLights,
-                phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-                binaryMode = binaryMode,
-                levelAutoScale = levelAutoScale,
-                spectrumAutoScale = spectrumAutoScale,
-                allBrightnessAutoScale = allBrightnessAutoScale,
-                autoScaleWindowSeconds = autoScaleWindowSeconds,
-                autoScaleOffset = autoScaleOffset,
-                latencyMs = latencyMs,
-                mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-                experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
-                experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
-                experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
-                matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
-                oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-                experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-                turnOffWhenBackDown = turnOffWhenBackDown
+        CaptureUiStore.update { state ->
+            captureConfig.applyToStoppedUiState(
+                state = state,
+                statusText = if (clearStatus) {
+                    getString(R.string.status_capture_stopped_ready)
+                } else {
+                    state.statusText
+                }
             )
         }
         CaptureUiStore.syncLiveFrameFromState()
@@ -1623,7 +1428,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun applyGlyphControllerSettings() {
-        val savedSettings = SettingsPreferences.load(this)
+        val savedSettings = SettingsPreferences.loadEffective(this).state
         val actualDeviceProfile = GlyphDeviceCatalog.currentProfile()
         val outputDeviceProfile = GlyphDeviceCatalog.effectiveOutputProfile(
             actualProfile = actualDeviceProfile,
@@ -1709,7 +1514,7 @@ class GlyphVisualizerService : Service() {
         } catch (error: Throwable) {
             AppLogger.e(TAG, "stopRunningCapture failed in stopCapture", error)
         }
-        CaptureUiStore.update { it.copy(statusText = status) }
+        CaptureUiStore.updateRuntime { it.copy(statusText = status) }
         notifyTile()
     }
 
@@ -1733,7 +1538,7 @@ class GlyphVisualizerService : Service() {
             } else {
                 showSpatialAudioWarningNotification(productName)
             }
-            CaptureUiStore.update {
+            CaptureUiStore.updateRuntime {
                 it.copy(
                     logMessage = message,
                     pendingSpatialAudioWarning = if (showInApp || !notificationShown) {
@@ -1756,50 +1561,13 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun clearSpatialAudioWarning() {
-        CaptureUiStore.update { it.copy(pendingSpatialAudioWarning = null) }
-        getSystemService(NotificationManager::class.java)?.cancel(ALERT_NOTIFICATION_ID)
+        CaptureUiStore.updateRuntime { it.copy(pendingSpatialAudioWarning = null) }
+        notificationController.cancelSpatialAudioWarning()
     }
 
     private fun showSpatialAudioWarningNotification(productName: String?): Boolean {
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            AppLogger.w(TAG, "Spatial Audio warning notification skipped: notification permission missing")
-            return false
-        }
-        val manager = getSystemService(NotificationManager::class.java) ?: return false
-        if (!manager.areNotificationsEnabled()) {
-            AppLogger.w(TAG, "Spatial Audio warning notification skipped: notifications disabled")
-            return false
-        }
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            manager.getNotificationChannel(ALERT_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
-        ) {
-            AppLogger.w(TAG, "Spatial Audio warning notification skipped: alert channel disabled")
-            return false
-        }
-
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openAppPendingIntent = PendingIntent.getActivity(
-            this,
-            ALERT_NOTIFICATION_ID,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         val message = spatialAudioWarningMessage(productName)
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setContentTitle(getString(R.string.spatial_audio_warning_title))
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ERROR)
-            .setAutoCancel(true)
-            .setContentIntent(openAppPendingIntent)
-            .build()
-        manager.notify(ALERT_NOTIFICATION_ID, notification)
-        return true
+        return notificationController.showSpatialAudioWarning(message)
     }
 
     private fun spatialAudioWarningMessage(nothingOrCmfProductName: String?): String {
@@ -2011,12 +1779,12 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun shouldRestartVisualizerForRouteChange(): Boolean {
-        val state = CaptureUiStore.state
-        return state.isCapturing && state.activeMode == ACTIVE_MODE_VISUALIZER
+        val runtime = CaptureUiStore.runtimeState
+        return runtime.isCapturing && runtime.activeMode == ACTIVE_MODE_VISUALIZER
     }
 
     private fun applyLatencyPresetForCurrentRoute(reason: String) {
-        val saved = SettingsPreferences.load(this)
+        val saved = SettingsPreferences.loadEffective(this).state
         val bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)
         val resolved = saved.withResolvedLatency(bluetoothOutputActive)
         val nextLatencyMs = resolved.latencyMs
@@ -2025,7 +1793,7 @@ class GlyphVisualizerService : Service() {
                 TAG,
                 "Latency applied on route $reason. bluetooth=$bluetoothOutputActive latencyMs=$nextLatencyMs"
             )
-            latencyMs = nextLatencyMs
+            captureConfig = captureConfig.copy(latencyMs = nextLatencyMs)
             if (usesMatrixOutputThread()) {
                 clearPendingMatrixFrames(clearLatest = false)
             } else {
@@ -2045,97 +1813,32 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun visualizerStartMaxAttempts(): Int {
-        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
-            6
-        } else {
-            4
-        }
+        return CaptureRetryPolicy.maxAttempts(
+            bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this),
+            musicActive = AudioRouteDiagnostics.isMusicActive(this)
+        )
     }
 
     private fun visualizerRetryDelayMs(attempt: Int): Long {
-        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
-            700L * attempt
-        } else {
-            160L * attempt
-        }
+        return CaptureRetryPolicy.retryDelayMs(
+            attempt = attempt,
+            bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this),
+            musicActive = AudioRouteDiagnostics.isMusicActive(this)
+        )
     }
 
     private fun visualizerRouteRestartSuppressionMs(): Long {
-        return if (AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this) && AudioRouteDiagnostics.isMusicActive(this)) {
-            4000L
-        } else {
-            1500L
-        }
+        return CaptureRetryPolicy.routeRestartSuppressionMs(
+            bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this),
+            musicActive = AudioRouteDiagnostics.isMusicActive(this)
+        )
     }
 
     private fun safeStopForeground() {
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "stopForeground failed (already stopped or invalid state)", error)
-        }
+        notificationController.stopForegroundSafely()
     }
 
     private fun startServiceNotification(label: String, mediaProjection: Boolean = false) {
-        val notification = buildNotification(label)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val serviceType = if (mediaProjection)
-                ServiceInfoCompat.mediaProjectionType()
-            else
-                ServiceInfoCompat.mediaPlaybackType()
-            startForeground(NOTIFICATION_ID, notification, serviceType)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        notificationController.startForeground(label, mediaProjection)
     }
-
-    private fun buildNotification(label: String): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.notification_title))
-            .setContentText(label)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java)
-        val serviceChannel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        )
-        val alertChannel = NotificationChannel(
-            ALERT_CHANNEL_ID,
-            getString(R.string.notification_alert_channel_name),
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = getString(R.string.notification_alert_channel_description)
-        }
-        manager.createNotificationChannels(listOf(serviceChannel, alertChannel))
-    }
-}
-
-private object ServiceInfoCompat {
-    fun mediaProjectionType(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfoTypes.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        } else {
-            0
-        }
-    }
-    fun mediaPlaybackType(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfoTypes.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        } else {
-            0
-        }
-    }
-}
-
-private object ServiceInfoTypes {
-    const val FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION = 32
-    const val FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK = 2
-    const val FOREGROUND_SERVICE_TYPE_MICROPHONE = 128
 }
