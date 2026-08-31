@@ -1919,7 +1919,7 @@ internal fun classicSpectrumGroupsFor(
     profile: GlyphDeviceProfile,
     phone1ClassicCSplitEnabled: Boolean
 ): List<List<Int>> = when (profile) {
-    GlyphDeviceProfile.PHONE1 -> if (phone1ClassicCSplitEnabled) {
+    GlyphDeviceProfile.PHONE1 -> {
         listOf(
             listOf(0),
             listOf(1),
@@ -1927,14 +1927,6 @@ internal fun classicSpectrumGroupsFor(
             listOf(3),
             listOf(4),
             listOf(5),
-            (7..14).toList(),
-            listOf(6)
-        )
-    } else {
-        listOf(
-            listOf(0),
-            listOf(1),
-            (2..5).toList(),
             (7..14).toList(),
             listOf(6)
         )

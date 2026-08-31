@@ -316,8 +316,6 @@
     <string name="glyph_pattern_desc_matrix_pulse_grid">Matrixの各ピクセルに周波数帯を割り当て、音域ごとに明るさが変動するメーター\n割り当てるピクセルはランダムです</string>
     <string name="fill_other_glyph_lights_title">他のGlyphも点灯させる</string>
     <string name="fill_other_glyph_lights_desc">一部だけ光るモードのとき、残りのライトも Classic モードのように点灯させます</string>
-    <string name="phone1_classic_c_split_title">ClassicのCを4分割</string>
-    <string name="phone1_classic_c_split_desc">Phone (1) のGlyph 2〜5をClassicの独立した4グループとして、スペクトラム上へ等間隔に配置します</string>
     <string name="fill_other_glyph_lights_enabled">点灯させる</string>
     <string name="fill_other_glyph_lights_disabled">点灯させない</string>
     <string name="fill_other_glyph_lights_disabled_desc">選択中のパターンが制御するGlyphのみを使用します</string>

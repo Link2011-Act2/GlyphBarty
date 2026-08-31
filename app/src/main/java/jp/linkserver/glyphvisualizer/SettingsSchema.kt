@@ -185,6 +185,7 @@ internal object PersistedSettingsSchema {
             )
         )
         val effectiveState = recordingLightNormalized.copy(
+            phone1ClassicCSplitEnabled = true,
             turnOffWhenBackDown = false,
             mainScreenUiIsolationEnabled = true,
             debugDeviceProfileOverride = if (isIntDevBuild()) {
@@ -212,6 +213,11 @@ internal object PersistedSettingsSchema {
                 state.recordingLightIncluded != previousEffective.recordingLightIncluded
 
         return incoming.copy(
+            phone1ClassicCSplitEnabled = preserveRawWhenEffectiveUnchanged(
+                incoming = incoming.phone1ClassicCSplitEnabled,
+                previousRaw = previous.phone1ClassicCSplitEnabled,
+                previousEffective = previousEffective.phone1ClassicCSplitEnabled
+            ),
             baseIndicatorEnabled = if (recordingBehaviorChanged) {
                 incoming.baseIndicatorEnabled
             } else {

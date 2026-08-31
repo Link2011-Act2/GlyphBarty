@@ -352,7 +352,6 @@ internal fun ControlCard(
         GlyphDeviceProfile.PHONE2,
         GlyphDeviceProfile.PHONE2A
     )
-    val supportsPhone1ClassicCSplit = deviceProfile == GlyphDeviceProfile.PHONE1
     val isMatrixDevice = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE3_MATRIX,
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
@@ -710,35 +709,6 @@ internal fun ControlCard(
                                 null
                             },
                             enabled = fillOtherGlyphLightsEnabledForMode
-                        )
-                    }
-                }
-            }
-
-            if (supportsPhone1ClassicCSplit) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.phone1_classic_c_split_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = stringResource(R.string.phone1_classic_c_split_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Box(
-                        modifier = Modifier.width(48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Checkbox(
-                            checked = phone1ClassicCSplitEnabled,
-                            onCheckedChange = onPhone1ClassicCSplitEnabledChanged
                         )
                     }
                 }

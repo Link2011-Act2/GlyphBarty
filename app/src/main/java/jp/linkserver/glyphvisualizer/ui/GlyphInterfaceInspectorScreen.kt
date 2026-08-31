@@ -145,7 +145,7 @@ fun GlyphInterfaceInspectorScreen(
     var reverseDirection by rememberSaveable { mutableStateOf(false) }
     var binaryMode by rememberSaveable { mutableStateOf(false) }
     var fillOtherGlyphLightsEnabled by rememberSaveable { mutableStateOf(false) }
-    var phone1ClassicCSplitEnabled by rememberSaveable { mutableStateOf(false) }
+    var phone1ClassicCSplitEnabled by rememberSaveable { mutableStateOf(true) }
     var baseIndicatorEnabled by rememberSaveable { mutableStateOf(false) }
     var recordingLightIncluded by rememberSaveable { mutableStateOf(false) }
     var autoScaleStrategyName by rememberSaveable {
@@ -590,7 +590,6 @@ private fun GlyphInspectorControls(
         GlyphDeviceProfile.PHONE2A
     )
     val supportsBaseIndicator = isPhone4Bar
-    val supportsPhone1ClassicCSplit = selectedProfile == GlyphDeviceProfile.PHONE1
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(selectedGlyphMode) &&
         pattern?.recipe?.renderMode != GlyphPatternRenderMode.CLASSIC
@@ -743,14 +742,6 @@ private fun GlyphInspectorControls(
                         checked = fillOtherGlyphLightsEnabled,
                         enabled = !frozen,
                         onCheckedChange = onFillOtherGlyphLightsEnabledChanged
-                    )
-                }
-                if (supportsPhone1ClassicCSplit) {
-                    GlyphInspectorToggleRow(
-                        title = stringResource(R.string.phone1_classic_c_split_title),
-                        checked = phone1ClassicCSplitEnabled,
-                        enabled = !frozen,
-                        onCheckedChange = onPhone1ClassicCSplitEnabledChanged
                     )
                 }
                 if (supportsBaseIndicator) {

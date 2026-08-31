@@ -5,12 +5,15 @@ import org.junit.Test
 
 class ClassicSpectrumGroupsTest {
     @Test
-    fun phone1KeepsCAsOneGroupByDefault() {
+    fun phone1SplitsCIntoFourGroupsEvenWhenLegacySettingIsFalse() {
         assertEquals(
             listOf(
                 listOf(0),
                 listOf(1),
-                (2..5).toList(),
+                listOf(2),
+                listOf(3),
+                listOf(4),
+                listOf(5),
                 (7..14).toList(),
                 listOf(6)
             ),
