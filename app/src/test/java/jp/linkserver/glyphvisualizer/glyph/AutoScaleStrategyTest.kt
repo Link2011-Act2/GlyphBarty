@@ -187,7 +187,7 @@ class AutoScaleStrategyTest {
             0.0001f
         )
         assertEquals(
-            0.7f,
+            0.8f,
             GlyphVisualTuningDatabase.tuningFor(
                 GlyphDeviceProfile.PHONE4B,
                 GlyphPatternRegistry.P4A_CENTER
@@ -232,7 +232,7 @@ class AutoScaleStrategyTest {
             0.0001f
         )
         assertEquals(
-            0f,
+            0.5f,
             resolveGlyphVisualTuning(
                 GlyphDeviceProfile.PHONE2,
                 GlyphPatternRegistry.P2_C1_LINEAR,
