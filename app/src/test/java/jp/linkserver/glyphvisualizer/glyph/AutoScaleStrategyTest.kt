@@ -138,6 +138,104 @@ class AutoScaleStrategyTest {
     }
 
     @Test
+    fun spectrumVisualDynamics_nonZeroMusicDipsDoNotCollapseAfterTrackersWarmUp() {
+        val dynamicsValues = listOf(0.49f, 0.5f, 0.51f, 0.8f, 0.9f)
+        val stableBands = floatArrayOf(0.18f, 0.31f, 0.46f, 0.6f)
+        val dipBands = floatArrayOf(0.08f, 0.14f, 0.23f, 0.34f)
+        val dipPeak = dipBands.max()
+
+        dynamicsValues.forEach { dynamics ->
+            val state = SpectrumVisualDynamicsState()
+            var nowMs = 1_000L
+
+            // Five seconds of ordinary non-zero music lets both tracked bounds converge.
+            repeat(250) {
+                applyAdaptiveSpectrumVisualDynamics(
+                    agcBands = stableBands,
+                    autoScaleEnabled = true,
+                    strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                    profile = GlyphDeviceProfile.PHONE2,
+                    patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+                    patternKind = GlyphPatternKind.SPECTRUM,
+                    state = state,
+                    nowMs = nowMs,
+                    windowMs = 5_000f,
+                    override = GlyphVisualTuning(dynamics = dynamics)
+                )
+                nowMs += 20L
+            }
+
+            repeat(6) {
+                val dipOutput = applyAdaptiveSpectrumVisualDynamics(
+                    agcBands = dipBands,
+                    autoScaleEnabled = true,
+                    strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                    profile = GlyphDeviceProfile.PHONE2,
+                    patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+                    patternKind = GlyphPatternKind.SPECTRUM,
+                    state = state,
+                    nowMs = nowMs,
+                    windowMs = 5_000f,
+                    override = GlyphVisualTuning(dynamics = dynamics)
+                )
+                assertTrue(
+                    "dynamics=$dynamics collapsed a non-zero spectrum dip: ${dipOutput.contentToString()}",
+                    dipOutput.max() >= dipPeak * 0.1f
+                )
+                nowMs += 20L
+
+                applyAdaptiveSpectrumVisualDynamics(
+                    agcBands = stableBands,
+                    autoScaleEnabled = true,
+                    strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                    profile = GlyphDeviceProfile.PHONE2,
+                    patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+                    patternKind = GlyphPatternKind.SPECTRUM,
+                    state = state,
+                    nowMs = nowMs,
+                    windowMs = 5_000f,
+                    override = GlyphVisualTuning(dynamics = dynamics)
+                )
+                nowMs += 20L
+            }
+        }
+    }
+
+    @Test
+    fun spectrumVisualDynamics_zeroInputAndZeroDynamicsKeepTheirExistingBehavior() {
+        val state = SpectrumVisualDynamicsState()
+        val nonZeroBands = floatArrayOf(0.12f, 0.36f, 0.58f)
+
+        val zeroDynamics = applyAdaptiveSpectrumVisualDynamics(
+            agcBands = nonZeroBands,
+            autoScaleEnabled = true,
+            strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+            profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            state = state,
+            nowMs = 1_000L,
+            windowMs = 5_000f,
+            override = GlyphVisualTuning(dynamics = 0f)
+        )
+        val zeroInput = applyAdaptiveSpectrumVisualDynamics(
+            agcBands = FloatArray(nonZeroBands.size),
+            autoScaleEnabled = true,
+            strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+            profile = GlyphDeviceProfile.PHONE2,
+            patternId = GlyphPatternRegistry.P2_C1_SPECTRUM,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            state = state,
+            nowMs = 6_000L,
+            windowMs = 5_000f,
+            override = GlyphVisualTuning(dynamics = 0.9f)
+        )
+
+        assertArrayEquals(nonZeroBands, zeroDynamics, 0.0001f)
+        assertArrayEquals(FloatArray(nonZeroBands.size), zeroInput, 0.0001f)
+    }
+
+    @Test
     fun visualDynamicsExpander_expandsTrackedRangeAndResetsIndependently() {
         val expander = VisualDynamicsExpander()
         expander.update(0.5f, 1_000L, 30_000f)

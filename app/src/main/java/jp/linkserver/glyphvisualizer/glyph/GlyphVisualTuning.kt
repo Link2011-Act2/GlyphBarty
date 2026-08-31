@@ -219,7 +219,10 @@ internal class SpectrumVisualDynamicsState {
         val perBandPhase = ((blend - SPECTRUM_SHARED_PHASE_END) /
             (1f - SPECTRUM_SHARED_PHASE_END)).coerceIn(0f, 1f)
         val perBandMix = smoothStep(perBandPhase) * SPECTRUM_PER_BAND_MAX_MIX
-        val displayPeak = blendVisualDynamics(framePeak, expandedPeak, sharedMix)
+        // Shared Spectrum dynamics may boost a non-zero frame peak, but must not map the
+        // tracker's current minimum below its natural peak and collapse every band together.
+        val boostOnlyExpandedPeak = max(framePeak, expandedPeak)
+        val displayPeak = blendVisualDynamics(framePeak, boostOnlyExpandedPeak, sharedMix)
         val commonScale = displayPeak / framePeak
 
         for (index in values.indices) {
