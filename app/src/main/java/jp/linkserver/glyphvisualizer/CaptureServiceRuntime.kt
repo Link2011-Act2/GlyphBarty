@@ -48,12 +48,7 @@ internal fun CaptureConfig.applyToStartedUiState(
     return applyToUiState(state).copy(
         statusText = statusText,
         isCapturing = true,
-        activeMode = activeMode,
-        // Preserve the exact field omissions of the previous start-state publication path.
-        smoothingBalance = state.smoothingBalance,
-        baseIndicatorEnabled = state.baseIndicatorEnabled,
-        recordingLightIncluded = state.recordingLightIncluded,
-        latencyMs = state.latencyMs
+        activeMode = activeMode
     )
 }
 

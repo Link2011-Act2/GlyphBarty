@@ -344,6 +344,7 @@ class GlyphVisualizerService : Service() {
     private val visualizerStartRequestId get() = captureSessionCoordinator.snapshot().requestId
     private val visualizerStartActionAtMs get() = captureSessionCoordinator.snapshot().startActionAtMs
     private val visualizerStartSource get() = captureSessionCoordinator.snapshot().startSource
+    private var pendingVisualizerCrashRetryRunnable: Runnable? = null
     private lateinit var notificationController: CaptureNotificationController
     private var audioDeviceCallbackRegistered = false
     private var lastAudioRouteSignature: String? = null
@@ -431,6 +432,7 @@ class GlyphVisualizerService : Service() {
     private var gravitySensor: Sensor? = null
     private val restartVisualizerForRouteChangeRunnable = Runnable {
         if (!shouldRestartVisualizerForRouteChange()) return@Runnable
+        cancelPendingVisualizerCrashRetry()
         val requestId = captureSessionCoordinator.invalidate().requestId
         AppLogger.i(
             TAG,
@@ -524,6 +526,7 @@ class GlyphVisualizerService : Service() {
         when (val command = CaptureIntentCommandCodec.decode(intent, currentCaptureConfig())) {
             is CaptureCommand.StartVisualizer -> {
                 try {
+                    cancelPendingVisualizerCrashRetry()
                     val actionReceivedAt = SystemClock.elapsedRealtime()
                     val session = captureSessionCoordinator.beginVisualizer(
                         source = command.source,
@@ -569,6 +572,7 @@ class GlyphVisualizerService : Service() {
             }
 
             is CaptureCommand.StartMediaProjection -> {
+                cancelPendingVisualizerCrashRetry()
                 captureSessionCoordinator.invalidate()
                 applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
@@ -596,6 +600,7 @@ class GlyphVisualizerService : Service() {
             }
 
             CaptureCommand.Stop -> {
+                cancelPendingVisualizerCrashRetry()
                 captureSessionCoordinator.invalidate()
                 try {
                     stopCapture(getString(R.string.status_capture_stopped_ready))
@@ -619,6 +624,8 @@ class GlyphVisualizerService : Service() {
     }
 
     override fun onDestroy() {
+        cancelPendingVisualizerCrashRetry()
+        captureSessionCoordinator.invalidate()
         try {
             stopCapture(CaptureUiStore.runtimeState.statusText)
         } catch (error: Throwable) {
@@ -857,11 +864,8 @@ class GlyphVisualizerService : Service() {
                 // ワーカースレッドが予期せずクラッシュした場合、自動再起動
                 if (requestId == visualizerStartRequestId) {
                     AppLogger.w(TAG, "Visualizer worker crashed, auto-restarting")
-                    captureSessionCoordinator.invalidate()
-                    mainHandler.postDelayed(
-                        { startVisualizerMode(requestId = visualizerStartRequestId, attempt = 1) },
-                        200L
-                    )
+                    val retryRequestId = captureSessionCoordinator.invalidate().requestId
+                    scheduleVisualizerCrashRetry(retryRequestId)
                 }
             }
         )
@@ -1489,6 +1493,24 @@ class GlyphVisualizerService : Service() {
     private fun scheduleGlyphWarmupResync() {
         mainHandler.removeCallbacks(glyphWarmupResyncRunnable)
         mainHandler.postDelayed(glyphWarmupResyncRunnable, GLYPH_WARMUP_RESYNC_DELAY_MS)
+    }
+
+    private fun scheduleVisualizerCrashRetry(requestId: Int) {
+        cancelPendingVisualizerCrashRetry()
+        lateinit var retryRunnable: Runnable
+        retryRunnable = Runnable {
+            if (pendingVisualizerCrashRetryRunnable !== retryRunnable) return@Runnable
+            pendingVisualizerCrashRetryRunnable = null
+            if (!captureSessionCoordinator.isCurrent(requestId)) return@Runnable
+            startVisualizerMode(requestId = requestId, attempt = 1)
+        }
+        pendingVisualizerCrashRetryRunnable = retryRunnable
+        mainHandler.postDelayed(retryRunnable, 200L)
+    }
+
+    private fun cancelPendingVisualizerCrashRetry() {
+        pendingVisualizerCrashRetryRunnable?.let(mainHandler::removeCallbacks)
+        pendingVisualizerCrashRetryRunnable = null
     }
 
     private fun updateBackDownSensorState() {

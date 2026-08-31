@@ -1124,6 +1124,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         CaptureUiStore.setUiVisible(false)
         parameterSyncHandler.removeCallbacks(delayedParameterSyncRunnable)
+        delayedMatrixSmoothMotionApplyRunnable?.let(parameterSyncHandler::removeCallbacks)
+        delayedMatrixSmoothMotionApplyRunnable = null
         runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
         super.onDestroy()
     }

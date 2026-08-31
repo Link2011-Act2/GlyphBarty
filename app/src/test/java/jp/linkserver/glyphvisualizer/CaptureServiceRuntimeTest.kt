@@ -88,7 +88,7 @@ class CaptureServiceRuntimeTest {
     }
 
     @Test
-    fun startAndStopStateTransitions_keepLegacyFieldPublicationBoundaries() {
+    fun quickSettingsColdStart_publishesAllServiceConfigFieldsBeforeUiCanSync() {
         val state = CaptureUiState(
             smoothingBalance = -0.4f,
             baseIndicatorEnabled = true,
@@ -111,17 +111,37 @@ class CaptureServiceRuntimeTest {
 
         assertTrue(started.isCapturing)
         assertEquals("VISUALIZER", started.activeMode)
-        assertEquals(-0.4f, started.smoothingBalance, 0.0001f)
-        assertTrue(started.baseIndicatorEnabled)
-        assertTrue(started.recordingLightIncluded)
-        assertEquals(12f, started.latencyMs, 0.0001f)
+        assertEquals(0.7f, started.smoothingBalance, 0.0001f)
+        assertFalse(started.baseIndicatorEnabled)
+        assertFalse(started.recordingLightIncluded)
+        assertEquals(88f, started.latencyMs, 0.0001f)
         assertFalse(stopped.isCapturing)
         assertEquals("IDLE", stopped.activeMode)
         assertEquals(0f, stopped.level, 0.0001f)
         assertEquals(0f, stopped.peak, 0.0001f)
         assertEquals(88f, stopped.latencyMs, 0.0001f)
-        assertTrue(stopped.baseIndicatorEnabled)
-        assertTrue(stopped.recordingLightIncluded)
+        assertFalse(stopped.baseIndicatorEnabled)
+        assertFalse(stopped.recordingLightIncluded)
+    }
+
+    @Test
+    fun crashRetryGeneration_isRejectedAfterStopOrReplacementSession() {
+        val coordinator = CaptureSessionCoordinator()
+        val crashed = coordinator.beginVisualizer(VisualizerStartSource.APP, actionAtMs = 100L)
+        assertTrue(coordinator.isCurrent(crashed.requestId))
+
+        val delayedRetryRequestId = coordinator.invalidate().requestId
+        assertTrue(coordinator.isCurrent(delayedRetryRequestId))
+
+        coordinator.invalidate()
+        assertFalse(coordinator.isCurrent(delayedRetryRequestId))
+
+        val replacement = coordinator.beginVisualizer(
+            VisualizerStartSource.QUICK_SETTINGS,
+            actionAtMs = 200L
+        )
+        assertFalse(coordinator.isCurrent(delayedRetryRequestId))
+        assertTrue(coordinator.isCurrent(replacement.requestId))
     }
 
     @Test

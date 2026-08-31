@@ -121,6 +121,19 @@ class GlyphTileServiceCharacterizationTest {
 
     }
 
+    @Test
+    fun tileActiveState_requiresConfirmedCaptureRuntimeState() {
+        val inactiveRuntime = CaptureRuntimeState.from(
+            CaptureUiState(isCapturing = false, activeMode = "VISUALIZER")
+        )
+        val activeRuntime = CaptureRuntimeState.from(
+            CaptureUiState(isCapturing = true, activeMode = "VISUALIZER")
+        )
+
+        assertFalse(isConfirmedTileCaptureActive(inactiveRuntime))
+        assertTrue(isConfirmedTileCaptureActive(activeRuntime))
+    }
+
     private fun drainStartedServices() {
         val shadowApplication = shadowOf(application)
         while (shadowApplication.nextStartedService != null) {

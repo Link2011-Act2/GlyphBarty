@@ -35,10 +35,11 @@ class GlyphTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val willEnable = !GlyphVisualizerService.isRunning(this)
-        updateTileState(capturing = willEnable)
+        val shouldStop = isConfirmedTileCaptureActive(CaptureUiStore.runtimeState) ||
+            GlyphVisualizerService.isRunning(this)
+        updateTileState(capturing = false)
 
-        if (!willEnable) {
+        if (shouldStop) {
             GlyphVisualizerService.stop(this)
         } else {
             val s = SettingsPreferences.load(this)
@@ -65,7 +66,7 @@ class GlyphTileService : TileService() {
     }
 
     private fun updateTile() {
-        val capturing = GlyphVisualizerService.isRunning(this)
+        val capturing = isConfirmedTileCaptureActive(CaptureUiStore.runtimeState)
         updateTileState(capturing)
     }
 
@@ -76,4 +77,8 @@ class GlyphTileService : TileService() {
         tile.icon = Icon.createWithResource(this, R.mipmap.icon_qs)
         tile.updateTile()
     }
+}
+
+internal fun isConfirmedTileCaptureActive(runtimeState: CaptureRuntimeState): Boolean {
+    return runtimeState.isCapturing
 }
