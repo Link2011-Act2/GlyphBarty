@@ -20,7 +20,7 @@ val buildNumberFiles = (
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
 val appCodeName = "Fricle" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
-val appVersionName = "2.0.2-IntDev_rev0"
+val appVersionName = "2.0.2-IntDev_rev1"
 val buildContentHash = MessageDigest.getInstance("SHA-256").run {
     buildNumberFiles.forEach { file ->
         update(file.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
@@ -57,7 +57,7 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 12
+        versionCode = 13
         versionName = appVersionName
         buildConfigField("String", "BUILD_NUMBER", "\"$generatedBuildNumber\"")
 
