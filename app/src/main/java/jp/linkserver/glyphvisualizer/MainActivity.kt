@@ -355,39 +355,11 @@ class MainActivity : ComponentActivity() {
         }
 
         val uiState = CaptureUiStore.state
-        GlyphVisualizerService.startMediaProjection(
+        CaptureCommandGateway.startMediaProjection(
             context = this,
             resultCode = result.resultCode,
             data = Intent(data),
-            sensitivity = uiState.sensitivity,
-            noiseGate = uiState.noiseGate,
-            dynamics = uiState.dynamics,
-            outputGamma = uiState.outputGamma,
-            toneFocus = uiState.toneFocus,
-            smoothing = uiState.smoothing,
-            smoothingBalance = uiState.smoothingBalance,
-            reverseDirection = uiState.reverseDirection,
-            peakHoldEnabled = uiState.peakHoldEnabled,
-            glyphMode = uiState.glyphMode,
-            fillOtherGlyphLights = uiState.fillOtherGlyphLights,
-            phone1ClassicCSplitEnabled = uiState.phone1ClassicCSplitEnabled,
-            binaryMode = uiState.binaryMode,
-            baseIndicatorEnabled = uiState.baseIndicatorEnabled,
-            levelAutoScale = uiState.levelAutoScale,
-            spectrumAutoScale = uiState.spectrumAutoScale,
-            allBrightnessAutoScale = uiState.allBrightnessAutoScale,
-            autoScaleWindowSeconds = uiState.autoScaleWindowSeconds,
-            autoScaleOffset = uiState.autoScaleOffset,
-            latencyMs = uiState.latencyMs,
-            mediaPlaybackOnlyEnabled = uiState.mediaPlaybackOnlyEnabled,
-            experimentalVisualizerStabilizationEnabled = uiState.experimentalVisualizerStabilizationEnabled,
-            experimentalVisualizerSignalWatchdogEnabled = uiState.experimentalVisualizerSignalWatchdogEnabled,
-            experimentalSpectrumDecayEnabled = uiState.experimentalSpectrumDecayEnabled,
-            experimentalPerformanceOptimizationsEnabled = uiState.experimentalPerformanceOptimizationsEnabled,
-            matrixSmoothMotionEnabled = uiState.matrixSmoothMotionEnabled,
-            oscilloscopeAutoTimeAxisEnabled = uiState.oscilloscopeAutoTimeAxisEnabled,
-            turnOffWhenBackDown = uiState.turnOffWhenBackDown,
-            recordingLightIncluded = uiState.recordingLightIncluded
+            config = uiState.toCaptureConfig()
         )
     }
 
@@ -693,36 +665,9 @@ class MainActivity : ComponentActivity() {
                             experimentalVisualizerStabilizationEnabled = enabled
                         )
                         CaptureUiStore.update { updated }
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -740,36 +685,9 @@ class MainActivity : ComponentActivity() {
                         CaptureUiStore.update { updated }
                         delayedMatrixSmoothMotionApplyRunnable?.let(parameterSyncHandler::removeCallbacks)
                         delayedMatrixSmoothMotionApplyRunnable = Runnable {
-                            GlyphVisualizerService.updateSensitivity(
-                                this,
-                                updated.sensitivity,
-                                updated.noiseGate,
-                                updated.dynamics,
-                                updated.toneFocus,
-                                updated.smoothing,
-                                updated.smoothingBalance,
-                                updated.reverseDirection,
-                                updated.peakHoldEnabled,
-                                updated.glyphMode,
-                                updated.fillOtherGlyphLights,
-                                updated.phone1ClassicCSplitEnabled,
-                                updated.binaryMode,
-                                updated.baseIndicatorEnabled,
-                                updated.levelAutoScale,
-                                updated.spectrumAutoScale,
-                                updated.allBrightnessAutoScale,
-                                updated.autoScaleWindowSeconds,
-                                updated.autoScaleOffset,
-                                updated.latencyMs,
-                                updated.mediaPlaybackOnlyEnabled,
-                                updated.experimentalVisualizerStabilizationEnabled,
-                                updated.experimentalVisualizerSignalWatchdogEnabled,
-                                updated.experimentalSpectrumDecayEnabled,
-                                updated.experimentalPerformanceOptimizationsEnabled,
-                                updated.matrixSmoothMotionEnabled,
-                                updated.turnOffWhenBackDown,
-                                updated.outputGamma,
-                                updated.oscilloscopeAutoTimeAxisEnabled
+                            CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                                context = this,
+                                config = updated.toCaptureConfig()
                             )
                             SettingsPreferences.save(this, updated)
                             delayedMatrixSmoothMotionApplyRunnable = null
@@ -839,36 +757,9 @@ class MainActivity : ComponentActivity() {
                     onReverseDirectionChanged = { newValue ->
                         CaptureUiStore.update { it.copy(reverseDirection = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -886,144 +777,36 @@ class MainActivity : ComponentActivity() {
                     onBinaryModeChanged = { newValue ->
                         CaptureUiStore.update { it.copy(binaryMode = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
                     onLevelAutoScaleChanged = { newValue ->
                         CaptureUiStore.update { it.copy(levelAutoScale = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
                     onSpectrumAutoScaleChanged = { newValue ->
                         CaptureUiStore.update { it.copy(spectrumAutoScale = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
                     onAllBrightnessAutoScaleChanged = { newValue ->
                         CaptureUiStore.update { it.copy(allBrightnessAutoScale = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -1038,36 +821,9 @@ class MainActivity : ComponentActivity() {
                     onTurnOffWhenBackDownChanged = { newValue ->
                         CaptureUiStore.update { it.copy(turnOffWhenBackDown = newValue) }
                         val updated = CaptureUiStore.state
-                        GlyphVisualizerService.updateSensitivity(
-                            this,
-                            updated.sensitivity,
-                            updated.noiseGate,
-                            updated.dynamics,
-                            updated.toneFocus,
-                            updated.smoothing,
-                            updated.smoothingBalance,
-                            updated.reverseDirection,
-                            updated.peakHoldEnabled,
-                            updated.glyphMode,
-                            updated.fillOtherGlyphLights,
-                            updated.phone1ClassicCSplitEnabled,
-                            updated.binaryMode,
-                            updated.baseIndicatorEnabled,
-                            updated.levelAutoScale,
-                            updated.spectrumAutoScale,
-                            updated.allBrightnessAutoScale,
-                            updated.autoScaleWindowSeconds,
-                            updated.autoScaleOffset,
-                            updated.latencyMs,
-                            updated.mediaPlaybackOnlyEnabled,
-                            updated.experimentalVisualizerStabilizationEnabled,
-                            updated.experimentalVisualizerSignalWatchdogEnabled,
-                            updated.experimentalSpectrumDecayEnabled,
-                            updated.experimentalPerformanceOptimizationsEnabled,
-                            updated.matrixSmoothMotionEnabled,
-                            updated.turnOffWhenBackDown,
-                            updated.outputGamma,
-                            updated.oscilloscopeAutoTimeAxisEnabled
+                        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+                            context = this,
+                            config = updated.toCaptureConfig()
                         )
                         SettingsPreferences.save(this, updated)
                     },
@@ -1301,37 +1057,9 @@ class MainActivity : ComponentActivity() {
         if (routeAware != CaptureUiStore.state) {
             CaptureUiStore.update { routeAware }
         }
-        GlyphVisualizerService.updateSensitivity(
-            this,
-            routeAware.sensitivity,
-            routeAware.noiseGate,
-            routeAware.dynamics,
-            routeAware.toneFocus,
-            routeAware.smoothing,
-            routeAware.smoothingBalance,
-            routeAware.reverseDirection,
-            routeAware.peakHoldEnabled,
-            routeAware.glyphMode,
-            routeAware.fillOtherGlyphLights,
-            routeAware.phone1ClassicCSplitEnabled,
-            routeAware.binaryMode,
-            routeAware.baseIndicatorEnabled,
-            routeAware.levelAutoScale,
-            routeAware.spectrumAutoScale,
-            routeAware.allBrightnessAutoScale,
-            routeAware.autoScaleWindowSeconds,
-            routeAware.autoScaleOffset,
-            routeAware.latencyMs,
-            routeAware.mediaPlaybackOnlyEnabled,
-            routeAware.experimentalVisualizerStabilizationEnabled,
-            routeAware.experimentalVisualizerSignalWatchdogEnabled,
-            routeAware.experimentalSpectrumDecayEnabled,
-            routeAware.experimentalPerformanceOptimizationsEnabled,
-            routeAware.matrixSmoothMotionEnabled,
-            routeAware.turnOffWhenBackDown,
-            routeAware.outputGamma,
-            routeAware.oscilloscopeAutoTimeAxisEnabled,
-            recordingLightIncluded = routeAware.recordingLightIncluded
+        CaptureCommandGateway.updateConfig(
+            context = this,
+            config = routeAware.toCaptureConfig()
         )
         SettingsPreferences.save(this, routeAware)
     }
@@ -1377,37 +1105,9 @@ class MainActivity : ComponentActivity() {
             )
         }
         val updated = CaptureUiStore.state
-        GlyphVisualizerService.updateSensitivity(
-            this,
-            updated.sensitivity,
-            updated.noiseGate,
-            updated.dynamics,
-            updated.toneFocus,
-            updated.smoothing,
-            updated.smoothingBalance,
-            updated.reverseDirection,
-            updated.peakHoldEnabled,
-            updated.glyphMode,
-            updated.fillOtherGlyphLights,
-            updated.phone1ClassicCSplitEnabled,
-            updated.binaryMode,
-            updated.baseIndicatorEnabled,
-            updated.levelAutoScale,
-            updated.spectrumAutoScale,
-            updated.allBrightnessAutoScale,
-            updated.autoScaleWindowSeconds,
-            updated.autoScaleOffset,
-            updated.latencyMs,
-            updated.mediaPlaybackOnlyEnabled,
-            updated.experimentalVisualizerStabilizationEnabled,
-            updated.experimentalVisualizerSignalWatchdogEnabled,
-            updated.experimentalSpectrumDecayEnabled,
-            updated.experimentalPerformanceOptimizationsEnabled,
-            updated.matrixSmoothMotionEnabled,
-            updated.turnOffWhenBackDown,
-            updated.outputGamma,
-            updated.oscilloscopeAutoTimeAxisEnabled,
-            recordingLightIncluded = updated.recordingLightIncluded
+        CaptureCommandGateway.updateConfig(
+            context = this,
+            config = updated.toCaptureConfig()
         )
         SettingsPreferences.save(this, updated)
     }
@@ -1526,36 +1226,9 @@ class MainActivity : ComponentActivity() {
         val safeEnabled = enabled && MediaSessionPlaybackGate.hasNotificationAccess(this)
         val updated = CaptureUiStore.state.copy(mediaPlaybackOnlyEnabled = safeEnabled)
         CaptureUiStore.update { updated }
-        GlyphVisualizerService.updateSensitivity(
-            this,
-            updated.sensitivity,
-            updated.noiseGate,
-            updated.dynamics,
-            updated.toneFocus,
-            updated.smoothing,
-            updated.smoothingBalance,
-            updated.reverseDirection,
-            updated.peakHoldEnabled,
-            updated.glyphMode,
-            updated.fillOtherGlyphLights,
-            updated.phone1ClassicCSplitEnabled,
-            updated.binaryMode,
-            updated.baseIndicatorEnabled,
-            updated.levelAutoScale,
-            updated.spectrumAutoScale,
-            updated.allBrightnessAutoScale,
-            updated.autoScaleWindowSeconds,
-            updated.autoScaleOffset,
-            updated.latencyMs,
-            updated.mediaPlaybackOnlyEnabled,
-            updated.experimentalVisualizerStabilizationEnabled,
-            updated.experimentalVisualizerSignalWatchdogEnabled,
-            updated.experimentalSpectrumDecayEnabled,
-            updated.experimentalPerformanceOptimizationsEnabled,
-            updated.matrixSmoothMotionEnabled,
-            updated.turnOffWhenBackDown,
-            updated.outputGamma,
-            updated.oscilloscopeAutoTimeAxisEnabled
+        CaptureCommandGateway.updateConfigPreservingRecordingLight(
+            context = this,
+            config = updated.toCaptureConfig()
         )
         SettingsPreferences.save(this, updated)
     }
@@ -1689,38 +1362,10 @@ class MainActivity : ComponentActivity() {
                 "MainActivity",
                 "Dispatching Visualizer start to service: glyphMode=${uiState.glyphMode} latencyMs=${uiState.latencyMs} btLikely=${AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this)}"
             )
-            GlyphVisualizerService.startVisualizer(
-                this,
-                uiState.sensitivity,
-                uiState.noiseGate,
-                uiState.dynamics,
-                uiState.toneFocus,
-                uiState.smoothing,
-                uiState.smoothingBalance,
-                uiState.reverseDirection,
-                uiState.peakHoldEnabled,
-                uiState.glyphMode,
-                uiState.fillOtherGlyphLights,
-                uiState.phone1ClassicCSplitEnabled,
-                uiState.binaryMode,
-                uiState.baseIndicatorEnabled,
-                uiState.levelAutoScale,
-                uiState.spectrumAutoScale,
-                uiState.allBrightnessAutoScale,
-                uiState.autoScaleWindowSeconds,
-                uiState.autoScaleOffset,
-                uiState.latencyMs,
-                uiState.mediaPlaybackOnlyEnabled,
-                uiState.experimentalVisualizerStabilizationEnabled,
-                uiState.experimentalVisualizerSignalWatchdogEnabled,
-                uiState.experimentalSpectrumDecayEnabled,
-                uiState.experimentalPerformanceOptimizationsEnabled,
-                uiState.matrixSmoothMotionEnabled,
-                uiState.turnOffWhenBackDown,
-                uiState.outputGamma,
-                uiState.oscilloscopeAutoTimeAxisEnabled,
-                recordingLightIncluded = uiState.recordingLightIncluded,
-                startSource = VisualizerStartSource.APP
+            CaptureCommandGateway.startVisualizer(
+                context = this,
+                config = uiState.toCaptureConfig(),
+                source = VisualizerStartSource.APP
             )
             AppLogger.i(
                 "MainActivity",

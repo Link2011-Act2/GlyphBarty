@@ -53,38 +53,10 @@ class GlyphTileService : TileService() {
                 autoEnableOnStart = s.autoEnablePhone1GlyphDebugOnStart
             )
             val resolved = s.withResolvedLatency(AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this))
-            GlyphVisualizerService.startVisualizer(
+            CaptureCommandGateway.startVisualizer(
                 context = this,
-                sensitivity = resolved.sensitivity,
-                noiseGate = resolved.noiseGate,
-                dynamics = resolved.dynamics,
-                toneFocus = resolved.toneFocus,
-                smoothing = resolved.smoothing,
-                smoothingBalance = resolved.smoothingBalance,
-                reverseDirection = resolved.reverseDirection,
-                peakHoldEnabled = resolved.peakHoldEnabled,
-                glyphMode = resolved.glyphMode,
-                fillOtherGlyphLights = resolved.fillOtherGlyphLights,
-                phone1ClassicCSplitEnabled = resolved.phone1ClassicCSplitEnabled,
-                binaryMode = resolved.binaryMode,
-                baseIndicatorEnabled = resolved.baseIndicatorEnabled,
-                recordingLightIncluded = resolved.recordingLightIncluded,
-                levelAutoScale = resolved.levelAutoScale,
-                spectrumAutoScale = resolved.spectrumAutoScale,
-                allBrightnessAutoScale = resolved.allBrightnessAutoScale,
-                autoScaleWindowSeconds = resolved.autoScaleWindowSeconds,
-                autoScaleOffset = resolved.autoScaleOffset,
-                latencyMs = resolved.latencyMs,
-                mediaPlaybackOnlyEnabled = resolved.mediaPlaybackOnlyEnabled,
-                experimentalVisualizerStabilizationEnabled = resolved.experimentalVisualizerStabilizationEnabled,
-                experimentalVisualizerSignalWatchdogEnabled = resolved.experimentalVisualizerSignalWatchdogEnabled,
-                experimentalSpectrumDecayEnabled = resolved.experimentalSpectrumDecayEnabled,
-                experimentalPerformanceOptimizationsEnabled = resolved.experimentalPerformanceOptimizationsEnabled,
-                matrixSmoothMotionEnabled = resolved.matrixSmoothMotionEnabled,
-                outputGamma = resolved.outputGamma,
-                oscilloscopeAutoTimeAxisEnabled = resolved.oscilloscopeAutoTimeAxisEnabled,
-                turnOffWhenBackDown = resolved.turnOffWhenBackDown,
-                startSource = VisualizerStartSource.QUICK_SETTINGS
+                config = resolved.toCaptureConfig(),
+                source = VisualizerStartSource.QUICK_SETTINGS
             )
         }
 

@@ -61,49 +61,6 @@ class GlyphVisualizerService : Service() {
         private const val ALERT_CHANNEL_ID = "glyph_visualizer_alerts"
         private const val ALERT_NOTIFICATION_ID = 43
 
-        private const val ACTION_START_VISUALIZER = "jp.linkserver.glyphvisualizer.action.START_VISUALIZER"
-        private const val ACTION_START_MEDIA_PROJECTION = "jp.linkserver.glyphvisualizer.action.START_MEDIA_PROJECTION"
-        private const val ACTION_STOP = "jp.linkserver.glyphvisualizer.action.STOP"
-        private const val ACTION_UPDATE_SENSITIVITY = "jp.linkserver.glyphvisualizer.action.UPDATE_SENSITIVITY"
-        private const val EXTRA_RESULT_CODE = "extra_result_code"
-        private const val EXTRA_RESULT_DATA = "extra_result_data"
-        private const val EXTRA_SENSITIVITY = "extra_sensitivity"
-        private const val EXTRA_NOISE_GATE = "extra_noise_gate"
-        private const val EXTRA_DYNAMICS = "extra_dynamics"
-        private const val EXTRA_OUTPUT_GAMMA = "extra_output_gamma"
-        private const val EXTRA_TONE_FOCUS = "extra_tone_focus"
-        private const val EXTRA_SMOOTHING = "extra_smoothing"
-        private const val EXTRA_SMOOTHING_BALANCE = "extra_smoothing_balance"
-        private const val EXTRA_REVERSE_DIRECTION = "extra_reverse_direction"
-        private const val EXTRA_PEAK_HOLD_ENABLED = "extra_peak_hold_enabled"
-        private const val EXTRA_GLYPH_MODE = "extra_glyph_mode"
-        private const val EXTRA_FILL_OTHER_GLYPH_LIGHTS = "extra_fill_other_glyph_lights"
-        private const val EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED =
-            "extra_phone1_classic_c_split_enabled"
-        private const val EXTRA_BINARY_MODE = "extra_binary_mode"
-        private const val EXTRA_BASE_INDICATOR_ENABLED = "extra_base_indicator_enabled"
-        private const val EXTRA_RECORDING_LIGHT_INCLUDED = "extra_recording_light_included"
-        private const val EXTRA_LEVEL_AUTO_SCALE = "extra_level_auto_scale"
-        private const val EXTRA_SPECTRUM_AUTO_SCALE = "extra_spectrum_auto_scale"
-        private const val EXTRA_ALL_BRIGHTNESS_AUTO_SCALE = "extra_all_brightness_auto_scale"
-        private const val EXTRA_AUTO_SCALE_WINDOW_SECONDS = "extra_auto_scale_window_seconds"
-        private const val EXTRA_AUTO_SCALE_OFFSET = "extra_auto_scale_offset"
-        private const val EXTRA_LATENCY_MS = "extra_latency_ms"
-        private const val EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED = "extra_media_playback_only_enabled"
-        private const val EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED =
-            "extra_experimental_visualizer_stabilization_enabled"
-        private const val EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED =
-            "extra_experimental_visualizer_signal_watchdog_enabled"
-        private const val EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED =
-            "extra_experimental_spectrum_decay_enabled"
-        private const val EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED =
-            "extra_experimental_performance_optimizations_enabled"
-        private const val EXTRA_MATRIX_SMOOTH_MOTION_ENABLED =
-            "extra_matrix_smooth_motion_enabled"
-        private const val EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
-            "extra_oscilloscope_auto_time_axis_enabled"
-        private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
-        private const val EXTRA_START_SOURCE = "extra_start_source"
         private const val BACK_DOWN_ENABLE_Z_THRESHOLD = 8.5f
         private const val BACK_DOWN_DISABLE_Z_THRESHOLD = 7.5f
         private const val ACTIVE_MODE_VISUALIZER = "VISUALIZER"
@@ -151,51 +108,44 @@ class GlyphVisualizerService : Service() {
             recordingLightIncluded: Boolean = false,
             startSource: VisualizerStartSource = VisualizerStartSource.APP
         ) {
-            val intent = Intent(context, GlyphVisualizerService::class.java).apply {
-                action = ACTION_START_VISUALIZER
-                putExtra(EXTRA_SENSITIVITY, sensitivity)
-                putExtra(EXTRA_NOISE_GATE, noiseGate)
-                putExtra(EXTRA_DYNAMICS, dynamics)
-                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
-                putExtra(EXTRA_TONE_FOCUS, toneFocus)
-                putExtra(EXTRA_SMOOTHING, smoothing)
-                putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                putExtra(EXTRA_GLYPH_MODE, glyphMode)
-                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
-                putExtra(EXTRA_BINARY_MODE, binaryMode)
-                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
-                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                putExtra(EXTRA_LATENCY_MS, latencyMs)
-                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
-                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
-                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
-                putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-                putExtra(EXTRA_START_SOURCE, startSource.name)
-            }
-            try {
-                context.startForegroundService(intent)
-            } catch (error: Throwable) {
-                AppLogger.e(TAG, "startVisualizer failed to start service", error)
-                val msg = context.getString(
-                    R.string.status_visualizer_service_start_failed,
-                    error.message ?: context.getString(R.string.status_unknown_error)
-                )
-                CaptureUiStore.update {
-                    it.copy(statusText = msg, logMessage = msg)
-                }
-            }
+            CaptureCommandGateway.startVisualizer(
+                context = context,
+                config = CaptureConfig(
+                    sensitivity = sensitivity,
+                    noiseGate = noiseGate,
+                    dynamics = dynamics,
+                    outputGamma = outputGamma,
+                    toneFocus = toneFocus,
+                    smoothing = smoothing,
+                    smoothingBalance = smoothingBalance,
+                    reverseDirection = reverseDirection,
+                    peakHoldEnabled = peakHoldEnabled,
+                    glyphMode = glyphMode,
+                    fillOtherGlyphLights = fillOtherGlyphLights,
+                    phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+                    binaryMode = binaryMode,
+                    baseIndicatorEnabled = baseIndicatorEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
+                    levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    autoScaleWindowSeconds = autoScaleWindowSeconds,
+                    autoScaleOffset = autoScaleOffset,
+                    latencyMs = latencyMs,
+                    mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                    experimentalVisualizerStabilizationEnabled =
+                        experimentalVisualizerStabilizationEnabled,
+                    experimentalVisualizerSignalWatchdogEnabled =
+                        experimentalVisualizerSignalWatchdogEnabled,
+                    experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                    experimentalPerformanceOptimizationsEnabled =
+                        experimentalPerformanceOptimizationsEnabled,
+                    matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                    oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+                    turnOffWhenBackDown = turnOffWhenBackDown
+                ),
+                source = startSource
+            )
         }
 
         fun startMediaProjection(
@@ -232,52 +182,45 @@ class GlyphVisualizerService : Service() {
             oscilloscopeAutoTimeAxisEnabled: Boolean = false,
             recordingLightIncluded: Boolean = false
         ) {
-            val intent = Intent(context, GlyphVisualizerService::class.java).apply {
-                action = ACTION_START_MEDIA_PROJECTION
-                putExtra(EXTRA_RESULT_CODE, resultCode)
-                putExtra(EXTRA_RESULT_DATA, data)
-                putExtra(EXTRA_SENSITIVITY, sensitivity)
-                putExtra(EXTRA_NOISE_GATE, noiseGate)
-                putExtra(EXTRA_DYNAMICS, dynamics)
-                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
-                putExtra(EXTRA_TONE_FOCUS, toneFocus)
-                putExtra(EXTRA_SMOOTHING, smoothing)
-                putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                putExtra(EXTRA_GLYPH_MODE, glyphMode)
-                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
-                putExtra(EXTRA_BINARY_MODE, binaryMode)
-                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, recordingLightIncluded)
-                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                putExtra(EXTRA_LATENCY_MS, latencyMs)
-                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
-                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
-                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
-                putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-            }
-            try {
-                context.startForegroundService(intent)
-            } catch (error: Throwable) {
-                AppLogger.e(TAG, "startMediaProjection failed to start service", error)
-                val msg = context.getString(
-                    R.string.status_media_projection_service_start_failed,
-                    error.message ?: context.getString(R.string.status_unknown_error)
+            CaptureCommandGateway.startMediaProjection(
+                context = context,
+                resultCode = resultCode,
+                data = data,
+                config = CaptureConfig(
+                    sensitivity = sensitivity,
+                    noiseGate = noiseGate,
+                    dynamics = dynamics,
+                    outputGamma = outputGamma,
+                    toneFocus = toneFocus,
+                    smoothing = smoothing,
+                    smoothingBalance = smoothingBalance,
+                    reverseDirection = reverseDirection,
+                    peakHoldEnabled = peakHoldEnabled,
+                    glyphMode = glyphMode,
+                    fillOtherGlyphLights = fillOtherGlyphLights,
+                    phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+                    binaryMode = binaryMode,
+                    baseIndicatorEnabled = baseIndicatorEnabled,
+                    recordingLightIncluded = recordingLightIncluded,
+                    levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    autoScaleWindowSeconds = autoScaleWindowSeconds,
+                    autoScaleOffset = autoScaleOffset,
+                    latencyMs = latencyMs,
+                    mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                    experimentalVisualizerStabilizationEnabled =
+                        experimentalVisualizerStabilizationEnabled,
+                    experimentalVisualizerSignalWatchdogEnabled =
+                        experimentalVisualizerSignalWatchdogEnabled,
+                    experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                    experimentalPerformanceOptimizationsEnabled =
+                        experimentalPerformanceOptimizationsEnabled,
+                    matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                    oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+                    turnOffWhenBackDown = turnOffWhenBackDown
                 )
-                CaptureUiStore.update {
-                    it.copy(statusText = msg, logMessage = msg)
-                }
-            }
+            )
         }
 
         fun updateSensitivity(
@@ -312,59 +255,49 @@ class GlyphVisualizerService : Service() {
             oscilloscopeAutoTimeAxisEnabled: Boolean = false,
             recordingLightIncluded: Boolean? = null
         ) {
-            if (!CaptureUiStore.state.isCapturing) {
-                return
-            }
-            val intent = Intent(context, GlyphVisualizerService::class.java).apply {
-                action = ACTION_UPDATE_SENSITIVITY
-                putExtra(EXTRA_SENSITIVITY, sensitivity)
-                putExtra(EXTRA_NOISE_GATE, noiseGate)
-                putExtra(EXTRA_DYNAMICS, dynamics)
-                putExtra(EXTRA_OUTPUT_GAMMA, outputGamma)
-                putExtra(EXTRA_TONE_FOCUS, toneFocus)
-                putExtra(EXTRA_SMOOTHING, smoothing)
-                putExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                putExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                putExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                putExtra(EXTRA_GLYPH_MODE, glyphMode)
-                putExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                putExtra(EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED, phone1ClassicCSplitEnabled)
-                putExtra(EXTRA_BINARY_MODE, binaryMode)
-                putExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                recordingLightIncluded?.let {
-                    putExtra(EXTRA_RECORDING_LIGHT_INCLUDED, it)
-                }
-                putExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                putExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                putExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                putExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                putExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                putExtra(EXTRA_LATENCY_MS, latencyMs)
-                putExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED, experimentalVisualizerStabilizationEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED, experimentalVisualizerSignalWatchdogEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED, experimentalSpectrumDecayEnabled)
-                putExtra(EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED, experimentalPerformanceOptimizationsEnabled)
-                putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, matrixSmoothMotionEnabled)
-                putExtra(EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED, oscilloscopeAutoTimeAxisEnabled)
-                putExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
-            }
-            try {
-                context.startService(intent)
-            } catch (error: Throwable) {
-                AppLogger.w(TAG, "updateSensitivity could not reach service", error)
-            }
+            CaptureCommandGateway.updateLegacyConfig(
+                context = context,
+                config = CaptureConfig(
+                    sensitivity = sensitivity,
+                    noiseGate = noiseGate,
+                    dynamics = dynamics,
+                    outputGamma = outputGamma,
+                    toneFocus = toneFocus,
+                    smoothing = smoothing,
+                    smoothingBalance = smoothingBalance,
+                    reverseDirection = reverseDirection,
+                    peakHoldEnabled = peakHoldEnabled,
+                    glyphMode = glyphMode,
+                    fillOtherGlyphLights = fillOtherGlyphLights,
+                    phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+                    binaryMode = binaryMode,
+                    baseIndicatorEnabled = baseIndicatorEnabled,
+                    recordingLightIncluded = recordingLightIncluded ?: false,
+                    levelAutoScale = levelAutoScale,
+                    spectrumAutoScale = spectrumAutoScale,
+                    allBrightnessAutoScale = allBrightnessAutoScale,
+                    autoScaleWindowSeconds = autoScaleWindowSeconds,
+                    autoScaleOffset = autoScaleOffset,
+                    latencyMs = latencyMs,
+                    mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+                    experimentalVisualizerStabilizationEnabled =
+                        experimentalVisualizerStabilizationEnabled,
+                    experimentalVisualizerSignalWatchdogEnabled =
+                        experimentalVisualizerSignalWatchdogEnabled,
+                    experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+                    experimentalPerformanceOptimizationsEnabled =
+                        experimentalPerformanceOptimizationsEnabled,
+                    matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+                    oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+                    turnOffWhenBackDown = turnOffWhenBackDown
+                ),
+                encodedOutputGamma = outputGamma,
+                encodedRecordingLightIncluded = recordingLightIncluded
+            )
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, GlyphVisualizerService::class.java).apply {
-                action = ACTION_STOP
-            }
-            try {
-                context.startService(intent)
-            } catch (error: Throwable) {
-                AppLogger.w(TAG, "stop could not reach service", error)
-            }
+            CaptureCommandGateway.stop(context)
         }
 
         fun isRunning(context: Context): Boolean {
@@ -596,72 +529,15 @@ class GlyphVisualizerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START_VISUALIZER -> {
+        when (val command = CaptureIntentCommandCodec.decode(intent, currentCaptureConfig())) {
+            is CaptureCommand.StartVisualizer -> {
                 try {
                     val actionReceivedAt = SystemClock.elapsedRealtime()
                     visualizerStartRequestId += 1
                     visualizerStartActionAtMs = actionReceivedAt
-                    visualizerStartSource = intent.getStringExtra(EXTRA_START_SOURCE)
-                        ?.let { savedName ->
-                            VisualizerStartSource.entries.firstOrNull { it.name == savedName }
-                        }
-                        ?: VisualizerStartSource.APP
+                    visualizerStartSource = command.source
                     clearSpatialAudioWarning()
-                    sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
-                    noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
-                    dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
-                    intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
-                    toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
-                    smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
-                    smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                    reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                    peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                    glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
-                    fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                    phone1ClassicCSplitEnabled = intent.getBooleanExtra(
-                        EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
-                        phone1ClassicCSplitEnabled
-                    )
-                    binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
-                    baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                    recordingLightIncluded = intent.getBooleanExtra(
-                        EXTRA_RECORDING_LIGHT_INCLUDED,
-                        recordingLightIncluded
-                    )
-                    levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                    spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                    allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                    autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                    autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                    latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
-                    mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                    experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
-                        EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
-                        experimentalVisualizerStabilizationEnabled
-                    )
-                    experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
-                        EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
-                        experimentalVisualizerSignalWatchdogEnabled
-                    )
-                    experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
-                        EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
-                        experimentalSpectrumDecayEnabled
-                    )
-                    experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
-                        EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
-                        experimentalPerformanceOptimizationsEnabled
-                    )
-                    matrixSmoothMotionEnabled = intent.getBooleanExtra(
-                        EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
-                        matrixSmoothMotionEnabled
-                    )
-                    oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
-                        EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
-                        oscilloscopeAutoTimeAxisEnabled
-                    )
-                    WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
-                    turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
+                    applyCaptureConfig(command.config)
                     applyGlyphControllerSettings()
                     AppLogger.i(
                         TAG,
@@ -699,170 +575,34 @@ class GlyphVisualizerService : Service() {
                 }
             }
 
-            ACTION_START_MEDIA_PROJECTION -> {
+            is CaptureCommand.StartMediaProjection -> {
                 visualizerStartRequestId += 1
-                sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
-                noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
-                dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
-                intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
-                toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
-                smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
-                smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
-                fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                phone1ClassicCSplitEnabled = intent.getBooleanExtra(
-                    EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
-                    phone1ClassicCSplitEnabled
-                )
-                binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
-                baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                recordingLightIncluded = intent.getBooleanExtra(
-                    EXTRA_RECORDING_LIGHT_INCLUDED,
-                    recordingLightIncluded
-                )
-                levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
-                mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
-                    experimentalVisualizerStabilizationEnabled
-                )
-                experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
-                    experimentalVisualizerSignalWatchdogEnabled
-                )
-                experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
-                    experimentalSpectrumDecayEnabled
-                )
-                experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
-                    experimentalPerformanceOptimizationsEnabled
-                )
-                matrixSmoothMotionEnabled = intent.getBooleanExtra(
-                    EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
-                    matrixSmoothMotionEnabled
-                )
-                oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
-                    EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
-                    oscilloscopeAutoTimeAxisEnabled
-                )
-                WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
-                turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
+                applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
-                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-                val data = intent.getParcelableExtraCompat<Intent>(EXTRA_RESULT_DATA)
-                if (resultCode != 0 && data != null) {
+                if (command.resultCode != 0 && command.data != null) {
                     startServiceNotification(getString(R.string.notification_mode_media_projection), mediaProjection = true)
                     scheduleGlyphWarmupResync()
-                    startMediaProjectionMode(resultCode, data)
+                    startMediaProjectionMode(command.resultCode, command.data)
                 } else {
                     stopCapture(getString(R.string.status_media_projection_data_missing))
                     stopSelf()
                 }
             }
 
-            ACTION_UPDATE_SENSITIVITY -> {
+            is CaptureCommand.UpdateConfig -> {
                 if (!CaptureUiStore.state.isCapturing) {
                     AppLogger.i(TAG, "Discarding settings update because capture is no longer active")
                     stopSelf(startId)
                     return START_NOT_STICKY
                 }
-                sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, sensitivity)
-                noiseGate = intent.getFloatExtra(EXTRA_NOISE_GATE, noiseGate)
-                dynamics = intent.getFloatExtra(EXTRA_DYNAMICS, dynamics)
-                intent.getFloatExtra(EXTRA_OUTPUT_GAMMA, Float.NaN).let { if (!it.isNaN()) outputGamma = it }
-                toneFocus = intent.getFloatExtra(EXTRA_TONE_FOCUS, toneFocus)
-                smoothing = intent.getFloatExtra(EXTRA_SMOOTHING, smoothing)
-                smoothingBalance = intent.getFloatExtra(EXTRA_SMOOTHING_BALANCE, smoothingBalance)
-                reverseDirection = intent.getBooleanExtra(EXTRA_REVERSE_DIRECTION, reverseDirection)
-                peakHoldEnabled = intent.getBooleanExtra(EXTRA_PEAK_HOLD_ENABLED, peakHoldEnabled)
-                glyphMode = intent.getStringExtra(EXTRA_GLYPH_MODE) ?: glyphMode
-                fillOtherGlyphLights = intent.getBooleanExtra(EXTRA_FILL_OTHER_GLYPH_LIGHTS, fillOtherGlyphLights)
-                phone1ClassicCSplitEnabled = intent.getBooleanExtra(
-                    EXTRA_PHONE1_CLASSIC_C_SPLIT_ENABLED,
-                    phone1ClassicCSplitEnabled
-                )
-                binaryMode = intent.getBooleanExtra(EXTRA_BINARY_MODE, binaryMode)
-                baseIndicatorEnabled = intent.getBooleanExtra(EXTRA_BASE_INDICATOR_ENABLED, baseIndicatorEnabled)
-                recordingLightIncluded = intent.getBooleanExtra(
-                    EXTRA_RECORDING_LIGHT_INCLUDED,
-                    recordingLightIncluded
-                )
-                levelAutoScale = intent.getBooleanExtra(EXTRA_LEVEL_AUTO_SCALE, levelAutoScale)
-                spectrumAutoScale = intent.getBooleanExtra(EXTRA_SPECTRUM_AUTO_SCALE, spectrumAutoScale)
-                allBrightnessAutoScale = intent.getBooleanExtra(EXTRA_ALL_BRIGHTNESS_AUTO_SCALE, allBrightnessAutoScale)
-                autoScaleWindowSeconds = intent.getFloatExtra(EXTRA_AUTO_SCALE_WINDOW_SECONDS, autoScaleWindowSeconds)
-                autoScaleOffset = intent.getFloatExtra(EXTRA_AUTO_SCALE_OFFSET, autoScaleOffset)
-                latencyMs = intent.getFloatExtra(EXTRA_LATENCY_MS, latencyMs)
-                mediaPlaybackOnlyEnabled = intent.getBooleanExtra(EXTRA_MEDIA_PLAYBACK_ONLY_ENABLED, mediaPlaybackOnlyEnabled)
-                experimentalVisualizerStabilizationEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
-                    experimentalVisualizerStabilizationEnabled
-                )
-                experimentalVisualizerSignalWatchdogEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_VISUALIZER_SIGNAL_WATCHDOG_ENABLED,
-                    experimentalVisualizerSignalWatchdogEnabled
-                )
-                experimentalSpectrumDecayEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
-                    experimentalSpectrumDecayEnabled
-                )
-                experimentalPerformanceOptimizationsEnabled = intent.getBooleanExtra(
-                    EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
-                    experimentalPerformanceOptimizationsEnabled
-                )
-                matrixSmoothMotionEnabled = intent.getBooleanExtra(
-                    EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
-                    matrixSmoothMotionEnabled
-                )
-                oscilloscopeAutoTimeAxisEnabled = intent.getBooleanExtra(
-                    EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
-                    oscilloscopeAutoTimeAxisEnabled
-                )
-                WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
-                turnOffWhenBackDown = intent.getBooleanExtra(EXTRA_TURN_OFF_WHEN_BACK_DOWN, turnOffWhenBackDown)
+                applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
-                CaptureUiStore.update {
-                    it.copy(
-                        sensitivity = sensitivity,
-                        noiseGate = noiseGate,
-                        dynamics = dynamics,
-                        outputGamma = outputGamma,
-                        toneFocus = toneFocus,
-                        smoothing = smoothing,
-                        smoothingBalance = smoothingBalance,
-                        reverseDirection = reverseDirection,
-                        peakHoldEnabled = peakHoldEnabled,
-                        glyphMode = glyphMode,
-                        fillOtherGlyphLights = fillOtherGlyphLights,
-                        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
-                        binaryMode = binaryMode,
-                        baseIndicatorEnabled = baseIndicatorEnabled,
-                        recordingLightIncluded = recordingLightIncluded,
-                        levelAutoScale = levelAutoScale,
-                        spectrumAutoScale = spectrumAutoScale,
-                        autoScaleWindowSeconds = autoScaleWindowSeconds,
-                        autoScaleOffset = autoScaleOffset,
-                        allBrightnessAutoScale = allBrightnessAutoScale,
-                        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
-                        experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
-                        experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
-                        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
-                        experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
-                        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
-                        turnOffWhenBackDown = turnOffWhenBackDown
-                    )
+                CaptureUiStore.update { state ->
+                    command.config.applyToPublishedUiState(state)
                 }
             }
 
-            ACTION_STOP -> {
+            CaptureCommand.Stop -> {
                 visualizerStartRequestId += 1
                 try {
                     stopCapture(getString(R.string.status_capture_stopped_ready))
@@ -873,8 +613,115 @@ class GlyphVisualizerService : Service() {
                 stopSelf()
             }
 
+            null -> Unit
         }
         return START_NOT_STICKY
+    }
+
+    private fun currentCaptureConfig(): CaptureConfig = CaptureConfig(
+        sensitivity = sensitivity,
+        noiseGate = noiseGate,
+        dynamics = dynamics,
+        outputGamma = outputGamma,
+        toneFocus = toneFocus,
+        smoothing = smoothing,
+        smoothingBalance = smoothingBalance,
+        reverseDirection = reverseDirection,
+        peakHoldEnabled = peakHoldEnabled,
+        glyphMode = glyphMode,
+        fillOtherGlyphLights = fillOtherGlyphLights,
+        phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+        binaryMode = binaryMode,
+        baseIndicatorEnabled = baseIndicatorEnabled,
+        recordingLightIncluded = recordingLightIncluded,
+        levelAutoScale = levelAutoScale,
+        spectrumAutoScale = spectrumAutoScale,
+        allBrightnessAutoScale = allBrightnessAutoScale,
+        autoScaleWindowSeconds = autoScaleWindowSeconds,
+        autoScaleOffset = autoScaleOffset,
+        latencyMs = latencyMs,
+        mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+        experimentalVisualizerStabilizationEnabled =
+            experimentalVisualizerStabilizationEnabled,
+        experimentalVisualizerSignalWatchdogEnabled =
+            experimentalVisualizerSignalWatchdogEnabled,
+        experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+        experimentalPerformanceOptimizationsEnabled =
+            experimentalPerformanceOptimizationsEnabled,
+        matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+        oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+        turnOffWhenBackDown = turnOffWhenBackDown
+    )
+
+    private fun applyCaptureConfig(config: CaptureConfig) {
+        sensitivity = config.sensitivity
+        noiseGate = config.noiseGate
+        dynamics = config.dynamics
+        outputGamma = config.outputGamma
+        toneFocus = config.toneFocus
+        smoothing = config.smoothing
+        smoothingBalance = config.smoothingBalance
+        reverseDirection = config.reverseDirection
+        peakHoldEnabled = config.peakHoldEnabled
+        glyphMode = config.glyphMode
+        fillOtherGlyphLights = config.fillOtherGlyphLights
+        phone1ClassicCSplitEnabled = config.phone1ClassicCSplitEnabled
+        binaryMode = config.binaryMode
+        baseIndicatorEnabled = config.baseIndicatorEnabled
+        recordingLightIncluded = config.recordingLightIncluded
+        levelAutoScale = config.levelAutoScale
+        spectrumAutoScale = config.spectrumAutoScale
+        allBrightnessAutoScale = config.allBrightnessAutoScale
+        autoScaleWindowSeconds = config.autoScaleWindowSeconds
+        autoScaleOffset = config.autoScaleOffset
+        latencyMs = config.latencyMs
+        mediaPlaybackOnlyEnabled = config.mediaPlaybackOnlyEnabled
+        experimentalVisualizerStabilizationEnabled =
+            config.experimentalVisualizerStabilizationEnabled
+        experimentalVisualizerSignalWatchdogEnabled =
+            config.experimentalVisualizerSignalWatchdogEnabled
+        experimentalSpectrumDecayEnabled = config.experimentalSpectrumDecayEnabled
+        experimentalPerformanceOptimizationsEnabled =
+            config.experimentalPerformanceOptimizationsEnabled
+        matrixSmoothMotionEnabled = config.matrixSmoothMotionEnabled
+        oscilloscopeAutoTimeAxisEnabled = config.oscilloscopeAutoTimeAxisEnabled
+        WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
+        turnOffWhenBackDown = config.turnOffWhenBackDown
+    }
+
+    private fun CaptureConfig.applyToPublishedUiState(state: CaptureUiState): CaptureUiState {
+        return state.copy(
+            sensitivity = sensitivity,
+            noiseGate = noiseGate,
+            dynamics = dynamics,
+            outputGamma = outputGamma,
+            toneFocus = toneFocus,
+            smoothing = smoothing,
+            smoothingBalance = smoothingBalance,
+            reverseDirection = reverseDirection,
+            peakHoldEnabled = peakHoldEnabled,
+            glyphMode = glyphMode,
+            fillOtherGlyphLights = fillOtherGlyphLights,
+            phone1ClassicCSplitEnabled = phone1ClassicCSplitEnabled,
+            binaryMode = binaryMode,
+            baseIndicatorEnabled = baseIndicatorEnabled,
+            recordingLightIncluded = recordingLightIncluded,
+            levelAutoScale = levelAutoScale,
+            spectrumAutoScale = spectrumAutoScale,
+            autoScaleWindowSeconds = autoScaleWindowSeconds,
+            autoScaleOffset = autoScaleOffset,
+            allBrightnessAutoScale = allBrightnessAutoScale,
+            mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
+            experimentalVisualizerStabilizationEnabled =
+                experimentalVisualizerStabilizationEnabled,
+            experimentalVisualizerSignalWatchdogEnabled =
+                experimentalVisualizerSignalWatchdogEnabled,
+            experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
+            experimentalPerformanceOptimizationsEnabled =
+                experimentalPerformanceOptimizationsEnabled,
+            oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
+            turnOffWhenBackDown = turnOffWhenBackDown
+        )
     }
 
     override fun onDestroy() {
@@ -2267,15 +2114,6 @@ class GlyphVisualizerService : Service() {
             description = getString(R.string.notification_alert_channel_description)
         }
         manager.createNotificationChannels(listOf(serviceChannel, alertChannel))
-    }
-}
-
-private inline fun <reified T> Intent.getParcelableExtraCompat(key: String): T? {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableExtra(key, T::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(key)
     }
 }
 
