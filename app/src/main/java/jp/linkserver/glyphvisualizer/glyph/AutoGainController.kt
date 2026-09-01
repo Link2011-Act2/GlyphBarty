@@ -6,11 +6,31 @@ import kotlin.math.floor
 import kotlin.math.min
 
 internal const val DEFAULT_AUTO_GAIN_TARGET_LEVEL = 0.85f
+internal const val SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS = 5f
+internal const val SPECTRUM_SMOOTHING_ATTACK = 0.4f
+internal const val SPECTRUM_SMOOTHING_RELEASE = 0.15f
 
 internal fun effectiveAutoScaleTargetLevel(offset: Float): Float {
     val clampedOffset = offset.coerceIn(0f, 0.4f)
     return DEFAULT_AUTO_GAIN_TARGET_LEVEL *
         ((1f + clampedOffset) / (1f + (2f * clampedOffset)))
+}
+
+/** Restores absolute magnitude to normalized spectral shape, then applies one shared gain. */
+internal fun applySharedSpectrumGain(
+    normalizedBands: FloatArray,
+    rawPeak: Float,
+    gain: Float,
+    output: FloatArray = FloatArray(normalizedBands.size)
+): FloatArray {
+    require(output.size == normalizedBands.size)
+    val absolutePeak = rawPeak.coerceIn(0f, 1f)
+    val safeGain = gain.coerceAtLeast(0f)
+    val outputPeak = (absolutePeak * safeGain).coerceIn(0f, 1f)
+    for (index in normalizedBands.indices) {
+        output[index] = normalizedBands[index].coerceIn(0f, 1f) * outputPeak
+    }
+    return output
 }
 
 internal class AutoGainController(

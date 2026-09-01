@@ -57,8 +57,8 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE3A, GlyphPatternRegistry.P3A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (4a)
-        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR) to GlyphVisualTuning(dynamics = 0.3f),
-        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR_PEAK) to GlyphVisualTuning(dynamics = 0.3f),
+        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR) to GlyphVisualTuning(dynamics = 0.45f),
+        key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_LINEAR_PEAK) to GlyphVisualTuning(dynamics = 0.45f),
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_CENTER) to GlyphVisualTuning(dynamics = 0.7f),
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE4A, GlyphPatternRegistry.P4A_SPECTRUM_MARKER) to GlyphVisualTuning(dynamics = 0.8f),

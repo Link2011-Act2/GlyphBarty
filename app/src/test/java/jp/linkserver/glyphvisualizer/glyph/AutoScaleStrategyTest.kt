@@ -132,7 +132,8 @@ class AutoScaleStrategyTest {
         assertArrayEquals(floatArrayOf(0.4f, 0.6f), initial, 0.0001f)
         assertArrayEquals(floatArrayOf(19f / 60f, 0.95f), shared, 0.0001f)
         assertEquals(0.3f / 0.9f, shared[0] / shared[1], 0.0001f)
-        assertArrayEquals(floatArrayOf(13f / 60f, 1f), nearPerBand, 0.0001f)
+        val expectedPerBandLow = (1f / 3f) * (1f - SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX)
+        assertArrayEquals(floatArrayOf(expectedPerBandLow, 1f), nearPerBand, 0.0001f)
         assertArrayEquals(floatArrayOf(0.3f, 0.9f), afterReset, 0.0001f)
         assertArrayEquals(floatArrayOf(0.2f, 0.8f), legacy, 0.0001f)
     }
@@ -208,7 +209,8 @@ class AutoScaleStrategyTest {
             )
 
             assertEquals(GlyphPatternKind.SPECTRUM, GlyphPatternRegistry.kindOf(patternId))
-            assertArrayEquals(floatArrayOf(13f / 60f, 1f), output, 0.0001f)
+            val expectedPerBandLow = (1f / 3f) * (1f - SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX)
+            assertArrayEquals(floatArrayOf(expectedPerBandLow, 1f), output, 0.0001f)
         }
     }
 

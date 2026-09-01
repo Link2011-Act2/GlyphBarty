@@ -409,6 +409,7 @@ class OutputMixVisualizer(
                             leftLevel = envelope.level,
                             rightLevel = envelope.level,
                             spectrumBands = spectrumAnalysis.bands,
+                            spectrumRawPeak = spectrumAnalysis.rawPeak,
                             phone4aBaseBandLevel = spectrumAnalysis.rangePeak,
                             waveformSamples = downsampledWaveform,
                             leftWaveformSamples = downsampledWaveform,

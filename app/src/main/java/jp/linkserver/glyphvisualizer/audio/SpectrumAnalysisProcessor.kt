@@ -6,6 +6,7 @@ internal class SpectrumAnalysisProcessor(
 ) {
     private var lastAnalysis = SpectrumAnalyzer.AnalysisResult(
         bands = FloatArray(bandCount),
+        rawPeak = 0f,
         normalizedRangePeak = 0f,
         rangePeak = 0f
     )

@@ -46,11 +46,28 @@ class AudioProcessingCharacterizationTest {
         val unthrottled = processor.analyze(firstSamples, 44_100, false, nowMs = 134L)
 
         assertArrayEquals(direct.bands, first.bands, FLOAT_TOLERANCE)
+        assertEquals(direct.rawPeak, first.rawPeak, FLOAT_TOLERANCE)
         assertEquals(direct.rangePeak, first.rangePeak, FLOAT_TOLERANCE)
         assertSame(first, cached)
         assertNotSame(cached, refreshed)
         assertFalse(first.bands.contentEquals(refreshed.bands))
         assertNotSame(refreshed, unthrottled)
+    }
+
+    @Test
+    fun spectrumAnalysis_keepsNormalizedShapeSeparateFromRawPeak() {
+        val loudSamples = sineWave(sampleCount = 256, cycles = 5f)
+        val quietSamples = FloatArray(loudSamples.size) { index -> loudSamples[index] * 0.25f }
+
+        val loud = SpectrumAnalyzer.analyzeLogBands(loudSamples, 48_000, 25)
+        val quiet = SpectrumAnalyzer.analyzeLogBands(quietSamples, 48_000, 25)
+
+        assertArrayEquals(loud.bands, quiet.bands, FLOAT_TOLERANCE)
+        assertEquals(1f, loud.bands.max(), FLOAT_TOLERANCE)
+        assertEquals(1f, quiet.bands.max(), FLOAT_TOLERANCE)
+        assertTrue(loud.rawPeak > quiet.rawPeak)
+        // Spectrum magnitudes are square-root compressed, so quarter amplitude halves rawPeak.
+        assertEquals(loud.rawPeak * 0.5f, quiet.rawPeak, FLOAT_TOLERANCE)
     }
 
     @Test
@@ -67,6 +84,7 @@ class AudioProcessingCharacterizationTest {
             leftLevel = 0.55f,
             rightLevel = 0.66f,
             spectrumBands = spectrum,
+            spectrumRawPeak = 0.71f,
             phone4aBaseBandLevel = 0.77f,
             waveformSamples = mono,
             leftWaveformSamples = left,
@@ -75,7 +93,7 @@ class AudioProcessingCharacterizationTest {
         var delivered = false
 
         frame.deliverTo { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel,
-                          spectrumBands, phone4aBaseBandLevel, waveformSamples,
+                          spectrumBands, spectrumRawPeak, phone4aBaseBandLevel, waveformSamples,
                           leftWaveformSamples, rightWaveformSamples ->
             assertEquals(frame.level, level, 0f)
             assertEquals(frame.peak, peak, 0f)
@@ -84,6 +102,7 @@ class AudioProcessingCharacterizationTest {
             assertEquals(frame.leftLevel, leftLevel, 0f)
             assertEquals(frame.rightLevel, rightLevel, 0f)
             assertSame(spectrum, spectrumBands)
+            assertEquals(frame.spectrumRawPeak, spectrumRawPeak, 0f)
             assertEquals(frame.phone4aBaseBandLevel, phone4aBaseBandLevel, 0f)
             assertSame(mono, waveformSamples)
             assertSame(left, leftWaveformSamples)

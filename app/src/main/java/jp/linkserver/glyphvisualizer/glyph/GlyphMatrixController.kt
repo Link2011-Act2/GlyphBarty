@@ -463,6 +463,7 @@ class GlyphMatrixController(
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
+        spectrumRawPeak: Float,
         phone4aBaseBandLevel: Float,
         waveformSamples: FloatArray?,
         leftWaveformSamples: FloatArray?,
@@ -479,7 +480,10 @@ class GlyphMatrixController(
             raw
         }
         rawSpectrumPeak = resampled.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
-        this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(resampled))
+        this.spectrumBands = normalizeSpectrumBands(
+            input = applySpectrumSmoothing(resampled),
+            spectrumRawPeak = spectrumRawPeak
+        )
         this.waveformSamples = waveformSamples?.copyOf() ?: FloatArray(0)
         this.leftWaveformSamples = leftWaveformSamples?.copyOf() ?: FloatArray(0)
         this.rightWaveformSamples = rightWaveformSamples?.copyOf() ?: FloatArray(0)
@@ -491,11 +495,13 @@ class GlyphMatrixController(
             smoothedSpectrumBands = input.copyOf()
             return smoothedSpectrumBands
         }
-        val attack = 0.4f
-        val release = 0.15f
         for (i in input.indices) {
             val v = input[i].coerceIn(0f, 1f)
-            val alpha = if (v > smoothedSpectrumBands[i]) attack else release
+            val alpha = if (v > smoothedSpectrumBands[i]) {
+                SPECTRUM_SMOOTHING_ATTACK
+            } else {
+                SPECTRUM_SMOOTHING_RELEASE
+            }
             smoothedSpectrumBands[i] += (v - smoothedSpectrumBands[i]) * alpha
         }
         return smoothedSpectrumBands
@@ -517,8 +523,11 @@ class GlyphMatrixController(
         return out
     }
 
-    private fun normalizeSpectrumBands(input: FloatArray): FloatArray {
-        val framePeak = input.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+    private fun normalizeSpectrumBands(
+        input: FloatArray,
+        spectrumRawPeak: Float
+    ): FloatArray {
+        val rawPeak = spectrumRawPeak.coerceIn(0f, 1f)
         if (!spectrumAutoScaleEnabled) return input
 
         val now = SystemClock.elapsedRealtime()
@@ -533,19 +542,22 @@ class GlyphMatrixController(
         }
 
         val gain = spectrumAutoGain.update(
-            referenceRaw = framePeak,
+            referenceRaw = rawPeak,
             nowMs = now,
             targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
-            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
-            holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
+            gainUpTauSeconds = SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
+            holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
         )
         if (normalizedSpectrumBands.size != input.size) {
             normalizedSpectrumBands = FloatArray(input.size)
         }
 
-        for (i in input.indices) {
-            normalizedSpectrumBands[i] = (input[i].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
-        }
+        applySharedSpectrumGain(
+            normalizedBands = input,
+            rawPeak = rawPeak,
+            gain = gain,
+            output = normalizedSpectrumBands
+        )
         return applyAdaptiveSpectrumVisualDynamics(
             agcBands = normalizedSpectrumBands,
             autoScaleEnabled = spectrumAutoScaleEnabled,

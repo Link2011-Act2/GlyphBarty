@@ -1,5 +1,6 @@
 package jp.linkserver.glyphvisualizer.glyph
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,11 +56,75 @@ class AutoGainControllerTest {
         assertTrue(effectiveAutoScaleTargetLevel(0.4f) < 0.85f)
     }
 
+    @Test
+    fun spectrumGain_usesRawPeakWhilePreservingNormalizedBandShape() {
+        val normalizedBands = floatArrayOf(0.25f, 0.5f, 1f)
+        val quietRawPeak = 0.2f
+        val loudRawPeak = 0.95f
+        val quietGain = initializedAgc(quietRawPeak, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS)
+            .update(quietRawPeak, 220L, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
+        val loudGain = initializedAgc(loudRawPeak, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS)
+            .update(loudRawPeak, 220L, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
+
+        val quietOutput = applySharedSpectrumGain(normalizedBands, quietRawPeak, quietGain)
+        val loudOutput = applySharedSpectrumGain(normalizedBands, loudRawPeak, loudGain)
+
+        assertTrue(quietGain > 1f)
+        assertTrue(loudGain < 1f)
+        assertEquals(0.85f, quietOutput.max(), 0.0001f)
+        assertEquals(0.85f, loudOutput.max(), 0.0001f)
+        assertEquals(normalizedBands[0] / normalizedBands[2], quietOutput[0] / quietOutput[2], 0.0001f)
+        assertEquals(normalizedBands[1] / normalizedBands[2], loudOutput[1] / loudOutput[2], 0.0001f)
+    }
+
+    @Test
+    fun spectrumGain_safetyLimitMatchesTheAbsoluteBandsItScales() {
+        val agc = initializedQuietAgc()
+        val rawPeak = 0.8f
+        val gain = agc.update(rawPeak, 220L, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
+        val output = applySharedSpectrumGain(floatArrayOf(0.25f, 0.5f, 1f), rawPeak, gain)
+
+        assertEquals(0.98f / rawPeak, gain, 0.0001f)
+        assertArrayEquals(floatArrayOf(0.245f, 0.49f, 0.98f), output, 0.0001f)
+    }
+
+    @Test
+    fun spectrumGain_recoversOnFiveSecondTimeScaleInsteadOfThirtySeconds() {
+        val spectrumAgc = initializedQuietAgc()
+        val oldThirtySecondAgc = initializedQuietAgc()
+
+        for (timeMs in 220L..1_220L step 20L) {
+            spectrumAgc.update(0.8f, timeMs, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
+            oldThirtySecondAgc.update(0.8f, timeMs, 0.85f, 30f, false)
+        }
+
+        var spectrumGain = 0f
+        var oldThirtySecondGain = 0f
+        for (timeMs in 1_240L..8_240L step 20L) {
+            spectrumGain = spectrumAgc.update(
+                0.1f,
+                timeMs,
+                0.85f,
+                SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
+                false
+            )
+            oldThirtySecondGain = oldThirtySecondAgc.update(0.1f, timeMs, 0.85f, 30f, false)
+        }
+
+        assertEquals(5f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, 0f)
+        assertTrue(spectrumGain > 3.5f)
+        assertTrue(spectrumGain > oldThirtySecondGain + 1.5f)
+    }
+
     private fun initializedQuietAgc(): AutoGainController {
+        return initializedAgc(0.1f, 30f)
+    }
+
+    private fun initializedAgc(rawPeak: Float, gainUpTauSeconds: Float): AutoGainController {
         return AutoGainController().also { agc ->
-            agc.update(0.1f, 0L, 0.85f, 30f, false)
-            agc.update(0.1f, 100L, 0.85f, 30f, false)
-            agc.update(0.1f, 200L, 0.85f, 30f, false)
+            agc.update(rawPeak, 0L, 0.85f, gainUpTauSeconds, false)
+            agc.update(rawPeak, 100L, 0.85f, gainUpTauSeconds, false)
+            agc.update(rawPeak, 200L, 0.85f, gainUpTauSeconds, false)
         }
     }
 }

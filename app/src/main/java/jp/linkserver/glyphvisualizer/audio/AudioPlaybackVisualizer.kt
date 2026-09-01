@@ -319,6 +319,7 @@ class AudioPlaybackVisualizer(
                             leftLevel = displayedLeft,
                             rightLevel = displayedRight,
                             spectrumBands = spectrumAnalysis.bands,
+                            spectrumRawPeak = spectrumAnalysis.rawPeak,
                             phone4aBaseBandLevel = spectrumAnalysis.rangePeak,
                             waveformSamples = sessionSamplers.mono.downsample(monoSamples),
                             leftWaveformSamples = sessionSamplers.left.downsample(leftSamples),

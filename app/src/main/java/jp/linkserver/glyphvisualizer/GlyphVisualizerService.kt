@@ -368,6 +368,7 @@ class GlyphVisualizerService : Service() {
         val leftLevel: Float,
         val rightLevel: Float,
         val spectrumBands: FloatArray,
+        val spectrumRawPeak: Float,
         val phone4aBaseBandLevel: Float,
         val waveformSamples: FloatArray,
         val leftWaveformSamples: FloatArray,
@@ -808,7 +809,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, spectrumRawPeak, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -818,6 +819,7 @@ class GlyphVisualizerService : Service() {
                     leftLevel,
                     rightLevel,
                     spectrumBands,
+                    spectrumRawPeak,
                     phone4aBaseBandLevel,
                     waveformSamples,
                     leftWaveformSamples,
@@ -957,7 +959,7 @@ class GlyphVisualizerService : Service() {
                 }
                 notifyTile()
             },
-            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
+            onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, spectrumRawPeak, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
                 publishLevel(
                     level,
                     peak,
@@ -967,6 +969,7 @@ class GlyphVisualizerService : Service() {
                     leftLevel,
                     rightLevel,
                     spectrumBands,
+                    spectrumRawPeak,
                     phone4aBaseBandLevel,
                     waveformSamples,
                     leftWaveformSamples,
@@ -1000,6 +1003,7 @@ class GlyphVisualizerService : Service() {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray,
+        spectrumRawPeak: Float,
         phone4aBaseBandLevel: Float,
         waveformSamples: FloatArray,
         leftWaveformSamples: FloatArray,
@@ -1014,6 +1018,7 @@ class GlyphVisualizerService : Service() {
             leftLevel = leftLevel,
             rightLevel = rightLevel,
             spectrumBands = spectrumBands,
+            spectrumRawPeak = spectrumRawPeak,
             phone4aBaseBandLevel = phone4aBaseBandLevel,
             waveformSamples = waveformSamples,
             leftWaveformSamples = leftWaveformSamples,
@@ -1030,6 +1035,7 @@ class GlyphVisualizerService : Service() {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray,
+        spectrumRawPeak: Float,
         phone4aBaseBandLevel: Float,
         waveformSamples: FloatArray,
         leftWaveformSamples: FloatArray,
@@ -1046,6 +1052,7 @@ class GlyphVisualizerService : Service() {
             leftLevel = leftLevel,
             rightLevel = rightLevel,
             spectrumBands = spectrumBands.copyOf(),
+            spectrumRawPeak = spectrumRawPeak,
             phone4aBaseBandLevel = phone4aBaseBandLevel,
             waveformSamples = waveformSamples.copyOf(),
             leftWaveformSamples = leftWaveformSamples.copyOf(),
@@ -1202,6 +1209,7 @@ class GlyphVisualizerService : Service() {
                 frame.leftLevel,
                 frame.rightLevel,
                 frame.spectrumBands,
+                frame.spectrumRawPeak,
                 frame.phone4aBaseBandLevel,
                 frame.waveformSamples,
                 frame.leftWaveformSamples,
@@ -1273,6 +1281,7 @@ class GlyphVisualizerService : Service() {
                 frame.leftLevel,
                 frame.rightLevel,
                 frame.spectrumBands,
+                frame.spectrumRawPeak,
                 frame.phone4aBaseBandLevel,
                 frame.waveformSamples,
                 frame.leftWaveformSamples,
@@ -1311,6 +1320,7 @@ class GlyphVisualizerService : Service() {
             leftLevel = frame.leftLevel,
             rightLevel = frame.rightLevel,
             spectrumBands = frame.spectrumBands,
+            spectrumRawPeak = frame.spectrumRawPeak,
             phone4aBaseBandLevel = frame.phone4aBaseBandLevel,
             waveformSamples = frame.waveformSamples,
             leftWaveformSamples = frame.leftWaveformSamples,

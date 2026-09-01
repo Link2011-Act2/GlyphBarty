@@ -29,6 +29,7 @@ interface GlyphOutputController {
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
+        spectrumRawPeak: Float,
         phone4aBaseBandLevel: Float = 0f,
         waveformSamples: FloatArray? = null,
         leftWaveformSamples: FloatArray? = null,

@@ -556,6 +556,7 @@ class GlyphLightController(
         leftLevel: Float,
         rightLevel: Float,
         spectrumBands: FloatArray?,
+        spectrumRawPeak: Float,
         phone4aBaseBandLevel: Float,
         waveformSamples: FloatArray?,
         leftWaveformSamples: FloatArray?,
@@ -566,7 +567,10 @@ class GlyphLightController(
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
         val raw = spectrumBands ?: FloatArray(0)
         rawSpectrumPeak = raw.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
-        this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(raw))
+        this.spectrumBands = normalizeSpectrumBands(
+            input = applySpectrumSmoothing(raw),
+            spectrumRawPeak = spectrumRawPeak
+        )
     }
 
     private fun applySpectrumSmoothing(input: FloatArray): FloatArray {
@@ -575,21 +579,26 @@ class GlyphLightController(
             smoothedSpectrumBands = input.copyOf()
             return input.copyOf()
         }
-        val attack = 0.4f
-        val release = 0.15f
         for (i in input.indices) {
             val v = input[i].coerceIn(0f, 1f)
-            val alpha = if (v > smoothedSpectrumBands[i]) attack else release
+            val alpha = if (v > smoothedSpectrumBands[i]) {
+                SPECTRUM_SMOOTHING_ATTACK
+            } else {
+                SPECTRUM_SMOOTHING_RELEASE
+            }
             smoothedSpectrumBands[i] += (v - smoothedSpectrumBands[i]) * alpha
         }
         return smoothedSpectrumBands.copyOf()
     }
 
-    private fun normalizeSpectrumBands(input: FloatArray): FloatArray {
-        val framePeak = input.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+    private fun normalizeSpectrumBands(
+        input: FloatArray,
+        spectrumRawPeak: Float
+    ): FloatArray {
+        val rawPeak = spectrumRawPeak.coerceIn(0f, 1f)
         val now = SystemClock.elapsedRealtime()
         if (fillOtherGlyphLightsEnabled) {
-            fillOtherSpectrumBands = normalizeFillOtherSpectrumBands(input, framePeak, now)
+            fillOtherSpectrumBands = normalizeFillOtherSpectrumBands(input, rawPeak, now)
         }
         if (!spectrumAutoScaleEnabled) return input
 
@@ -603,16 +612,14 @@ class GlyphLightController(
         }
 
         val gain = spectrumAutoGain.update(
-            referenceRaw = framePeak,
+            referenceRaw = rawPeak,
             nowMs = now,
             targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
-            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
-            holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
+            gainUpTauSeconds = SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
+            holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
         )
 
-        val agcBands = FloatArray(input.size) { index ->
-            (input[index].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
-        }
+        val agcBands = applySharedSpectrumGain(input, rawPeak, gain)
         return applyAdaptiveSpectrumVisualDynamics(
             agcBands = agcBands,
             autoScaleEnabled = spectrumAutoScaleEnabled,
@@ -629,7 +636,7 @@ class GlyphLightController(
 
     private fun normalizeFillOtherSpectrumBands(
         input: FloatArray,
-        framePeak: Float,
+        rawPeak: Float,
         nowMs: Long
     ): FloatArray {
         if (!isFillOtherAutoScaleEnabledForCurrentMode()) return input
@@ -643,15 +650,13 @@ class GlyphLightController(
         }
 
         val gain = fillOtherSpectrumAutoGain.update(
-            referenceRaw = framePeak,
+            referenceRaw = rawPeak,
             nowMs = nowMs,
             targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
-            gainUpTauSeconds = autoScaleWindowMs / 1_000f,
-            holdGainIncrease = framePeak < SILENCE_ACTIVITY_THRESHOLD
+            gainUpTauSeconds = SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
+            holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
         )
-        val agcBands = FloatArray(input.size) { index ->
-            (input[index].coerceIn(0f, 1f) * gain).coerceIn(0f, 1f)
-        }
+        val agcBands = applySharedSpectrumGain(input, rawPeak, gain)
         val profile = currentTuningProfile()
         val classicPatternId = GlyphPatternRegistry.classicPatternIdFor(profile)
             ?: return agcBands
