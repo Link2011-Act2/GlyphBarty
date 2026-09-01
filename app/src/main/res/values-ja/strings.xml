@@ -409,11 +409,11 @@
     <string name="menu_main">メイン</string>
     <string name="menu_latency">レイテンシ調整</string>
     <string name="menu_extras">おまけ機能</string>
-    <string name="extras_battery_glyph_title">充電残量をGlyphで表示</string>
-    <string name="extras_battery_glyph_description">充電開始時や、充電中に端末を背面を上にして振ったとき、バッテリー残量をGlyph Interfaceに表示します。</string>
+    <string name="extras_battery_glyph_title">Glyph 充電残量メーター</string>
+    <string name="extras_battery_glyph_description">充電開始時にバッテリー残量をGlyph Interfaceに表示します\nGlyphを表にしている際に、本体を振ることでも確認できます</string>
     <string name="extras_battery_glyph_unsupported">この端末はこの機能の対象外です。</string>
-    <string name="battery_glyph_notification_channel">バッテリーGlyph</string>
-    <string name="battery_glyph_notification_title">バッテリーGlyphを監視中</string>
+    <string name="battery_glyph_notification_channel">Glyphバッテリーメーター</string>
+    <string name="battery_glyph_notification_title">充電開始をチェック中</string>
     <string name="battery_glyph_notification_charging">充電中：画面を下にして振ると残量を表示します</string>
     <string name="battery_glyph_notification_waiting">充電開始を待っています</string>
     <string name="menu_experimental">実験</string>

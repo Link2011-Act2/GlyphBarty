@@ -479,7 +479,6 @@ class GlyphVisualizerService : Service() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
-        GlyphSdkSessionCoordinator.claimVisualizer(glyphSessionOwnerToken)
         notificationController = CaptureNotificationController(this)
         notificationController.createChannels()
         val savedSettings = SettingsPreferences.loadEffective(this).state
@@ -513,9 +512,14 @@ class GlyphVisualizerService : Service() {
                         outputDeviceProfile == GlyphDeviceProfile.PHONE4B
             )
         }
+        val glyphSessionGranted = GlyphSdkSessionCoordinator.claimVisualizer(
+            token = glyphSessionOwnerToken,
+            onSuspend = ::suspendGlyphSessionForBattery,
+            onResume = ::resumeGlyphSessionAfterBattery
+        )
         audioPlaybackVisualizer = AudioPlaybackVisualizer(this)
         outputMixVisualizer = OutputMixVisualizer(this)
-        runGlyphControllerCommand { bind() }
+        if (glyphSessionGranted) runGlyphControllerCommand { bind() }
         CaptureUiStore.update {
             it.copy(phone4bEmulationEnabled = savedSettings.phone4bEmulationEnabled)
         }
@@ -660,6 +664,29 @@ class GlyphVisualizerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun usesMatrixOutputThread(): Boolean = matrixOutputHandler != null
+
+    private fun suspendGlyphSessionForBattery() {
+        AppLogger.i(TAG, "Suspending visualizer Glyph session for battery display")
+        runGlyphControllerCommand {
+            try {
+                unbind()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "Could not suspend Glyph session for battery display", error)
+            }
+        }
+    }
+
+    private fun resumeGlyphSessionAfterBattery() {
+        AppLogger.i(TAG, "Resuming visualizer Glyph session after battery display")
+        runGlyphControllerCommand {
+            try {
+                bind()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "Could not resume Glyph session after battery display", error)
+            }
+        }
+        scheduleGlyphWarmupResync()
+    }
 
     private fun runGlyphControllerCommand(action: GlyphOutputController.() -> Unit) {
         val handler = matrixOutputHandler

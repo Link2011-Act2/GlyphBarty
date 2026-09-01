@@ -226,11 +226,9 @@ class BatteryGlyphService : Service(), SensorEventListener {
         val spec = batteryIndicatorSpec ?: return
         val percent = latest.percent
         val ownerToken = Any()
-        val claimed = GlyphSdkSessionCoordinator.tryClaimBattery(ownerToken) {
-            cancelActiveDisplay("visualizer took priority")
-        }
+        val claimed = GlyphSdkSessionCoordinator.tryClaimBattery(ownerToken)
         if (!claimed) {
-            AppLogger.i(TAG, "Battery display skipped because the visualizer owns the Glyph SDK")
+            AppLogger.i(TAG, "Battery display skipped because another battery display owns the Glyph SDK")
             return
         }
 

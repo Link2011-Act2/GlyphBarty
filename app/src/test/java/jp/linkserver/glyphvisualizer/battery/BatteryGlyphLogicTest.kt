@@ -25,8 +25,8 @@ class BatteryGlyphLogicTest {
         assertChannels("23111", (0..23).toList())
         assertChannels("23113", (0..23).toList())
         assertChannels("24111", (30 downTo 20).toList())
-        assertChannels("25111", (0..5).toList())
-        assertChannels("25131", (0..3).toList())
+        assertChannels("25111", (5 downTo 0).toList())
+        assertChannels("25131", (3 downTo 0).toList())
 
         assertNull(
             GlyphDeviceCatalog.definitionForModelCode("22111")

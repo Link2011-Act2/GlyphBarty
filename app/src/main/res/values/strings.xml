@@ -409,11 +409,11 @@
     <string name="menu_main">Main</string>
     <string name="menu_latency">Latency</string>
     <string name="menu_extras">Extras</string>
-    <string name="extras_battery_glyph_title">Show battery level on Glyphs</string>
-    <string name="extras_battery_glyph_description">Shows the battery level on the Glyph Interface when charging starts or when you shake the phone face-down while it is charging.</string>
+    <string name="extras_battery_glyph_title">Glyph Battery Meter</string>
+    <string name="extras_battery_glyph_description">Shows the battery level on the Glyph Interface when charging starts.\nYou can also check it by shaking the phone with the Glyph side facing up.</string>
     <string name="extras_battery_glyph_unsupported">This device is not supported by this feature.</string>
-    <string name="battery_glyph_notification_channel">Battery Glyph</string>
-    <string name="battery_glyph_notification_title">Battery Glyph monitoring</string>
+    <string name="battery_glyph_notification_channel">Glyph Battery Meter</string>
+    <string name="battery_glyph_notification_title">Checking for charging</string>
     <string name="battery_glyph_notification_charging">Charging: shake the face-down phone to show the battery level</string>
     <string name="battery_glyph_notification_waiting">Waiting for charging to start</string>
     <string name="menu_experimental">Experimental</string>

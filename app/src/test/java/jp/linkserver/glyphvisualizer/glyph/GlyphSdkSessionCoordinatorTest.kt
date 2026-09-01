@@ -7,22 +7,50 @@ import org.junit.Test
 
 class GlyphSdkSessionCoordinatorTest {
     @Test
-    fun visualizerPreemptsBatteryAndKeepsExclusiveOwnership() {
+    fun batteryPreemptsVisualizerAndResumesItAfterRelease() {
         val batteryToken = Any()
         val visualizerToken = Any()
-        var preemptions = 0
+        var suspensions = 0
+        var resumptions = 0
 
         assertTrue(
-            GlyphSdkSessionCoordinator.tryClaimBattery(batteryToken) { preemptions += 1 }
+            GlyphSdkSessionCoordinator.claimVisualizer(
+                token = visualizerToken,
+                onSuspend = { suspensions += 1 },
+                onResume = { resumptions += 1 }
+            )
         )
-        GlyphSdkSessionCoordinator.claimVisualizer(visualizerToken)
+        assertTrue(GlyphSdkSessionCoordinator.tryClaimBattery(batteryToken))
 
-        assertEquals(1, preemptions)
-        assertFalse(GlyphSdkSessionCoordinator.tryClaimBattery(Any()) {})
+        assertEquals(1, suspensions)
+        assertEquals(0, resumptions)
+        assertFalse(GlyphSdkSessionCoordinator.tryClaimBattery(Any()))
 
+        GlyphSdkSessionCoordinator.releaseBattery(batteryToken)
+
+        assertEquals(1, resumptions)
         GlyphSdkSessionCoordinator.releaseVisualizer(visualizerToken)
-        val nextBatteryToken = Any()
-        assertTrue(GlyphSdkSessionCoordinator.tryClaimBattery(nextBatteryToken) {})
-        GlyphSdkSessionCoordinator.releaseBattery(nextBatteryToken)
+    }
+
+    @Test
+    fun visualizerStartedDuringBatteryWaitsUntilBatteryFinishes() {
+        val batteryToken = Any()
+        val visualizerToken = Any()
+        var resumptions = 0
+
+        assertTrue(GlyphSdkSessionCoordinator.tryClaimBattery(batteryToken))
+        assertFalse(
+            GlyphSdkSessionCoordinator.claimVisualizer(
+                token = visualizerToken,
+                onSuspend = {},
+                onResume = { resumptions += 1 }
+            )
+        )
+        assertEquals(0, resumptions)
+
+        GlyphSdkSessionCoordinator.releaseBattery(batteryToken)
+
+        assertEquals(1, resumptions)
+        GlyphSdkSessionCoordinator.releaseVisualizer(visualizerToken)
     }
 }

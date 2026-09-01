@@ -109,7 +109,8 @@ object GlyphDeviceCatalog {
                     centerSupported = true
                 ),
                 batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
-                    range = GlyphBatteryIndicatorRange.C
+                    range = GlyphBatteryIndicatorRange.C,
+                    reverse = true
                 )
             )
         ),
@@ -128,7 +129,8 @@ object GlyphDeviceCatalog {
                     centerSupported = true
                 ),
                 batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
-                    range = GlyphBatteryIndicatorRange.C
+                    range = GlyphBatteryIndicatorRange.C,
+                    reverse = true
                 )
             )
         ),

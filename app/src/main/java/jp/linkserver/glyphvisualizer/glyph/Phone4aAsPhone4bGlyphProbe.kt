@@ -22,6 +22,7 @@ class Phone4aAsPhone4bGlyphProbe(
 
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
+            if (!initialized) return
             runCatching {
                 val registered = glyphManager.register(
                     if (emulatedOnPhone4a) Glyph.DEVICE_25111 else Glyph.DEVICE_25131
@@ -56,7 +57,16 @@ class Phone4aAsPhone4bGlyphProbe(
 
     fun bind() {
         if (initialized) return
-        GlyphSdkSessionCoordinator.claimVisualizer(glyphSessionOwnerToken)
+        val granted = GlyphSdkSessionCoordinator.claimVisualizer(
+            token = glyphSessionOwnerToken,
+            onSuspend = ::suspendForBatteryDisplay,
+            onResume = ::resumeAfterBatteryDisplay
+        )
+        if (granted) bindGlyphManager()
+    }
+
+    private fun bindGlyphManager() {
+        if (initialized) return
         initialized = true
         onStatusChanged(appContext.getString(R.string.experimental_p4a_as_p4b_connecting))
         try {
@@ -105,6 +115,7 @@ class Phone4aAsPhone4bGlyphProbe(
     }
 
     fun turnOff() {
+        if (!ensureReady()) return
         runCatching {
             glyphManager.turnOff()
             onStatusChanged(appContext.getString(R.string.experimental_p4a_as_p4b_turned_off))
@@ -120,9 +131,21 @@ class Phone4aAsPhone4bGlyphProbe(
     }
 
     fun release() {
+        releaseGlyphManager()
+        GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
+    }
+
+    private fun suspendForBatteryDisplay() {
+        releaseGlyphManager()
+    }
+
+    private fun resumeAfterBatteryDisplay() {
+        bindGlyphManager()
+    }
+
+    private fun releaseGlyphManager() {
         if (!initialized && !sessionOpen) {
             ready = false
-            GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
             return
         }
         runCatching { glyphManager.turnOff() }
@@ -135,7 +158,6 @@ class Phone4aAsPhone4bGlyphProbe(
             runCatching { glyphManager.unInit() }
             initialized = false
         }
-        GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
     }
 
     private fun ensureReady(): Boolean {
