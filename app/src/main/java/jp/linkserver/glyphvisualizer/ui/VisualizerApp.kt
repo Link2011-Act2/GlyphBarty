@@ -636,6 +636,7 @@ internal fun GlyphVisualizerApp(
                 visible = drawerOpen,
                 currentScreen = screen,
                 nothingStyleEnabled = nothingStyleEnabled,
+                showLatency = !experimentalMainUiEnabled,
                 onDismiss = { drawerOpen = false },
                 onNavigate = { destination ->
                     if (destination == Screen.SETTINGS) {

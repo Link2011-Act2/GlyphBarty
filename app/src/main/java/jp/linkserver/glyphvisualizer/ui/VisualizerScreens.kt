@@ -942,6 +942,12 @@ internal fun LatencyScreenContent(
 ) {
     val scrollState = rememberScrollState()
     val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
+    val experimentalDarkStyle = experimentalStyle && isSystemInDarkTheme()
+    val experimentalDividerColor = if (experimentalDarkStyle) {
+        Color(0xFF3A3A3A)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant
+    }
     var latencySliderValue by rememberSaveable { mutableStateOf(latencyMs) }
 
     LaunchedEffect(latencyMs) {
@@ -949,15 +955,23 @@ internal fun LatencyScreenContent(
     }
 
     Scaffold(
-        containerColor = if (experimentalStyle) Color.Black else Color.Transparent,
+        containerColor = if (experimentalDarkStyle) Color.Black else Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = if (experimentalStyle) Color.Black else Color.Transparent,
-                    navigationIconContentColor = if (experimentalStyle) Color.White else Color.Unspecified,
-                    titleContentColor = if (experimentalStyle) Color.White else Color.Unspecified,
-                    actionIconContentColor = if (experimentalStyle) Color.White else Color.Unspecified
+                    containerColor = if (experimentalDarkStyle) Color.Black else Color.Transparent,
+                    navigationIconContentColor = if (experimentalDarkStyle) {
+                        Color.White
+                    } else {
+                        Color.Unspecified
+                    },
+                    titleContentColor = if (experimentalDarkStyle) Color.White else Color.Unspecified,
+                    actionIconContentColor = if (experimentalDarkStyle) {
+                        Color.White
+                    } else {
+                        Color.Unspecified
+                    }
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack ?: onOpenMenu) {
@@ -991,7 +1005,7 @@ internal fun LatencyScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (experimentalStyle) {
+                    if (experimentalDarkStyle) {
                         Modifier.background(Color.Black)
                     } else {
                         Modifier.background(containerBrush)
@@ -1036,7 +1050,7 @@ internal fun LatencyScreenContent(
                         )
                     ) {
                         if (experimentalStyle) {
-                            HorizontalDivider(color = Color(0xFF3A3A3A))
+                            HorizontalDivider(color = experimentalDividerColor)
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1104,7 +1118,7 @@ internal fun LatencyScreenContent(
                             nothingStyleEnabled = nothingStyleEnabled
                         )
                         if (experimentalStyle) {
-                            HorizontalDivider(color = Color(0xFF3A3A3A))
+                            HorizontalDivider(color = experimentalDividerColor)
                         }
                     }
                 }
@@ -1490,6 +1504,7 @@ internal fun HomeDrawerOverlay(
     visible: Boolean,
     currentScreen: Screen,
     nothingStyleEnabled: Boolean,
+    showLatency: Boolean,
     onDismiss: () -> Unit,
     onNavigate: (Screen) -> Unit
 ) {
@@ -1541,6 +1556,7 @@ internal fun HomeDrawerOverlay(
                 Text(
                     text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.headlineMedium,
+                    fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
@@ -1552,14 +1568,16 @@ internal fun HomeDrawerOverlay(
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.MAIN) }
                 )
-                HomeDrawerItem(
-                    title = stringResource(R.string.menu_latency),
-                    icon = Icons.Default.Equalizer,
-                    selected = currentScreen == Screen.LATENCY,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    selectedColor = selectedColor,
-                    onClick = { onNavigate(Screen.LATENCY) }
-                )
+                if (showLatency) {
+                    HomeDrawerItem(
+                        title = stringResource(R.string.menu_latency),
+                        icon = Icons.Default.Equalizer,
+                        selected = currentScreen == Screen.LATENCY,
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        selectedColor = selectedColor,
+                        onClick = { onNavigate(Screen.LATENCY) }
+                    )
+                }
                 HomeDrawerItem(
                     title = stringResource(R.string.menu_extras),
                     icon = Icons.Default.Star,
