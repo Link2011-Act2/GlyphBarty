@@ -33,6 +33,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
+import jp.linkserver.glyphvisualizer.glyph.GlyphSdkSessionCoordinator
 import jp.linkserver.glyphvisualizer.glyph.glyphAutoScaleStrategy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -296,6 +297,7 @@ class GlyphVisualizerService : Service() {
         }
     }
 
+    private val glyphSessionOwnerToken = Any()
     private lateinit var glyphController: GlyphOutputController
     private lateinit var audioPlaybackVisualizer: AudioPlaybackVisualizer
     private lateinit var outputMixVisualizer: OutputMixVisualizer
@@ -477,6 +479,7 @@ class GlyphVisualizerService : Service() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(this)
+        GlyphSdkSessionCoordinator.claimVisualizer(glyphSessionOwnerToken)
         notificationController = CaptureNotificationController(this)
         notificationController.createChannels()
         val savedSettings = SettingsPreferences.loadEffective(this).state
@@ -640,6 +643,7 @@ class GlyphVisualizerService : Service() {
                 AppLogger.w(TAG, "glyphController.unbind failed in onDestroy", error)
             }
         }
+        GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
         try {
             sensorManager.unregisterListener(gravityListener)
         } catch (_: Throwable) {

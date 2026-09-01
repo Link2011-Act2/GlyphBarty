@@ -9,6 +9,7 @@ internal data class VisualizerUiState(
     val heroTitle: String,
     val deviceProfile: GlyphDeviceProfile,
     val actualDeviceProfile: GlyphDeviceProfile,
+    val batteryGlyphSupported: Boolean,
     val visualDynamics: Float,
     val visualDynamicsOverridden: Boolean,
     val showPhone1GlyphDebugPermissionDialog: Boolean
@@ -62,6 +63,7 @@ internal data class VisualizerSettingsActions(
     val onSpectrumMeterEnabledChanged: (Boolean) -> Unit,
     val onNativeMeterViewEnabledChanged: (Boolean) -> Unit,
     val onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
+    val onBatteryGlyphEnabledChanged: (Boolean) -> Unit,
     val onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,

@@ -181,7 +181,8 @@ fun SettingsToggleEntry(
     onCheckedChange: (Boolean) -> Unit,
     nothingStyle: Boolean,
     position: SettingsGroupPosition,
-    containerColor: Color? = null
+    containerColor: Color? = null,
+    enabled: Boolean = true
 ) {
     SettingsItemSurface(
         nothingStyle = nothingStyle,
@@ -191,6 +192,7 @@ fun SettingsToggleEntry(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .alpha(if (enabled) 1f else 0.38f)
                 .padding(
                     horizontal = 22.dp,
                     vertical = 18.dp
@@ -218,6 +220,7 @@ fun SettingsToggleEntry(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                enabled = enabled,
                 colors = SwitchDefaults.colors()
             )
         }

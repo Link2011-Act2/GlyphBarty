@@ -43,6 +43,7 @@ data class PersistedSettings(
     val nativeMeterViewEnabled: Boolean,
     val mainScreenUiIsolationEnabled: Boolean,
     val automaticUpdateCheckEnabled: Boolean,
+    val batteryGlyphEnabled: Boolean,
     val mediaPlaybackOnlyEnabled: Boolean,
     val experimentalVisualizerStabilizationEnabled: Boolean,
     val experimentalVisualizerSignalWatchdogEnabled: Boolean,
@@ -103,6 +104,7 @@ internal object PersistedSettingsSchema {
         nativeMeterViewEnabled = state.nativeMeterViewEnabled,
         mainScreenUiIsolationEnabled = state.mainScreenUiIsolationEnabled,
         automaticUpdateCheckEnabled = state.automaticUpdateCheckEnabled,
+        batteryGlyphEnabled = state.batteryGlyphEnabled,
         mediaPlaybackOnlyEnabled = state.mediaPlaybackOnlyEnabled,
         experimentalVisualizerStabilizationEnabled =
             state.experimentalVisualizerStabilizationEnabled,
@@ -158,6 +160,7 @@ internal object PersistedSettingsSchema {
         nativeMeterViewEnabled = settings.nativeMeterViewEnabled,
         mainScreenUiIsolationEnabled = settings.mainScreenUiIsolationEnabled,
         automaticUpdateCheckEnabled = settings.automaticUpdateCheckEnabled,
+        batteryGlyphEnabled = settings.batteryGlyphEnabled,
         mediaPlaybackOnlyEnabled = settings.mediaPlaybackOnlyEnabled,
         experimentalVisualizerStabilizationEnabled =
             settings.experimentalVisualizerStabilizationEnabled,
@@ -391,6 +394,10 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.AUTOMATIC_UPDATE_CHECK_ENABLED,
                 defaults.automaticUpdateCheckEnabled
             ),
+            batteryGlyphEnabled = preferences.getBoolean(
+                Keys.BATTERY_GLYPH_ENABLED,
+                defaults.batteryGlyphEnabled
+            ),
             mediaPlaybackOnlyEnabled = preferences.getBoolean(
                 Keys.MEDIA_PLAYBACK_ONLY_ENABLED,
                 defaults.mediaPlaybackOnlyEnabled
@@ -502,6 +509,7 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.AUTOMATIC_UPDATE_CHECK_ENABLED,
                 settings.automaticUpdateCheckEnabled
             )
+            .putBoolean(Keys.BATTERY_GLYPH_ENABLED, settings.batteryGlyphEnabled)
             .putBoolean(Keys.MEDIA_PLAYBACK_ONLY_ENABLED, settings.mediaPlaybackOnlyEnabled)
             .putBoolean(
                 Keys.EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
@@ -613,6 +621,7 @@ internal object PersistedSettingsPreferenceCodec {
         const val NATIVE_METER_VIEW_ENABLED = "native_meter_view_enabled"
         const val MAIN_SCREEN_UI_ISOLATION_ENABLED = "main_screen_ui_isolation_enabled"
         const val AUTOMATIC_UPDATE_CHECK_ENABLED = "automatic_update_check_enabled"
+        const val BATTERY_GLYPH_ENABLED = "battery_glyph_enabled"
         const val MEDIA_PLAYBACK_ONLY_ENABLED = "media_playback_only_enabled"
         const val EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED =
             "experimental_visualizer_stabilization_enabled"

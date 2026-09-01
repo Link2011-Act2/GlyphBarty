@@ -528,6 +528,9 @@ internal fun GlyphVisualizerApp(
                     )
                     Screen.EXTRAS -> ExtrasScreen(
                         nothingStyleEnabled = nothingStyleEnabled,
+                        batteryGlyphEnabled = batteryGlyphEnabled,
+                        batteryGlyphSupported = batteryGlyphSupported,
+                        onBatteryGlyphEnabledChanged = onBatteryGlyphEnabledChanged,
                         onOpenMenu = { drawerOpen = true },
                         onOpenSettings = {
                             settingsReturnScreen = Screen.EXTRAS
@@ -838,6 +841,7 @@ private fun GlyphVisualizerPreview() {
                 heroTitle = "Phone (2)\nGlyph Lights",
                 deviceProfile = GlyphDeviceCatalog.currentProfile(),
                 actualDeviceProfile = GlyphDeviceCatalog.currentProfile(),
+                batteryGlyphSupported = false,
                 visualDynamics = 0f,
                 visualDynamicsOverridden = false,
                 showPhone1GlyphDebugPermissionDialog = false
@@ -870,6 +874,7 @@ private fun GlyphVisualizerPreview() {
                     onSpectrumMeterEnabledChanged = {},
                     onNativeMeterViewEnabledChanged = {},
                     onAutomaticUpdateCheckEnabledChanged = {},
+                    onBatteryGlyphEnabledChanged = {},
                     onMediaPlaybackOnlyEnabledChanged = {},
                     onExperimentalVisualizerStabilizationEnabledChanged = {},
                     onExperimentalVisualizerSignalWatchdogEnabledChanged = {},

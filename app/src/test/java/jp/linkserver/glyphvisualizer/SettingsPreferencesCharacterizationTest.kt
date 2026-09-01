@@ -76,6 +76,7 @@ class SettingsPreferencesCharacterizationTest {
             nativeMeterViewEnabled = false,
             mainScreenUiIsolationEnabled = false,
             automaticUpdateCheckEnabled = true,
+            batteryGlyphEnabled = true,
             mediaPlaybackOnlyEnabled = true,
             experimentalVisualizerStabilizationEnabled = true,
             experimentalVisualizerSignalWatchdogEnabled = false,
@@ -105,6 +106,12 @@ class SettingsPreferencesCharacterizationTest {
         assertTrue(preferences().all["sensitivity"] is Float)
         assertTrue(preferences().all["reverse_direction"] is Boolean)
         assertTrue(preferences().all["glyph_mode"] is String)
+    }
+
+    @Test
+    fun batteryGlyphDefaultsToOffForExistingInstallations() {
+        assertFalse(SettingsPreferences.load(application).batteryGlyphEnabled)
+        assertFalse(preferences().contains("battery_glyph_enabled"))
     }
 
     @Test
@@ -337,6 +344,7 @@ class SettingsPreferencesCharacterizationTest {
         assertEquals(expected.nativeMeterViewEnabled, actual.nativeMeterViewEnabled)
         assertEquals(expected.mainScreenUiIsolationEnabled, actual.mainScreenUiIsolationEnabled)
         assertEquals(expected.automaticUpdateCheckEnabled, actual.automaticUpdateCheckEnabled)
+        assertEquals(expected.batteryGlyphEnabled, actual.batteryGlyphEnabled)
         assertEquals(expected.mediaPlaybackOnlyEnabled, actual.mediaPlaybackOnlyEnabled)
         assertEquals(
             expected.experimentalVisualizerStabilizationEnabled,
@@ -423,6 +431,7 @@ class SettingsPreferencesCharacterizationTest {
             "native_meter_view_enabled",
             "main_screen_ui_isolation_enabled",
             "automatic_update_check_enabled",
+            "battery_glyph_enabled",
             "media_playback_only_enabled",
             "experimental_visualizer_stabilization_enabled",
             "experimental_visualizer_signal_watchdog_enabled",

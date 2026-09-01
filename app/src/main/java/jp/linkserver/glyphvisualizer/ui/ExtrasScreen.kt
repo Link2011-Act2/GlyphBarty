@@ -1,8 +1,10 @@
 package jp.linkserver.glyphvisualizer.ui
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
@@ -17,6 +19,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 
@@ -24,6 +27,9 @@ import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 @Composable
 internal fun ExtrasScreen(
     nothingStyleEnabled: Boolean,
+    batteryGlyphEnabled: Boolean,
+    batteryGlyphSupported: Boolean,
+    onBatteryGlyphEnabledChanged: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -60,10 +66,28 @@ internal fun ExtrasScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-        )
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 18.dp)
+        ) {
+            SettingsToggleEntry(
+                title = stringResource(R.string.extras_battery_glyph_title),
+                description = stringResource(
+                    if (batteryGlyphSupported) {
+                        R.string.extras_battery_glyph_description
+                    } else {
+                        R.string.extras_battery_glyph_unsupported
+                    }
+                ),
+                checked = batteryGlyphEnabled && batteryGlyphSupported,
+                onCheckedChange = onBatteryGlyphEnabledChanged,
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Single,
+                enabled = batteryGlyphSupported
+            )
+        }
     }
 }

@@ -26,6 +26,23 @@ data class GlyphMatrixDeviceSpec(
     val sdkDeviceId: String
 )
 
+enum class GlyphBatteryIndicatorRange {
+    C,
+    A
+}
+
+data class GlyphBatteryIndicatorConfig(
+    val range: GlyphBatteryIndicatorRange,
+    val reverse: Boolean = false
+)
+
+data class GlyphBatteryIndicatorSpec(
+    val modelCode: String,
+    val sdkDeviceId: String,
+    val frameChannelCount: Int,
+    val orderedChannels: List<Int>
+)
+
 data class GlyphDeviceDefinition(
     val profile: GlyphDeviceProfile,
     val modelCode: String,
@@ -33,7 +50,8 @@ data class GlyphDeviceDefinition(
     val controllerFamily: GlyphControllerFamily,
     val defaultGlyphMode: String,
     val lightSpec: GlyphLightDeviceSpec? = null,
-    val matrixSpec: GlyphMatrixDeviceSpec? = null
+    val matrixSpec: GlyphMatrixDeviceSpec? = null,
+    val batteryIndicatorConfig: GlyphBatteryIndicatorConfig? = null
 ) {
     init {
         when (controllerFamily) {
@@ -89,6 +107,9 @@ object GlyphDeviceCatalog {
                     channelCount = 4,
                     cRange = 0..3,
                     centerSupported = true
+                ),
+                batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
+                    range = GlyphBatteryIndicatorRange.C
                 )
             )
         ),
@@ -105,6 +126,9 @@ object GlyphDeviceCatalog {
                     channelCount = 7,
                     cRange = 0..5,
                     centerSupported = true
+                ),
+                batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
+                    range = GlyphBatteryIndicatorRange.C
                 )
             )
         ),
@@ -124,6 +148,10 @@ object GlyphDeviceCatalog {
                     bRange = 31..35,
                     cabRange = 0..35,
                     centerSupported = true
+                ),
+                batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
+                    range = GlyphBatteryIndicatorRange.A,
+                    reverse = true
                 )
             )
         ),
@@ -142,6 +170,9 @@ object GlyphDeviceCatalog {
                     aRange = 24..24,
                     bRange = 25..25,
                     centerSupported = true
+                ),
+                batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
+                    range = GlyphBatteryIndicatorRange.C
                 )
             )
         ),
@@ -160,6 +191,9 @@ object GlyphDeviceCatalog {
                     aRange = 24..24,
                     bRange = 25..25,
                     centerSupported = true
+                ),
+                batteryIndicatorConfig = GlyphBatteryIndicatorConfig(
+                    range = GlyphBatteryIndicatorRange.C
                 )
             )
         ),
@@ -271,6 +305,36 @@ object GlyphDeviceCatalog {
 
     fun definitionForProfile(profile: GlyphDeviceProfile): GlyphDeviceDefinition? {
         return entries.firstOrNull { it.definition.profile == profile }?.definition
+    }
+
+    fun definitionForModelCode(modelCode: String): GlyphDeviceDefinition? {
+        return entries.firstOrNull {
+            it.definition.modelCode.equals(modelCode, ignoreCase = true)
+        }?.definition
+    }
+
+    fun currentBatteryIndicatorSpecOrNull(): GlyphBatteryIndicatorSpec? {
+        return currentOrNull()?.let(::batteryIndicatorSpecFor)
+    }
+
+    fun batteryIndicatorSpecFor(
+        definition: GlyphDeviceDefinition
+    ): GlyphBatteryIndicatorSpec? {
+        val lightSpec = definition.lightSpec ?: return null
+        val config = definition.batteryIndicatorConfig ?: return null
+        val range = when (config.range) {
+            GlyphBatteryIndicatorRange.C -> lightSpec.cRange
+            GlyphBatteryIndicatorRange.A -> lightSpec.aRange
+        } ?: return null
+        val channels = range.toList().let { ordered ->
+            if (config.reverse) ordered.reversed() else ordered
+        }
+        return GlyphBatteryIndicatorSpec(
+            modelCode = definition.modelCode,
+            sdkDeviceId = lightSpec.sdkDeviceId,
+            frameChannelCount = lightSpec.channelCount,
+            orderedChannels = channels
+        )
     }
 
     fun defaultGlyphModeForProfile(profile: GlyphDeviceProfile): String {

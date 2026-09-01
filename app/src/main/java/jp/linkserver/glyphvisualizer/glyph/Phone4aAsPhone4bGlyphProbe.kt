@@ -15,6 +15,7 @@ class Phone4aAsPhone4bGlyphProbe(
 ) {
     private val appContext = context.applicationContext
     private val glyphManager = GlyphManager.getInstance(appContext)
+    private val glyphSessionOwnerToken = Any()
     private var initialized = false
     private var sessionOpen = false
     private var ready = false
@@ -55,9 +56,16 @@ class Phone4aAsPhone4bGlyphProbe(
 
     fun bind() {
         if (initialized) return
+        GlyphSdkSessionCoordinator.claimVisualizer(glyphSessionOwnerToken)
         initialized = true
         onStatusChanged(appContext.getString(R.string.experimental_p4a_as_p4b_connecting))
-        glyphManager.init(callback)
+        try {
+            glyphManager.init(callback)
+        } catch (error: Throwable) {
+            initialized = false
+            GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
+            throw error
+        }
     }
 
     fun probe(logicalChannel: Int, brightness: Int = MAX_LIGHT) {
@@ -114,6 +122,7 @@ class Phone4aAsPhone4bGlyphProbe(
     fun release() {
         if (!initialized && !sessionOpen) {
             ready = false
+            GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
             return
         }
         runCatching { glyphManager.turnOff() }
@@ -126,6 +135,7 @@ class Phone4aAsPhone4bGlyphProbe(
             runCatching { glyphManager.unInit() }
             initialized = false
         }
+        GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
     }
 
     private fun ensureReady(): Boolean {

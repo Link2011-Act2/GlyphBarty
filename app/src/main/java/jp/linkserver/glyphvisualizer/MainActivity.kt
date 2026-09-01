@@ -167,6 +167,7 @@ import kotlinx.coroutines.withContext
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
+import jp.linkserver.glyphvisualizer.battery.BatteryGlyphService
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
@@ -424,6 +425,7 @@ class MainActivity : ComponentActivity() {
                     nativeMeterViewEnabled = resolvedLatencySettings.nativeMeterViewEnabled,
                     mainScreenUiIsolationEnabled = resolvedLatencySettings.mainScreenUiIsolationEnabled,
                     automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
+                    batteryGlyphEnabled = resolvedLatencySettings.batteryGlyphEnabled,
                     phone4bEmulationEnabled = resolvedLatencySettings.phone4bEmulationEnabled,
                     debugDeviceProfileOverride = resolvedLatencySettings.debugDeviceProfileOverride,
                     experimentalMainUiEnabled = resolvedLatencySettings.experimentalMainUiEnabled,
@@ -438,6 +440,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        BatteryGlyphService.syncEnabledState(this, savedSettings.batteryGlyphEnabled)
         installContent(initialSetupPending)
     }
 
@@ -469,6 +472,8 @@ class MainActivity : ComponentActivity() {
                         heroTitle = effectivePresentation.heroTitle,
                         deviceProfile = effectiveDeviceProfile,
                         actualDeviceProfile = deviceProfile,
+                        batteryGlyphSupported =
+                            GlyphDeviceCatalog.currentBatteryIndicatorSpecOrNull() != null,
                         visualDynamics = visualDynamics,
                         visualDynamicsOverridden = visualTuningOverride != null,
                         showPhone1GlyphDebugPermissionDialog = showPhone1GlyphDebugPermissionDialog
@@ -579,6 +584,14 @@ class MainActivity : ComponentActivity() {
                                 mainCoordinator.updateAndPersist {
                                     it.copy(automaticUpdateCheckEnabled = enabled)
                                 }
+                            },
+                            onBatteryGlyphEnabledChanged = { enabled ->
+                                val safeEnabled = enabled &&
+                                    GlyphDeviceCatalog.currentBatteryIndicatorSpecOrNull() != null
+                                mainCoordinator.updateAndPersist {
+                                    it.copy(batteryGlyphEnabled = safeEnabled)
+                                }
+                                BatteryGlyphService.syncEnabledState(this, safeEnabled)
                             },
                             onMediaPlaybackOnlyEnabledChanged = { enabled ->
                                 if (enabled && !MediaSessionPlaybackGate.hasNotificationAccess(this)) {
