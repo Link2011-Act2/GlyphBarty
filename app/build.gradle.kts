@@ -19,8 +19,8 @@ val buildNumberFiles = (
     ).filter { it.isFile }
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
-val appCodeName = "Fricle" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
-val appVersionName = "2.0.2-IntDev_rev1"
+val appCodeName = "Picora" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
+val appVersionName = "2.1.0-IntDev_rev0"
 val buildContentHash = MessageDigest.getInstance("SHA-256").run {
     buildNumberFiles.forEach { file ->
         update(file.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
