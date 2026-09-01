@@ -408,6 +408,7 @@
     <string name="latency_active_preset">現在のプリセット: %1$s</string>
     <string name="menu_main">メイン</string>
     <string name="menu_latency">レイテンシ調整</string>
+    <string name="menu_extras">おまけ機能</string>
     <string name="menu_experimental">実験</string>
     <string name="menu_settings">設定</string>
     <string name="experimental_screen_title">実験機能</string>

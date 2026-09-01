@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Restore
@@ -1559,6 +1560,14 @@ internal fun HomeDrawerOverlay(
                     selectedColor = selectedColor,
                     onClick = { onNavigate(Screen.LATENCY) }
                 )
+                HomeDrawerItem(
+                    title = stringResource(R.string.menu_extras),
+                    icon = Icons.Default.Star,
+                    selected = currentScreen == Screen.EXTRAS,
+                    nothingStyleEnabled = nothingStyleEnabled,
+                    selectedColor = selectedColor,
+                    onClick = { onNavigate(Screen.EXTRAS) }
+                )
             }
             }
         }
@@ -1608,4 +1617,3 @@ private fun HomeDrawerItem(
         }
     }
 }
-

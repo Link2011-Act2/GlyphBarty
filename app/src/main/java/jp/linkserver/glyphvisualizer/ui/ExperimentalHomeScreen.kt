@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -111,6 +112,7 @@ internal fun ExperimentalMainScreenContent(
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onEnablePhone1GlyphDebugClick: () -> Unit,
     onOpenDetails: () -> Unit,
+    onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
@@ -342,6 +344,17 @@ internal fun ExperimentalMainScreenContent(
                     .height(64.dp)
                     .padding(horizontal = 18.dp)
             ) {
+                IconButton(
+                    onClick = onOpenMenu,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = stringResource(R.string.cd_menu),
+                        tint = contentColor,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
                 Text(
                     text = stringResource(R.string.app_name),
                     modifier = Modifier.align(Alignment.Center),

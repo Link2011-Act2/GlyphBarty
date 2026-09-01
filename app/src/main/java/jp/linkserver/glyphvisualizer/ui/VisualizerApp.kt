@@ -122,6 +122,7 @@ import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsScreenContent
 import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsSummary
 import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsTab
 import jp.linkserver.glyphvisualizer.ui.ExperimentalMainScreenContent
+import jp.linkserver.glyphvisualizer.ui.ExtrasScreen
 import jp.linkserver.glyphvisualizer.ui.GlyphInterfaceInspectorScreen
 import jp.linkserver.glyphvisualizer.ui.LightweightMeterCanvas
 import jp.linkserver.glyphvisualizer.ui.LightweightMeterBar
@@ -367,6 +368,7 @@ internal fun GlyphVisualizerApp(
                             onRecordingLightBehaviorChanged = onRecordingLightBehaviorChanged,
                             onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
                             onOpenDetails = { screen = Screen.DETAILS },
+                            onOpenMenu = { drawerOpen = true },
                             onOpenSettings = {
                                 settingsReturnScreen = targetScreen
                                 screen = Screen.SETTINGS
@@ -522,6 +524,14 @@ internal fun GlyphVisualizerApp(
                             }
                         } else {
                             null
+                        }
+                    )
+                    Screen.EXTRAS -> ExtrasScreen(
+                        nothingStyleEnabled = nothingStyleEnabled,
+                        onOpenMenu = { drawerOpen = true },
+                        onOpenSettings = {
+                            settingsReturnScreen = Screen.EXTRAS
+                            screen = Screen.SETTINGS
                         }
                     )
                     Screen.SETTINGS -> SettingsScreen(

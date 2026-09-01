@@ -408,6 +408,7 @@
     <string name="latency_active_preset">Active preset: %1$s</string>
     <string name="menu_main">Main</string>
     <string name="menu_latency">Latency</string>
+    <string name="menu_extras">Extras</string>
     <string name="menu_experimental">Experimental</string>
     <string name="menu_settings">Settings</string>
     <string name="experimental_screen_title">Experimental features</string>

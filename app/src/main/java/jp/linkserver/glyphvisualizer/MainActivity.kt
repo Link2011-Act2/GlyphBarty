@@ -195,6 +195,7 @@ internal enum class Screen {
     MAIN,
     DETAILS,
     LATENCY,
+    EXTRAS,
     SETTINGS,
     EXPERIMENTAL,
     GLYPH_INSPECTOR,
