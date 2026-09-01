@@ -119,6 +119,7 @@ class GlyphMatrixController(
     private val legacyAllBrightnessAutoScale = LegacyAutoScaleController()
     private val levelAutoGain = AutoGainController()
     private val spectrumAutoGain = AutoGainController()
+    private val spectrumOverallLevelEnvelope = SpectrumOverallLevelEnvelope()
     private val allBrightnessAutoGain = AutoGainController()
     private val levelVisualDynamicsExpander = VisualDynamicsExpander()
     private val spectrumVisualDynamicsState = SpectrumVisualDynamicsState()
@@ -552,10 +553,13 @@ class GlyphMatrixController(
             normalizedSpectrumBands = FloatArray(input.size)
         }
 
-        applySharedSpectrumGain(
+        val displayOverallLevel = spectrumOverallLevelEnvelope.update(
+            targetLevel = spectrumOverallLevelTarget(rawPeak, gain),
+            nowMs = now
+        )
+        applySpectrumOverallLevel(
             normalizedBands = input,
-            rawPeak = rawPeak,
-            gain = gain,
+            overallLevel = displayOverallLevel,
             output = normalizedSpectrumBands
         )
         return applyAdaptiveSpectrumVisualDynamics(
@@ -576,6 +580,7 @@ class GlyphMatrixController(
     private fun resetSpectrumScaleTracking() {
         legacySpectrumAutoScale.reset()
         spectrumAutoGain.reset()
+        spectrumOverallLevelEnvelope.reset()
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
         normalizedSpectrumBands = FloatArray(0)
@@ -696,6 +701,7 @@ class GlyphMatrixController(
         val maxBand = rawSpectrumPeak
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         if (previewDeviceProfile != null && activity < SILENCE_ACTIVITY_THRESHOLD) {
+            spectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
             frameBuffer.fill(COLOR_OFF)
             submitMatrixFrame(frameBuffer)
@@ -713,6 +719,7 @@ class GlyphMatrixController(
             renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
         val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD && !holdOpenReelFrameForPause
         if (isSilent) {
+            spectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
         }
         val silenceElapsedMs = if (isSilent) {

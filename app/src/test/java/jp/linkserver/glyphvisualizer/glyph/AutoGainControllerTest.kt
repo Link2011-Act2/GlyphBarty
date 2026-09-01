@@ -66,8 +66,14 @@ class AutoGainControllerTest {
         val loudGain = initializedAgc(loudRawPeak, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS)
             .update(loudRawPeak, 220L, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
 
-        val quietOutput = applySharedSpectrumGain(normalizedBands, quietRawPeak, quietGain)
-        val loudOutput = applySharedSpectrumGain(normalizedBands, loudRawPeak, loudGain)
+        val quietOutput = applySpectrumOverallLevel(
+            normalizedBands,
+            spectrumOverallLevelTarget(quietRawPeak, quietGain)
+        )
+        val loudOutput = applySpectrumOverallLevel(
+            normalizedBands,
+            spectrumOverallLevelTarget(loudRawPeak, loudGain)
+        )
 
         assertTrue(quietGain > 1f)
         assertTrue(loudGain < 1f)
@@ -82,10 +88,86 @@ class AutoGainControllerTest {
         val agc = initializedQuietAgc()
         val rawPeak = 0.8f
         val gain = agc.update(rawPeak, 220L, 0.85f, SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS, false)
-        val output = applySharedSpectrumGain(floatArrayOf(0.25f, 0.5f, 1f), rawPeak, gain)
+        val output = applySpectrumOverallLevel(
+            floatArrayOf(0.25f, 0.5f, 1f),
+            spectrumOverallLevelTarget(rawPeak, gain)
+        )
 
         assertEquals(0.98f / rawPeak, gain, 0.0001f)
         assertArrayEquals(floatArrayOf(0.245f, 0.49f, 0.98f), output, 0.0001f)
+    }
+
+    @Test
+    fun spectrumOverallEnvelope_rawPeakDropDoesNotImmediatelyBecomeTheDisplayDrop() {
+        val envelope = SpectrumOverallLevelEnvelope()
+        envelope.update(spectrumOverallLevelTarget(0.8f, 1f), 0L)
+
+        val displayOverall = envelope.update(spectrumOverallLevelTarget(0.2f, 1f), 16L)
+
+        assertTrue(displayOverall < 0.8f)
+        assertTrue(displayOverall > 0.2f)
+    }
+
+    @Test
+    fun spectrumOverallEnvelope_attackTracksFasterThanRelease() {
+        val attackEnvelope = SpectrumOverallLevelEnvelope()
+        val releaseEnvelope = SpectrumOverallLevelEnvelope()
+        attackEnvelope.update(0.2f, 0L)
+        releaseEnvelope.update(0.8f, 0L)
+
+        val attacked = attackEnvelope.update(0.8f, 50L)
+        val released = releaseEnvelope.update(0.2f, 50L)
+        val attackMovement = attacked - 0.2f
+        val releaseMovement = 0.8f - released
+
+        assertEquals(50f, SPECTRUM_OVERALL_LEVEL_ATTACK_TAU_MS, 0f)
+        assertEquals(220f, SPECTRUM_OVERALL_LEVEL_RELEASE_TAU_MS, 0f)
+        assertTrue(attackMovement > releaseMovement)
+    }
+
+    @Test
+    fun spectrumOverallEnvelope_explicitSilenceResetReturnsToZero() {
+        val envelope = SpectrumOverallLevelEnvelope()
+        envelope.update(0.8f, 0L)
+        envelope.update(0.2f, 16L)
+
+        envelope.reset()
+
+        assertEquals(0f, envelope.update(0f, 32L), 0f)
+    }
+
+    @Test
+    fun spectrumOverallEnvelope_hasNearlyTheSameResponseAt16And33Milliseconds() {
+        val responseAt16Ms = simulateOverallEnvelope(
+            initialLevel = 0.8f,
+            targetLevel = 0.2f,
+            frameIntervalMs = 16L,
+            totalElapsedMs = 528L
+        )
+        val responseAt33Ms = simulateOverallEnvelope(
+            initialLevel = 0.8f,
+            targetLevel = 0.2f,
+            frameIntervalMs = 33L,
+            totalElapsedMs = 528L
+        )
+
+        assertEquals(responseAt16Ms, responseAt33Ms, 0.0001f)
+    }
+
+    @Test
+    fun spectrumOverallEnvelope_preservesTheSharedGainSafetyCeiling() {
+        val envelope = SpectrumOverallLevelEnvelope()
+        val unsafeTarget = spectrumOverallLevelTarget(rawPeak = 1f, sharedGain = 100f)
+        var displayOverall = envelope.update(0.2f, 0L)
+
+        for (timeMs in 16L..1_600L step 16L) {
+            displayOverall = envelope.update(unsafeTarget, timeMs)
+            assertTrue(displayOverall <= DEFAULT_AUTO_GAIN_OUTPUT_CEILING)
+        }
+        val output = applySpectrumOverallLevel(floatArrayOf(0.25f, 0.5f, 1f), displayOverall)
+
+        assertEquals(DEFAULT_AUTO_GAIN_OUTPUT_CEILING, unsafeTarget, 0f)
+        assertTrue(output.max() <= DEFAULT_AUTO_GAIN_OUTPUT_CEILING)
     }
 
     @Test
@@ -126,5 +208,22 @@ class AutoGainControllerTest {
             agc.update(rawPeak, 100L, 0.85f, gainUpTauSeconds, false)
             agc.update(rawPeak, 200L, 0.85f, gainUpTauSeconds, false)
         }
+    }
+
+    private fun simulateOverallEnvelope(
+        initialLevel: Float,
+        targetLevel: Float,
+        frameIntervalMs: Long,
+        totalElapsedMs: Long
+    ): Float {
+        val envelope = SpectrumOverallLevelEnvelope()
+        envelope.update(initialLevel, 0L)
+        var output = initialLevel
+        var nowMs = frameIntervalMs
+        while (nowMs <= totalElapsedMs) {
+            output = envelope.update(targetLevel, nowMs)
+            nowMs += frameIntervalMs
+        }
+        return output
     }
 }

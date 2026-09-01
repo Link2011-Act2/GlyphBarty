@@ -207,6 +207,8 @@ class GlyphLightController(
     private val levelAutoGain = AutoGainController()
     private val spectrumAutoGain = AutoGainController()
     private val fillOtherSpectrumAutoGain = AutoGainController()
+    private val spectrumOverallLevelEnvelope = SpectrumOverallLevelEnvelope()
+    private val fillOtherSpectrumOverallLevelEnvelope = SpectrumOverallLevelEnvelope()
     private val allBrightnessAutoGain = AutoGainController()
     private val levelVisualDynamicsExpander = VisualDynamicsExpander()
     private val spectrumVisualDynamicsState = SpectrumVisualDynamicsState()
@@ -619,7 +621,11 @@ class GlyphLightController(
             holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
         )
 
-        val agcBands = applySharedSpectrumGain(input, rawPeak, gain)
+        val displayOverallLevel = spectrumOverallLevelEnvelope.update(
+            targetLevel = spectrumOverallLevelTarget(rawPeak, gain),
+            nowMs = now
+        )
+        val agcBands = applySpectrumOverallLevel(input, displayOverallLevel)
         return applyAdaptiveSpectrumVisualDynamics(
             agcBands = agcBands,
             autoScaleEnabled = spectrumAutoScaleEnabled,
@@ -656,7 +662,11 @@ class GlyphLightController(
             gainUpTauSeconds = SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
             holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
         )
-        val agcBands = applySharedSpectrumGain(input, rawPeak, gain)
+        val displayOverallLevel = fillOtherSpectrumOverallLevelEnvelope.update(
+            targetLevel = spectrumOverallLevelTarget(rawPeak, gain),
+            nowMs = nowMs
+        )
+        val agcBands = applySpectrumOverallLevel(input, displayOverallLevel)
         val profile = currentTuningProfile()
         val classicPatternId = GlyphPatternRegistry.classicPatternIdFor(profile)
             ?: return agcBands
@@ -687,6 +697,7 @@ class GlyphLightController(
     private fun resetSpectrumScaleTracking() {
         legacySpectrumAutoScale.reset()
         spectrumAutoGain.reset()
+        spectrumOverallLevelEnvelope.reset()
         rawSpectrumPeak = 0f
         smoothedSpectrumBands = FloatArray(0)
         spectrumVisualDynamicsState.reset()
@@ -698,6 +709,7 @@ class GlyphLightController(
     private fun resetFillOtherSpectrumScaleTracking() {
         fillOtherLegacySpectrumAutoScale.reset()
         fillOtherSpectrumAutoGain.reset()
+        fillOtherSpectrumOverallLevelEnvelope.reset()
         fillOtherSpectrumBands = FloatArray(0)
         fillOtherSpectrumVisualDynamicsState.reset()
     }
@@ -737,6 +749,8 @@ class GlyphLightController(
 
         if (activity < SILENCE_ACTIVITY_THRESHOLD) {
             fillOtherRawLevel = 0f
+            spectrumOverallLevelEnvelope.reset()
+            fillOtherSpectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
             fillOtherSpectrumVisualDynamicsState.reset()
             if (previewDeviceProfile != null) {
