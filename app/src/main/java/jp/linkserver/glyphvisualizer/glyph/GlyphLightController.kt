@@ -167,6 +167,19 @@ class GlyphLightController(
     private val glyphManager = GlyphManager.getInstance(context.applicationContext)
     private var isBound = false
     private var isSessionOpen = false
+    private var bindRequested = false
+    private var glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
+    private val nothingOsGlyphSettingsMonitor = NothingOsGlyphSettingsMonitor(context) { state ->
+        val changed = glyphOutputAllowed != state.outputAllowed
+        glyphOutputAllowed = state.outputAllowed
+        if (changed) {
+            AppLogger.i(
+                TAG,
+                "Nothing OS Glyph sync changed: system=${state.systemEnabled} allowed=${state.outputAllowed}"
+            )
+        }
+        reconcileSdkBinding()
+    }
     private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var fillOtherGlyphLightsEnabled = false
@@ -248,6 +261,7 @@ class GlyphLightController(
 
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
+            if (!isBound || !glyphOutputAllowed) return
             invalidateLastSentFrame()
             resetClassicSpectrumSmoothing()
             val spec = resolveDeviceSpec()
@@ -330,6 +344,22 @@ class GlyphLightController(
 
     override fun bind() {
         if (previewDeviceProfile != null) return
+        bindRequested = true
+        glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
+        nothingOsGlyphSettingsMonitor.start()
+        reconcileSdkBinding()
+    }
+
+    private fun reconcileSdkBinding() {
+        if (previewDeviceProfile != null) return
+        if (bindRequested && glyphOutputAllowed) {
+            bindSdk()
+        } else {
+            unbindSdk()
+        }
+    }
+
+    private fun bindSdk() {
         if (isBound) return
         isBound = true
         glyphManager.init(callback)
@@ -341,8 +371,19 @@ class GlyphLightController(
             turnOff()
             return
         }
+        bindRequested = false
+        nothingOsGlyphSettingsMonitor.stop()
+        unbindSdk()
+    }
+
+    private fun unbindSdk() {
+        if (!isBound && !isSessionOpen) {
+            sessionReleasedForSilence = false
+            return
+        }
         turnOff()
         closeSession()
+        sessionReleasedForSilence = false
         if (isBound) {
             glyphManager.unInit()
             isBound = false
@@ -858,7 +899,7 @@ class GlyphLightController(
     ) {
         if (!fillOtherGlyphLightsEnabled) return
         if (GlyphPatternRegistry.isAllBrightness(glyphMode)) return
-        if (spec.profile !in setOf(GlyphDeviceProfile.PHONE1, GlyphDeviceProfile.PHONE2, GlyphDeviceProfile.PHONE2A)) {
+        if (!spec.profile.supportsFillOtherGlyphLights()) {
             return
         }
         applyClassicSpectrum(
@@ -1829,6 +1870,7 @@ class GlyphLightController(
     }
 
     private fun reopenSessionAfterSilence(): Boolean {
+        if (!bindRequested || !glyphOutputAllowed || !isBound) return false
         val spec = deviceSpec ?: return false
         return try {
             val registered = glyphManager.register(spec.deviceId)

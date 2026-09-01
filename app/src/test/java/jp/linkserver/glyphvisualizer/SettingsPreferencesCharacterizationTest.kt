@@ -77,6 +77,7 @@ class SettingsPreferencesCharacterizationTest {
             mainScreenUiIsolationEnabled = false,
             automaticUpdateCheckEnabled = true,
             batteryGlyphEnabled = true,
+            syncWithNothingOsGlyphSettingEnabled = true,
             mediaPlaybackOnlyEnabled = true,
             experimentalVisualizerStabilizationEnabled = true,
             experimentalVisualizerSignalWatchdogEnabled = false,
@@ -112,6 +113,12 @@ class SettingsPreferencesCharacterizationTest {
     fun batteryGlyphDefaultsToOffForExistingInstallations() {
         assertFalse(SettingsPreferences.load(application).batteryGlyphEnabled)
         assertFalse(preferences().contains("battery_glyph_enabled"))
+    }
+
+    @Test
+    fun nothingOsGlyphSyncDefaultsToOffForExistingInstallations() {
+        assertFalse(SettingsPreferences.load(application).syncWithNothingOsGlyphSettingEnabled)
+        assertFalse(preferences().contains("sync_with_nothing_os_glyph_setting"))
     }
 
     @Test
@@ -345,6 +352,10 @@ class SettingsPreferencesCharacterizationTest {
         assertEquals(expected.mainScreenUiIsolationEnabled, actual.mainScreenUiIsolationEnabled)
         assertEquals(expected.automaticUpdateCheckEnabled, actual.automaticUpdateCheckEnabled)
         assertEquals(expected.batteryGlyphEnabled, actual.batteryGlyphEnabled)
+        assertEquals(
+            expected.syncWithNothingOsGlyphSettingEnabled,
+            actual.syncWithNothingOsGlyphSettingEnabled
+        )
         assertEquals(expected.mediaPlaybackOnlyEnabled, actual.mediaPlaybackOnlyEnabled)
         assertEquals(
             expected.experimentalVisualizerStabilizationEnabled,
@@ -432,6 +443,7 @@ class SettingsPreferencesCharacterizationTest {
             "main_screen_ui_isolation_enabled",
             "automatic_update_check_enabled",
             "battery_glyph_enabled",
+            "sync_with_nothing_os_glyph_setting",
             "media_playback_only_enabled",
             "experimental_visualizer_stabilization_enabled",
             "experimental_visualizer_signal_watchdog_enabled",

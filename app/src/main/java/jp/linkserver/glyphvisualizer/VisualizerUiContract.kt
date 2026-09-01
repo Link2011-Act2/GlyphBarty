@@ -64,6 +64,7 @@ internal data class VisualizerSettingsActions(
     val onNativeMeterViewEnabledChanged: (Boolean) -> Unit,
     val onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
     val onBatteryGlyphEnabledChanged: (Boolean) -> Unit,
+    val onSyncWithNothingOsGlyphSettingEnabledChanged: (Boolean) -> Unit,
     val onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,

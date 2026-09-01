@@ -6,6 +6,9 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import org.json.JSONObject
 
+internal const val PREF_KEY_SYNC_WITH_NOTHING_OS_GLYPH_SETTING =
+    "sync_with_nothing_os_glyph_setting"
+
 data class PersistedSettings(
     val sensitivity: Float,
     val noiseGate: Float,
@@ -44,6 +47,7 @@ data class PersistedSettings(
     val mainScreenUiIsolationEnabled: Boolean,
     val automaticUpdateCheckEnabled: Boolean,
     val batteryGlyphEnabled: Boolean,
+    val syncWithNothingOsGlyphSettingEnabled: Boolean,
     val mediaPlaybackOnlyEnabled: Boolean,
     val experimentalVisualizerStabilizationEnabled: Boolean,
     val experimentalVisualizerSignalWatchdogEnabled: Boolean,
@@ -105,6 +109,7 @@ internal object PersistedSettingsSchema {
         mainScreenUiIsolationEnabled = state.mainScreenUiIsolationEnabled,
         automaticUpdateCheckEnabled = state.automaticUpdateCheckEnabled,
         batteryGlyphEnabled = state.batteryGlyphEnabled,
+        syncWithNothingOsGlyphSettingEnabled = state.syncWithNothingOsGlyphSettingEnabled,
         mediaPlaybackOnlyEnabled = state.mediaPlaybackOnlyEnabled,
         experimentalVisualizerStabilizationEnabled =
             state.experimentalVisualizerStabilizationEnabled,
@@ -161,6 +166,7 @@ internal object PersistedSettingsSchema {
         mainScreenUiIsolationEnabled = settings.mainScreenUiIsolationEnabled,
         automaticUpdateCheckEnabled = settings.automaticUpdateCheckEnabled,
         batteryGlyphEnabled = settings.batteryGlyphEnabled,
+        syncWithNothingOsGlyphSettingEnabled = settings.syncWithNothingOsGlyphSettingEnabled,
         mediaPlaybackOnlyEnabled = settings.mediaPlaybackOnlyEnabled,
         experimentalVisualizerStabilizationEnabled =
             settings.experimentalVisualizerStabilizationEnabled,
@@ -398,6 +404,10 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.BATTERY_GLYPH_ENABLED,
                 defaults.batteryGlyphEnabled
             ),
+            syncWithNothingOsGlyphSettingEnabled = preferences.getBoolean(
+                Keys.SYNC_WITH_NOTHING_OS_GLYPH_SETTING,
+                defaults.syncWithNothingOsGlyphSettingEnabled
+            ),
             mediaPlaybackOnlyEnabled = preferences.getBoolean(
                 Keys.MEDIA_PLAYBACK_ONLY_ENABLED,
                 defaults.mediaPlaybackOnlyEnabled
@@ -510,6 +520,10 @@ internal object PersistedSettingsPreferenceCodec {
                 settings.automaticUpdateCheckEnabled
             )
             .putBoolean(Keys.BATTERY_GLYPH_ENABLED, settings.batteryGlyphEnabled)
+            .putBoolean(
+                Keys.SYNC_WITH_NOTHING_OS_GLYPH_SETTING,
+                settings.syncWithNothingOsGlyphSettingEnabled
+            )
             .putBoolean(Keys.MEDIA_PLAYBACK_ONLY_ENABLED, settings.mediaPlaybackOnlyEnabled)
             .putBoolean(
                 Keys.EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED,
@@ -622,6 +636,8 @@ internal object PersistedSettingsPreferenceCodec {
         const val MAIN_SCREEN_UI_ISOLATION_ENABLED = "main_screen_ui_isolation_enabled"
         const val AUTOMATIC_UPDATE_CHECK_ENABLED = "automatic_update_check_enabled"
         const val BATTERY_GLYPH_ENABLED = "battery_glyph_enabled"
+        const val SYNC_WITH_NOTHING_OS_GLYPH_SETTING =
+            PREF_KEY_SYNC_WITH_NOTHING_OS_GLYPH_SETTING
         const val MEDIA_PLAYBACK_ONLY_ENABLED = "media_playback_only_enabled"
         const val EXPERIMENTAL_VISUALIZER_STABILIZATION_ENABLED =
             "experimental_visualizer_stabilization_enabled"

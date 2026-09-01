@@ -55,6 +55,7 @@ data class CaptureUiState(
     val mainScreenUiIsolationEnabled: Boolean = true,
     val automaticUpdateCheckEnabled: Boolean = false,
     val batteryGlyphEnabled: Boolean = false,
+    val syncWithNothingOsGlyphSettingEnabled: Boolean = false,
     val mediaPlaybackOnlyEnabled: Boolean = false,
     val experimentalVisualizerStabilizationEnabled: Boolean = false,
     val experimentalVisualizerSignalWatchdogEnabled: Boolean = true,

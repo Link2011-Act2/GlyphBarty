@@ -173,6 +173,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
+import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
@@ -347,11 +348,7 @@ internal fun ControlCard(
     var showRecordingLightBehaviorDialog by rememberSaveable { mutableStateOf(false) }
     val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
     val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onPrimary
-    val supportsFillOtherGlyphLights = deviceProfile in setOf(
-        GlyphDeviceProfile.PHONE1,
-        GlyphDeviceProfile.PHONE2,
-        GlyphDeviceProfile.PHONE2A
-    )
+    val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
     val isMatrixDevice = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE3_MATRIX,
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX

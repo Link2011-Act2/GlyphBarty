@@ -531,6 +531,10 @@ internal fun GlyphVisualizerApp(
                         batteryGlyphEnabled = batteryGlyphEnabled,
                         batteryGlyphSupported = batteryGlyphSupported,
                         onBatteryGlyphEnabledChanged = onBatteryGlyphEnabledChanged,
+                        syncWithNothingOsGlyphSettingEnabled =
+                            syncWithNothingOsGlyphSettingEnabled,
+                        onSyncWithNothingOsGlyphSettingEnabledChanged =
+                            onSyncWithNothingOsGlyphSettingEnabledChanged,
                         onOpenMenu = { drawerOpen = true },
                         onOpenSettings = {
                             settingsReturnScreen = Screen.EXTRAS
@@ -875,6 +879,7 @@ private fun GlyphVisualizerPreview() {
                     onNativeMeterViewEnabledChanged = {},
                     onAutomaticUpdateCheckEnabledChanged = {},
                     onBatteryGlyphEnabledChanged = {},
+                    onSyncWithNothingOsGlyphSettingEnabledChanged = {},
                     onMediaPlaybackOnlyEnabledChanged = {},
                     onExperimentalVisualizerStabilizationEnabledChanged = {},
                     onExperimentalVisualizerSignalWatchdogEnabledChanged = {},

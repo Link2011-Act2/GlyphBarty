@@ -616,6 +616,7 @@ internal fun MainScreenContent(
             onStartProjectionClick = onStartProjectionClick,
             onEnablePhone1GlyphDebugClick = onEnablePhone1GlyphDebugClick,
             onStopClick = onStopClick,
+            onOpenMenu = onOpenMenu,
             onOpenSettings = onOpenSettings,
             onOpenLatency = onOpenLatency ?: {},
             onBack = onBackToExperimental ?: {}

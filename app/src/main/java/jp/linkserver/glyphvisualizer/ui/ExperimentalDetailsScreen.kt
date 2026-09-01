@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
@@ -105,6 +106,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
 import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
+import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
 
 internal enum class ExperimentalDetailsTab {
     LIVE,
@@ -188,6 +190,7 @@ internal fun ExperimentalDetailsScreenContent(
     onStartProjectionClick: () -> Unit,
     onEnablePhone1GlyphDebugClick: () -> Unit,
     onStopClick: () -> Unit,
+    onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLatency: () -> Unit,
     onBack: () -> Unit
@@ -214,11 +217,7 @@ internal fun ExperimentalDetailsScreenContent(
         RecordingLightBehavior.INCLUDED_IN_METER -> stringResource(R.string.recording_light_behavior_meter)
         RecordingLightBehavior.BASS_INDICATOR -> stringResource(R.string.recording_light_behavior_bass)
     }
-    val supportsFillOtherGlyphLights = deviceProfile in setOf(
-        GlyphDeviceProfile.PHONE1,
-        GlyphDeviceProfile.PHONE2,
-        GlyphDeviceProfile.PHONE2A
-    )
+    val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
@@ -363,7 +362,14 @@ internal fun ExperimentalDetailsScreenContent(
                     actionIconContentColor = contentColor
                 ),
                 navigationIcon = {
-                    if (!isHome) {
+                    if (isHome) {
+                        IconButton(onClick = onOpenMenu) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = stringResource(R.string.cd_menu)
+                            )
+                        }
+                    } else {
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,

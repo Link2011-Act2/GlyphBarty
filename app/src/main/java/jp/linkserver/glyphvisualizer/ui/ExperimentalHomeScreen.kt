@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
@@ -124,11 +125,7 @@ internal fun ExperimentalMainScreenContent(
     var showPatternSheet by rememberSaveable { mutableStateOf(false) }
     var showDevicePatternSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
-    val supportsFillOtherGlyphLights = deviceProfile in setOf(
-        GlyphDeviceProfile.PHONE1,
-        GlyphDeviceProfile.PHONE2,
-        GlyphDeviceProfile.PHONE2A
-    )
+    val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
     val hasDevicePatternSettings = supportsFillOtherGlyphLights ||
         supportsRecordingLightBehavior ||

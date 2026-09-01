@@ -86,6 +86,21 @@ class GlyphMatrixController(
     private val glyphMatrixManager = GlyphMatrixManager.getInstance(context.applicationContext)
     private var isBound = false
     private var isSessionOpen = false
+    private var bindRequested = false
+    private var glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
+    private val nothingOsGlyphSettingsMonitor = NothingOsGlyphSettingsMonitor(context) { state ->
+        runOnOwnerThread {
+            val changed = glyphOutputAllowed != state.outputAllowed
+            glyphOutputAllowed = state.outputAllowed
+            if (changed) {
+                AppLogger.i(
+                    TAG,
+                    "Nothing OS Glyph sync changed: system=${state.systemEnabled} allowed=${state.outputAllowed}"
+                )
+            }
+            reconcileSdkBinding()
+        }
+    }
     private var reverseDirection = false
     private var glyphMode = GlyphDeviceCatalog.defaultGlyphModeForCurrentDevice()
     private var binaryMode = false
@@ -292,6 +307,22 @@ class GlyphMatrixController(
 
     override fun bind() {
         if (previewDeviceProfile != null) return
+        bindRequested = true
+        glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
+        nothingOsGlyphSettingsMonitor.start()
+        reconcileSdkBinding()
+    }
+
+    private fun reconcileSdkBinding() {
+        if (previewDeviceProfile != null) return
+        if (bindRequested && glyphOutputAllowed) {
+            bindSdk()
+        } else {
+            unbindSdk()
+        }
+    }
+
+    private fun bindSdk() {
         if (isBound) return
         isBound = true
         glyphMatrixManager.init(callback)
@@ -303,6 +334,13 @@ class GlyphMatrixController(
             turnOff()
             return
         }
+        bindRequested = false
+        nothingOsGlyphSettingsMonitor.stop()
+        unbindSdk()
+    }
+
+    private fun unbindSdk() {
+        if (!isBound && !isSessionOpen) return
         releaseSession()
         if (isBound) {
             glyphMatrixManager.unInit()

@@ -19,6 +19,24 @@ class Phone4aAsPhone4bGlyphProbe(
     private var initialized = false
     private var sessionOpen = false
     private var ready = false
+    private var bindRequested = false
+    private var coordinatorGranted = false
+    private var glyphOutputAllowed = NothingOsGlyphSettings.currentState(appContext).outputAllowed
+    private val nothingOsGlyphSettingsMonitor = NothingOsGlyphSettingsMonitor(appContext) { state ->
+        val changed = glyphOutputAllowed != state.outputAllowed
+        glyphOutputAllowed = state.outputAllowed
+        if (changed) {
+            AppLogger.i(
+                TAG,
+                "Nothing OS Glyph sync changed: system=${state.systemEnabled} allowed=${state.outputAllowed}"
+            )
+        }
+        if (glyphOutputAllowed && bindRequested && coordinatorGranted) {
+            bindGlyphManager()
+        } else if (!glyphOutputAllowed) {
+            releaseGlyphManager()
+        }
+    }
 
     private val callback = object : GlyphManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
@@ -56,13 +74,17 @@ class Phone4aAsPhone4bGlyphProbe(
     }
 
     fun bind() {
-        if (initialized) return
+        if (bindRequested) return
+        bindRequested = true
+        glyphOutputAllowed = NothingOsGlyphSettings.currentState(appContext).outputAllowed
+        nothingOsGlyphSettingsMonitor.start()
         val granted = GlyphSdkSessionCoordinator.claimVisualizer(
             token = glyphSessionOwnerToken,
             onSuspend = ::suspendForBatteryDisplay,
             onResume = ::resumeAfterBatteryDisplay
         )
-        if (granted) bindGlyphManager()
+        coordinatorGranted = granted
+        if (granted && glyphOutputAllowed) bindGlyphManager()
     }
 
     private fun bindGlyphManager() {
@@ -73,6 +95,7 @@ class Phone4aAsPhone4bGlyphProbe(
             glyphManager.init(callback)
         } catch (error: Throwable) {
             initialized = false
+            coordinatorGranted = false
             GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
             throw error
         }
@@ -131,16 +154,22 @@ class Phone4aAsPhone4bGlyphProbe(
     }
 
     fun release() {
+        bindRequested = false
+        coordinatorGranted = false
+        nothingOsGlyphSettingsMonitor.stop()
         releaseGlyphManager()
         GlyphSdkSessionCoordinator.releaseVisualizer(glyphSessionOwnerToken)
     }
 
     private fun suspendForBatteryDisplay() {
+        coordinatorGranted = false
         releaseGlyphManager()
     }
 
     private fun resumeAfterBatteryDisplay() {
-        bindGlyphManager()
+        coordinatorGranted = true
+        glyphOutputAllowed = NothingOsGlyphSettings.currentState(appContext).outputAllowed
+        if (bindRequested && glyphOutputAllowed) bindGlyphManager()
     }
 
     private fun releaseGlyphManager() {

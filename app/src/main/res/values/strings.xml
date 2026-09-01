@@ -412,10 +412,13 @@
     <string name="extras_battery_glyph_title">Glyph Battery Meter</string>
     <string name="extras_battery_glyph_description">Shows the battery level on the Glyph Interface when charging starts.\nYou can also check it by shaking the phone with the Glyph side facing up.</string>
     <string name="extras_battery_glyph_unsupported">This device is not supported by this feature.</string>
+    <string name="extras_sync_nothing_os_glyph_title">Sync with Nothing OS Glyph setting</string>
+    <string name="extras_sync_nothing_os_glyph_description">When the Glyph Interface is turned off in Nothing OS, this app also stops Glyph output. This is a best-effort feature and may not work on every device or OS version.</string>
     <string name="battery_glyph_notification_channel">Glyph Battery Meter</string>
     <string name="battery_glyph_notification_title">Checking for charging</string>
     <string name="battery_glyph_notification_charging">Charging: shake the face-down phone to show the battery level</string>
     <string name="battery_glyph_notification_waiting">Waiting for charging to start</string>
+    <string name="battery_glyph_notification_system_glyph_disabled">Waiting for the Glyph Interface to be turned on</string>
     <string name="menu_experimental">Experimental</string>
     <string name="menu_settings">Settings</string>
     <string name="experimental_screen_title">Experimental features</string>

@@ -82,6 +82,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.formatGlyphVisualTuningEntry
 import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
+import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import kotlinx.coroutines.delay
 import kotlin.math.min
@@ -584,11 +585,7 @@ private fun GlyphInspectorControls(
         ?.controllerFamily == GlyphControllerFamily.LIGHTS
     val isPhone4Bar = selectedProfile == GlyphDeviceProfile.PHONE4A ||
         selectedProfile == GlyphDeviceProfile.PHONE4B
-    val supportsFillOtherGlyphLights = selectedProfile in setOf(
-        GlyphDeviceProfile.PHONE1,
-        GlyphDeviceProfile.PHONE2,
-        GlyphDeviceProfile.PHONE2A
-    )
+    val supportsFillOtherGlyphLights = selectedProfile.supportsFillOtherGlyphLights()
     val supportsBaseIndicator = isPhone4Bar
     val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
         !GlyphPatternRegistry.isAllBrightness(selectedGlyphMode) &&

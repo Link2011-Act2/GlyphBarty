@@ -30,6 +30,8 @@ internal fun ExtrasScreen(
     batteryGlyphEnabled: Boolean,
     batteryGlyphSupported: Boolean,
     onBatteryGlyphEnabledChanged: (Boolean) -> Unit,
+    syncWithNothingOsGlyphSettingEnabled: Boolean,
+    onSyncWithNothingOsGlyphSettingEnabledChanged: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -85,8 +87,16 @@ internal fun ExtrasScreen(
                 checked = batteryGlyphEnabled && batteryGlyphSupported,
                 onCheckedChange = onBatteryGlyphEnabledChanged,
                 nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Single,
+                position = SettingsGroupPosition.Top,
                 enabled = batteryGlyphSupported
+            )
+            SettingsToggleEntry(
+                title = stringResource(R.string.extras_sync_nothing_os_glyph_title),
+                description = stringResource(R.string.extras_sync_nothing_os_glyph_description),
+                checked = syncWithNothingOsGlyphSettingEnabled,
+                onCheckedChange = onSyncWithNothingOsGlyphSettingEnabledChanged,
+                nothingStyle = nothingStyleEnabled,
+                position = SettingsGroupPosition.Bottom
             )
         }
     }

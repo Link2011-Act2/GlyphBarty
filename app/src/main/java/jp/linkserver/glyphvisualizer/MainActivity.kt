@@ -426,6 +426,8 @@ class MainActivity : ComponentActivity() {
                     mainScreenUiIsolationEnabled = resolvedLatencySettings.mainScreenUiIsolationEnabled,
                     automaticUpdateCheckEnabled = resolvedLatencySettings.automaticUpdateCheckEnabled,
                     batteryGlyphEnabled = resolvedLatencySettings.batteryGlyphEnabled,
+                    syncWithNothingOsGlyphSettingEnabled =
+                        resolvedLatencySettings.syncWithNothingOsGlyphSettingEnabled,
                     phone4bEmulationEnabled = resolvedLatencySettings.phone4bEmulationEnabled,
                     debugDeviceProfileOverride = resolvedLatencySettings.debugDeviceProfileOverride,
                     experimentalMainUiEnabled = resolvedLatencySettings.experimentalMainUiEnabled,
@@ -592,6 +594,11 @@ class MainActivity : ComponentActivity() {
                                     it.copy(batteryGlyphEnabled = safeEnabled)
                                 }
                                 BatteryGlyphService.syncEnabledState(this, safeEnabled)
+                            },
+                            onSyncWithNothingOsGlyphSettingEnabledChanged = { enabled ->
+                                mainCoordinator.updateAndPersist {
+                                    it.copy(syncWithNothingOsGlyphSettingEnabled = enabled)
+                                }
                             },
                             onMediaPlaybackOnlyEnabledChanged = { enabled ->
                                 if (enabled && !MediaSessionPlaybackGate.hasNotificationAccess(this)) {

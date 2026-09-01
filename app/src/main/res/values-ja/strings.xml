@@ -412,10 +412,13 @@
     <string name="extras_battery_glyph_title">Glyph 充電残量メーター</string>
     <string name="extras_battery_glyph_description">充電開始時にバッテリー残量をGlyph Interfaceに表示します\nGlyphを表にしている際に、本体を振ることでも確認できます</string>
     <string name="extras_battery_glyph_unsupported">この端末はこの機能の対象外です。</string>
+    <string name="extras_sync_nothing_os_glyph_title">Nothing OSのGlyph設定と連動</string>
+    <string name="extras_sync_nothing_os_glyph_description">Nothing OSでGlyph Interfaceがオフのとき、このアプリのGlyph出力も停止します。端末やOSによって動作しない場合があります。</string>
     <string name="battery_glyph_notification_channel">Glyphバッテリーメーター</string>
     <string name="battery_glyph_notification_title">充電開始をチェック中</string>
     <string name="battery_glyph_notification_charging">充電中：画面を下にして振ると残量を表示します</string>
     <string name="battery_glyph_notification_waiting">充電開始を待っています</string>
+    <string name="battery_glyph_notification_system_glyph_disabled">Glyph Interfaceがオンになるのを待っています</string>
     <string name="menu_experimental">実験</string>
     <string name="menu_settings">設定</string>
     <string name="experimental_screen_title">実験機能</string>

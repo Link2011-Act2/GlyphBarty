@@ -1,6 +1,7 @@
 package jp.linkserver.glyphvisualizer
 
 import android.content.Context
+import android.content.SharedPreferences
 
 object SettingsPreferences {
     private const val PREFS_NAME = "glyph_visualizer_settings"
@@ -77,6 +78,20 @@ object SettingsPreferences {
                 defaults = PersistedSettingsSchema.defaults()
             )
         ).state
+
+    internal fun registerPreferenceChangeListener(
+        context: Context,
+        listener: SharedPreferences.OnSharedPreferenceChangeListener
+    ) {
+        preferences(context).registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    internal fun unregisterPreferenceChangeListener(
+        context: Context,
+        listener: SharedPreferences.OnSharedPreferenceChangeListener
+    ) {
+        preferences(context).unregisterOnSharedPreferenceChangeListener(listener)
+    }
 
     private fun preferences(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

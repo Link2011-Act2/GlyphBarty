@@ -31,6 +31,9 @@ import jp.linkserver.glyphvisualizer.MainActivity
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.SettingsPreferences
 import jp.linkserver.glyphvisualizer.glyph.GlyphSdkSessionCoordinator
+import jp.linkserver.glyphvisualizer.glyph.NothingOsGlyphSettings
+import jp.linkserver.glyphvisualizer.glyph.NothingOsGlyphSettingsMonitor
+import jp.linkserver.glyphvisualizer.glyph.NothingOsGlyphSettingState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +83,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
     private var hasGravitySample = false
     private var charging = false
     private var sensorsRegistered = false
+    private var glyphOutputAllowed = true
     private var animationJob: Job? = null
     private var activeSession: BatteryGlyphSdkSession? = null
     private var activeOwnerToken: Any? = null
@@ -88,6 +92,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
     private var gravitySensor: Sensor? = null
     private var linearAccelerationSensor: Sensor? = null
     private var accelerometerSensor: Sensor? = null
+    private lateinit var nothingOsGlyphSettingsMonitor: NothingOsGlyphSettingsMonitor
 
     private val confirmChargingRunnable = Runnable { refreshChargingState(allowDisplay = true) }
 
@@ -110,6 +115,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
         AppLogger.init(this)
         createNotificationChannel()
         startMonitoringForeground(charging = false)
+        glyphOutputAllowed = NothingOsGlyphSettings.currentState(this).outputAllowed
 
         batteryIndicatorSpec = GlyphDeviceCatalog.currentBatteryIndicatorSpecOrNull()
         if (batteryIndicatorSpec == null) {
@@ -129,6 +135,11 @@ class BatteryGlyphService : Service(), SensorEventListener {
         registerBatteryReceiver()
         updateSensorMonitoring()
         updateNotification()
+        nothingOsGlyphSettingsMonitor = NothingOsGlyphSettingsMonitor(
+            context = this,
+            onStateChanged = ::handleNothingOsGlyphSettingChanged
+        )
+        nothingOsGlyphSettingsMonitor.start()
         AppLogger.i(TAG, "Monitoring started: charging=$charging model=${Build.MODEL}")
     }
 
@@ -144,6 +155,9 @@ class BatteryGlyphService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(confirmChargingRunnable)
+        if (::nothingOsGlyphSettingsMonitor.isInitialized) {
+            nothingOsGlyphSettingsMonitor.stop()
+        }
         runCatching { unregisterReceiver(batteryReceiver) }
         stopSensorMonitoring()
         cancelActiveDisplay("service destroyed")
@@ -217,7 +231,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
     }
 
     private fun requestBatteryDisplay(source: String) {
-        if (!charging || animationJob?.isActive == true) return
+        if (!charging || !glyphOutputAllowed || animationJob?.isActive == true) return
         val latest = currentBatterySnapshot()
         if (!latest.charging) {
             refreshChargingState(allowDisplay = false)
@@ -322,7 +336,19 @@ class BatteryGlyphService : Service(), SensorEventListener {
     }
 
     private fun updateSensorMonitoring() {
-        if (charging) startSensorMonitoring() else stopSensorMonitoring()
+        if (charging && glyphOutputAllowed) startSensorMonitoring() else stopSensorMonitoring()
+    }
+
+    private fun handleNothingOsGlyphSettingChanged(state: NothingOsGlyphSettingState) {
+        if (glyphOutputAllowed == state.outputAllowed) return
+        glyphOutputAllowed = state.outputAllowed
+        AppLogger.i(
+            TAG,
+            "Nothing OS Glyph sync changed: system=${state.systemEnabled} allowed=${state.outputAllowed}"
+        )
+        if (!glyphOutputAllowed) cancelActiveDisplay("Nothing OS Glyph setting is off")
+        updateSensorMonitoring()
+        updateNotification()
     }
 
     private fun startSensorMonitoring() {
@@ -434,8 +460,12 @@ class BatteryGlyphService : Service(), SensorEventListener {
             .setContentTitle(getString(R.string.battery_glyph_notification_title))
             .setContentText(
                 getString(
-                    if (charging) R.string.battery_glyph_notification_charging
-                    else R.string.battery_glyph_notification_waiting
+                    when {
+                        !glyphOutputAllowed ->
+                            R.string.battery_glyph_notification_system_glyph_disabled
+                        charging -> R.string.battery_glyph_notification_charging
+                        else -> R.string.battery_glyph_notification_waiting
+                    }
                 )
             )
             .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
