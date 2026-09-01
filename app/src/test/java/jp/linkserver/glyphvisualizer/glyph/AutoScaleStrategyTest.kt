@@ -75,7 +75,7 @@ class AutoScaleStrategyTest {
     }
 
     @Test
-    fun spectrumVisualDynamics_blendsSharedThenPerBandWithWarmTrackers() {
+    fun spectrumVisualDynamics_usesTheFullDynamicsMixForSharedAndPerBandExpansion() {
         fun apply(
             state: SpectrumVisualDynamicsState,
             bands: FloatArray,
@@ -130,36 +130,44 @@ class AutoScaleStrategyTest {
 
         assertTrue(supportsGlyphVisualDynamics(GlyphPatternKind.SPECTRUM))
         assertArrayEquals(floatArrayOf(0.4f, 0.6f), initial, 0.0001f)
-        assertArrayEquals(floatArrayOf(19f / 60f, 0.95f), shared, 0.0001f)
-        assertEquals(0.3f / 0.9f, shared[0] / shared[1], 0.0001f)
-        val expectedPerBandLow = (1f / 3f) * (1f - SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX)
-        assertArrayEquals(floatArrayOf(expectedPerBandLow, 1f), nearPerBand, 0.0001f)
+        assertArrayEquals(floatArrayOf(19f / 120f, 0.975f), shared, 0.0001f)
+        assertArrayEquals(floatArrayOf(0f, 1f), nearPerBand, 0.0001f)
         assertArrayEquals(floatArrayOf(0.3f, 0.9f), afterReset, 0.0001f)
         assertArrayEquals(floatArrayOf(0.2f, 0.8f), legacy, 0.0001f)
     }
 
     @Test
-    fun spectrumVisualDynamics_perBandCurveStartsSmoothlyAndStaysCapped() {
-        val justBelowStart = spectrumPerBandDynamicsMix(
-            SPECTRUM_PER_BAND_DYNAMICS_START - 0.01f
-        )
-        val atStart = spectrumPerBandDynamicsMix(SPECTRUM_PER_BAND_DYNAMICS_START)
-        val justAboveStart = spectrumPerBandDynamicsMix(
-            SPECTRUM_PER_BAND_DYNAMICS_START + 0.01f
-        )
+    fun spectrumVisualDynamics_perBandUsesTheClampedDynamicsWithoutASeparateCurveOrCap() {
+        val state = SpectrumVisualDynamicsState()
+        state.apply(floatArrayOf(0.4f, 0.6f), 1_000L, 30_000f, dynamics = 0f)
+        state.apply(floatArrayOf(0.4f, 0.6f), 31_000L, 30_000f, dynamics = 0f)
 
-        assertEquals(0f, justBelowStart, 0.0001f)
-        assertEquals(0f, atStart, 0.0001f)
-        assertTrue(justAboveStart > 0f)
-        assertTrue(justAboveStart < 0.01f)
-        assertTrue(spectrumPerBandDynamicsMix(0.8f) > justAboveStart)
-        assertEquals(
-            SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX,
-            spectrumPerBandDynamicsMix(1f),
+        val dynamics = 0.25f
+        val output = state.apply(
+            floatArrayOf(0.3f, 0.9f),
+            31_000L,
+            30_000f,
+            dynamics = dynamics
+        )
+        val sharedPeak = blendVisualDynamics(
+            agcLevel = 0.9f,
+            expandedLevel = 1f,
+            dynamics = spectrumSharedDynamicsMix(dynamics)
+        )
+        val sharedLow = 0.3f * sharedPeak / 0.9f
+
+        assertArrayEquals(
+            floatArrayOf(
+                blendVisualDynamics(sharedLow, 0f, dynamics),
+                blendVisualDynamics(sharedPeak, 1f, dynamics)
+            ),
+            output,
             0.0001f
         )
+        assertEquals(0f, spectrumSharedDynamicsMix(0f), 0.0001f)
         assertEquals(0.5f, spectrumSharedDynamicsMix(0.5f), 0.0001f)
         assertTrue(spectrumSharedDynamicsMix(0.95f) > 0.98f)
+        assertEquals(1f, spectrumSharedDynamicsMix(1f), 0.0001f)
     }
 
     @Test
@@ -209,9 +217,70 @@ class AutoScaleStrategyTest {
             )
 
             assertEquals(GlyphPatternKind.SPECTRUM, GlyphPatternRegistry.kindOf(patternId))
-            val expectedPerBandLow = (1f / 3f) * (1f - SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX)
-            assertArrayEquals(floatArrayOf(expectedPerBandLow, 1f), output, 0.0001f)
+            assertArrayEquals(floatArrayOf(0f, 1f), output, 0.0001f)
         }
+    }
+
+    @Test
+    fun levelPatternsWithFillOther_keepScalarMainDynamicsAndUseUncappedSpectrumFillDynamics() {
+        fun mainLevel(patternId: String, patternKind: GlyphPatternKind): Float {
+            val expander = VisualDynamicsExpander()
+            expander.update(0.4f, 1_000L, 30_000f)
+            expander.update(0.4f, 31_000L, 30_000f)
+            return applyAdaptiveVisualDynamics(
+                agcLevel = 0.3f,
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                profile = GlyphDeviceProfile.PHONE2,
+                patternId = patternId,
+                patternKind = patternKind,
+                expander = expander,
+                nowMs = 31_000L,
+                windowMs = 30_000f,
+                override = GlyphVisualTuning(dynamics = 0.25f)
+            )
+        }
+
+        val linearMainLevel = mainLevel(
+            GlyphPatternRegistry.P2_C1_LINEAR,
+            GlyphPatternKind.LINEAR
+        )
+        val centerMainLevel = mainLevel(
+            GlyphPatternRegistry.P2_C1_CENTER,
+            GlyphPatternKind.CENTER
+        )
+
+        val fillState = SpectrumVisualDynamicsState()
+        val fillPatternId = requireNotNull(
+            GlyphPatternRegistry.classicPatternIdFor(GlyphDeviceProfile.PHONE2)
+        )
+        fillState.apply(floatArrayOf(0.4f, 0.6f), 1_000L, 30_000f, dynamics = 0f)
+        fillState.apply(floatArrayOf(0.4f, 0.6f), 31_000L, 30_000f, dynamics = 0f)
+        val fillBands = applyAdaptiveSpectrumVisualDynamics(
+            agcBands = floatArrayOf(0.3f, 0.9f),
+            autoScaleEnabled = true,
+            strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+            profile = GlyphDeviceProfile.PHONE2,
+            patternId = fillPatternId,
+            patternKind = GlyphPatternKind.SPECTRUM,
+            state = fillState,
+            nowMs = 31_000L,
+            windowMs = 30_000f,
+            override = GlyphVisualTuning(dynamics = 1f)
+        )
+
+        assertEquals(
+            GlyphPatternKind.LINEAR,
+            GlyphPatternRegistry.kindOf(GlyphPatternRegistry.P2_C1_LINEAR)
+        )
+        assertEquals(
+            GlyphPatternKind.CENTER,
+            GlyphPatternRegistry.kindOf(GlyphPatternRegistry.P2_C1_CENTER)
+        )
+        assertEquals(GlyphPatternKind.SPECTRUM, GlyphPatternRegistry.kindOf(fillPatternId))
+        assertEquals(0.225f, linearMainLevel, 0.0001f)
+        assertEquals(0.225f, centerMainLevel, 0.0001f)
+        assertArrayEquals(floatArrayOf(0f, 1f), fillBands, 0.0001f)
     }
 
     @Test
