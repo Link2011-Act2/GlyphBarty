@@ -64,6 +64,10 @@ private enum class MeterStyleMode {
     FAITHFUL
 }
 
+// Keep the saved preference and callback intact so the previous behavior can be restored quickly.
+internal const val NATIVE_METER_VIEW_ALWAYS_ENABLED = true
+private const val NATIVE_METER_VIEW_SETTING_VISIBLE = false
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -85,6 +89,8 @@ fun SettingsScreen(
     onNativeMeterViewEnabledChanged: (Boolean) -> Unit,
     automaticUpdateCheckEnabled: Boolean,
     onAutomaticUpdateCheckEnabledChanged: (Boolean) -> Unit,
+    syncWithNothingOsGlyphSettingEnabled: Boolean,
+    onSyncWithNothingOsGlyphSettingEnabledChanged: (Boolean) -> Unit,
     mediaPlaybackOnlyEnabled: Boolean,
     onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     experimentalVisualizerStabilizationEnabled: Boolean,
@@ -313,29 +319,44 @@ fun SettingsScreen(
                     description = meterStyleSummary,
                     onClick = { showMeterStyleDialog = true },
                     nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Middle
+                    position = if (NATIVE_METER_VIEW_SETTING_VISIBLE) {
+                        SettingsGroupPosition.Middle
+                    } else {
+                        SettingsGroupPosition.Bottom
+                    }
                 )
-                SettingsDividerGap()
-                SettingsToggleEntry(
-                    title = stringResource(R.string.settings_native_meter_view_title),
-                    description = stringResource(R.string.settings_native_meter_view_desc),
-                    checked = nativeMeterViewEnabled,
-                    onCheckedChange = onNativeMeterViewEnabledChanged,
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Bottom
-                )
+                if (NATIVE_METER_VIEW_SETTING_VISIBLE) {
+                    SettingsDividerGap()
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.settings_native_meter_view_title),
+                        description = stringResource(R.string.settings_native_meter_view_desc),
+                        checked = nativeMeterViewEnabled,
+                        onCheckedChange = onNativeMeterViewEnabledChanged,
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Bottom
+                    )
+                }
             }
 
             SettingsCategory(
                 title = stringResource(R.string.settings_category_playback)
             ) {
                 SettingsToggleEntry(
+                    title = stringResource(R.string.extras_sync_nothing_os_glyph_title),
+                    description = stringResource(R.string.extras_sync_nothing_os_glyph_description),
+                    checked = syncWithNothingOsGlyphSettingEnabled,
+                    onCheckedChange = onSyncWithNothingOsGlyphSettingEnabledChanged,
+                    nothingStyle = nothingStyleEnabled,
+                    position = SettingsGroupPosition.Top
+                )
+                SettingsDividerGap()
+                SettingsToggleEntry(
                     title = stringResource(R.string.settings_media_playback_only_title),
                     description = mediaPlaybackOnlyDescription,
                     checked = mediaPlaybackOnlyEnabled,
                     onCheckedChange = onMediaPlaybackOnlyEnabledChanged,
                     nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Top
+                    position = SettingsGroupPosition.Middle
                 )
                 SettingsDividerGap()
                 SettingsToggleEntry(

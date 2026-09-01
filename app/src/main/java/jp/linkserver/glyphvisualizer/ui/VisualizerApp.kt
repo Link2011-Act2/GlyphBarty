@@ -128,6 +128,7 @@ import jp.linkserver.glyphvisualizer.ui.LightweightMeterCanvas
 import jp.linkserver.glyphvisualizer.ui.LightweightMeterBar
 import jp.linkserver.glyphvisualizer.ui.MeterCanvas
 import jp.linkserver.glyphvisualizer.ui.MeterStat
+import jp.linkserver.glyphvisualizer.ui.NATIVE_METER_VIEW_ALWAYS_ENABLED
 import jp.linkserver.glyphvisualizer.ui.OssLicensesScreen
 import jp.linkserver.glyphvisualizer.ui.Phone1GlyphDebugControls
 import jp.linkserver.glyphvisualizer.ui.SettingsScreen
@@ -202,6 +203,8 @@ internal fun GlyphVisualizerApp(
     val context = LocalContext.current
     val repositoryUrl = stringResource(R.string.about_support_site_url)
     val showPhone1GlyphDebugControls = isPhone1Device
+    val effectiveNativeMeterViewEnabled =
+        NATIVE_METER_VIEW_ALWAYS_ENABLED || nativeMeterViewEnabled
     val intDevBuild = rememberSaveable { isIntDevBuild() }
     var screen by rememberSaveable {
         mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
@@ -354,7 +357,7 @@ internal fun GlyphVisualizerApp(
                             meterVisibleEnabled = meterVisibleEnabled,
                             lightweightMeterEnabled = lightweightMeterEnabled,
                             spectrumMeterEnabled = spectrumMeterEnabled,
-                            nativeMeterViewEnabled = nativeMeterViewEnabled,
+                            nativeMeterViewEnabled = effectiveNativeMeterViewEnabled,
                             nothingStyleEnabled = nothingStyleEnabled,
                             showPhone1GlyphDebugControls = showPhone1GlyphDebugControls,
                             onStartClick = {
@@ -425,7 +428,7 @@ internal fun GlyphVisualizerApp(
                         meterVisibleEnabled = meterVisibleEnabled,
                         lightweightMeterEnabled = lightweightMeterEnabled,
                         spectrumMeterEnabled = spectrumMeterEnabled,
-                        nativeMeterViewEnabled = nativeMeterViewEnabled,
+                        nativeMeterViewEnabled = effectiveNativeMeterViewEnabled,
                         mainScreenUiIsolationEnabled = mainScreenUiIsolationEnabled,
                         nothingStyleEnabled = nothingStyleEnabled,
                         turnOffWhenBackDown = turnOffWhenBackDown,
@@ -531,10 +534,6 @@ internal fun GlyphVisualizerApp(
                         batteryGlyphEnabled = batteryGlyphEnabled,
                         batteryGlyphSupported = batteryGlyphSupported,
                         onBatteryGlyphEnabledChanged = onBatteryGlyphEnabledChanged,
-                        syncWithNothingOsGlyphSettingEnabled =
-                            syncWithNothingOsGlyphSettingEnabled,
-                        onSyncWithNothingOsGlyphSettingEnabledChanged =
-                            onSyncWithNothingOsGlyphSettingEnabledChanged,
                         onOpenMenu = { drawerOpen = true },
                         onOpenSettings = {
                             settingsReturnScreen = Screen.EXTRAS
@@ -569,6 +568,10 @@ internal fun GlyphVisualizerApp(
                         onNativeMeterViewEnabledChanged = onNativeMeterViewEnabledChanged,
                         automaticUpdateCheckEnabled = automaticUpdateCheckEnabled,
                         onAutomaticUpdateCheckEnabledChanged = onAutomaticUpdateCheckEnabledChanged,
+                        syncWithNothingOsGlyphSettingEnabled =
+                            syncWithNothingOsGlyphSettingEnabled,
+                        onSyncWithNothingOsGlyphSettingEnabledChanged =
+                            onSyncWithNothingOsGlyphSettingEnabledChanged,
                         mediaPlaybackOnlyEnabled = mediaPlaybackOnlyEnabled,
                         onMediaPlaybackOnlyEnabledChanged = onMediaPlaybackOnlyEnabledChanged,
                         experimentalVisualizerStabilizationEnabled = experimentalVisualizerStabilizationEnabled,
