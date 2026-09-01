@@ -329,8 +329,12 @@ class AutoScaleStrategyTest {
             ).dynamics,
             0.0001f
         )
+        val expectedLinearDynamics = GlyphVisualTuningDatabase.tuningFor(
+            GlyphDeviceProfile.PHONE2,
+            GlyphPatternRegistry.P2_C1_LINEAR
+        ).dynamics
         assertEquals(
-            0.5f,
+            expectedLinearDynamics,
             resolveGlyphVisualTuning(
                 GlyphDeviceProfile.PHONE2,
                 GlyphPatternRegistry.P2_C1_LINEAR,

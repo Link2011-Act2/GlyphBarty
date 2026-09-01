@@ -14,6 +14,7 @@ interface GlyphOutputController {
     fun setLevelAutoScaleEnabled(enabled: Boolean) {}
     fun setAutoScaleStrategy(strategy: GlyphAutoScaleStrategy) {}
     fun setVisualTuningOverride(tuning: GlyphVisualTuning?) {}
+    fun setFillOtherVisualTuningOverride(tuning: GlyphVisualTuning?) {}
     fun setOutputGamma(gamma: Float) {}
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}
     fun setExperimentalPerformanceOptimizationsEnabled(enabled: Boolean) {}

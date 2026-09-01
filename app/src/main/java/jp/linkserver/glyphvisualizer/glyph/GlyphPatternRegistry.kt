@@ -224,6 +224,13 @@ object GlyphPatternRegistry {
 
     fun recipeFor(id: String): GlyphPatternRecipe? = byId[id]?.recipe
 
+    fun classicPatternIdFor(profile: GlyphDeviceProfile): String? {
+        return all.firstOrNull { definition ->
+            profile in definition.supportedDevices &&
+                definition.recipe.renderMode == GlyphPatternRenderMode.CLASSIC
+        }?.id
+    }
+
     fun isSupported(profile: GlyphDeviceProfile, id: String): Boolean {
         return byId[id]?.supportedDevices?.contains(profile) == true
     }

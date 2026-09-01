@@ -353,13 +353,11 @@ internal fun ControlCard(
         GlyphDeviceProfile.PHONE3_MATRIX,
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     )
-    val isClassicGlyphMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode ==
-        GlyphPatternRenderMode.CLASSIC
     val glyphRenderMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode
     var oscilloscopeTimeAxisMultiplier by remember { mutableStateOf(1f) }
-    val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
+    val fillOtherGlyphLightsAffectsCurrentMode =
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
-        !isClassicGlyphMode
+        glyphRenderMode != GlyphPatternRenderMode.CLASSIC
     val glyphPatternDescription = glyphPatternDescriptionText(glyphMode)
     val recordingLightBehavior = resolveRecordingLightBehavior(
         baseIndicatorEnabled = baseIndicatorEnabled,
@@ -673,25 +671,22 @@ internal fun ControlCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.fill_other_glyph_lights_title),
                             style = MaterialTheme.typography.titleSmall,
-                            color = if (fillOtherGlyphLightsEnabledForMode) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                disabledContentColor
-                            }
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = stringResource(R.string.fill_other_glyph_lights_desc),
+                            text = stringResource(
+                                if (fillOtherGlyphLightsAffectsCurrentMode) {
+                                    R.string.fill_other_glyph_lights_desc
+                                } else {
+                                    R.string.fill_other_glyph_lights_desc_no_effect
+                                }
+                            ),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (fillOtherGlyphLightsEnabledForMode) {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            } else {
-                                disabledContentColor
-                            }
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Box(
@@ -700,12 +695,7 @@ internal fun ControlCard(
                     ) {
                         Checkbox(
                             checked = fillOtherGlyphLights,
-                            onCheckedChange = if (fillOtherGlyphLightsEnabledForMode) {
-                                onFillOtherGlyphLightsChanged
-                            } else {
-                                null
-                            },
-                            enabled = fillOtherGlyphLightsEnabledForMode
+                            onCheckedChange = onFillOtherGlyphLightsChanged
                         )
                     }
                 }

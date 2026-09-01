@@ -406,7 +406,8 @@ class GlyphVisualizerService : Service() {
         val allBrightnessAutoScale: Boolean,
         val autoScaleWindowSeconds: Float,
         val autoScaleOffset: Float,
-        val visualTuningOverride: GlyphVisualTuning?
+        val visualTuningOverride: GlyphVisualTuning?,
+        val fillOtherVisualTuningOverride: GlyphVisualTuning?
     )
     private val pendingLevelFrames = LatencyFrameScheduler<DelayedLevelFrame> { it.dueAtMs }
     private val latencyDrainRunnable = Runnable { drainPendingLevelFrames() }
@@ -1495,7 +1496,14 @@ class GlyphVisualizerService : Service() {
             autoScaleOffset = autoScaleOffset,
             visualTuningOverride = savedSettings.visualDynamicsOverrides[
                 GlyphVisualTuningKey(outputDeviceProfile, glyphMode)
-            ]?.let { dynamics -> GlyphVisualTuning(dynamics = dynamics) }
+            ]?.let { dynamics -> GlyphVisualTuning(dynamics = dynamics) },
+            fillOtherVisualTuningOverride = GlyphPatternRegistry
+                .classicPatternIdFor(outputDeviceProfile)
+                ?.let { classicPatternId ->
+                    savedSettings.visualDynamicsOverrides[
+                        GlyphVisualTuningKey(outputDeviceProfile, classicPatternId)
+                    ]?.let { dynamics -> GlyphVisualTuning(dynamics = dynamics) }
+                }
         )
         runGlyphControllerCommand {
             setPhone4bEmulationEnabled(snapshot.phone4bEmulationEnabled)
@@ -1517,6 +1525,7 @@ class GlyphVisualizerService : Service() {
             setAutoScaleWindowSeconds(snapshot.autoScaleWindowSeconds)
             setAutoScaleOffset(snapshot.autoScaleOffset)
             setVisualTuningOverride(snapshot.visualTuningOverride)
+            setFillOtherVisualTuningOverride(snapshot.fillOtherVisualTuningOverride)
         }
         updateBackDownSensorState()
     }

@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
@@ -126,6 +127,9 @@ internal fun ExperimentalMainScreenContent(
     var showDevicePatternSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightDialog by rememberSaveable { mutableStateOf(false) }
     val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
+    val fillOtherGlyphLightsAffectsCurrentMode =
+        !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
+            patternDefinition?.recipe?.renderMode != GlyphPatternRenderMode.CLASSIC
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
     val hasDevicePatternSettings = supportsFillOtherGlyphLights ||
         supportsRecordingLightBehavior ||
@@ -282,7 +286,13 @@ internal fun ExperimentalMainScreenContent(
                 if (supportsFillOtherGlyphLights) {
                     SettingsToggleEntry(
                         title = stringResource(R.string.fill_other_glyph_lights_title),
-                        description = stringResource(R.string.fill_other_glyph_lights_desc),
+                        description = stringResource(
+                            if (fillOtherGlyphLightsAffectsCurrentMode) {
+                                R.string.fill_other_glyph_lights_desc
+                            } else {
+                                R.string.fill_other_glyph_lights_desc_no_effect
+                            }
+                        ),
                         checked = fillOtherGlyphLights,
                         onCheckedChange = onFillOtherGlyphLightsChanged,
                         nothingStyle = nothingStyleEnabled,

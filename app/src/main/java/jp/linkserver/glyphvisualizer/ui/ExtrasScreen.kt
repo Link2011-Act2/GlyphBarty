@@ -90,6 +90,7 @@ internal fun ExtrasScreen(
                 position = SettingsGroupPosition.Top,
                 enabled = batteryGlyphSupported
             )
+            SettingsDividerGap()
             SettingsToggleEntry(
                 title = stringResource(R.string.extras_sync_nothing_os_glyph_title),
                 description = stringResource(R.string.extras_sync_nothing_os_glyph_description),

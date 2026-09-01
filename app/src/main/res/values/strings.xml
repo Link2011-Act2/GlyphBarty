@@ -316,6 +316,7 @@
     <string name="glyph_pattern_desc_matrix_pulse_grid">Assigns spectrum bands across the Matrix grid so each pixel pulses with its mapped frequency range.</string>
     <string name="fill_other_glyph_lights_title">Light up the other Glyphs too</string>
     <string name="fill_other_glyph_lights_desc">When using a partial-light mode, the remaining lights will also react to the spectrum like Classic.</string>
+    <string name="fill_other_glyph_lights_desc_no_effect">When using a partial-light mode, the remaining lights will also react to the spectrum like Classic.\nThis setting does not affect the current Glyph mode.</string>
     <string name="fill_other_glyph_lights_enabled">Light them</string>
     <string name="fill_other_glyph_lights_disabled">Do not light them</string>
     <string name="fill_other_glyph_lights_disabled_desc">Uses only the Glyphs controlled by the selected pattern.</string>

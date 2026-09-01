@@ -239,6 +239,13 @@ fun GlyphInterfaceInspectorScreen(
     } else {
         0f
     }
+    val fillOtherVisualTuning = GlyphPatternRegistry.classicPatternIdFor(selectedProfile)?.let { classicPatternId ->
+        resolveGlyphVisualTuning(
+            profile = selectedProfile,
+            patternId = classicPatternId,
+            localDynamicsOverrides = localTuningDynamics
+        )
+    }
     val exactVirtualFrame = virtualAnalysisFrame?.let { analysisFrame ->
         GlyphExactVirtualPreviewFrame(
             profile = selectedProfile,
@@ -253,6 +260,7 @@ fun GlyphInterfaceInspectorScreen(
             autoScaleEnabled = inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL,
             autoScaleStrategy = autoScaleStrategy,
             visualTuning = GlyphVisualTuning(dynamics = tuningDynamics),
+            fillOtherVisualTuning = fillOtherVisualTuning,
             autoScaleWindowSeconds = CaptureUiStore.state.autoScaleWindowSeconds,
             autoScaleOffset = CaptureUiStore.state.autoScaleOffset
         )
@@ -457,6 +465,7 @@ private fun GlyphExactVirtualPreviewFrame(
     autoScaleEnabled: Boolean,
     autoScaleStrategy: GlyphAutoScaleStrategy,
     visualTuning: GlyphVisualTuning,
+    fillOtherVisualTuning: GlyphVisualTuning?,
     autoScaleWindowSeconds: Float,
     autoScaleOffset: Float
 ): GlyphPreviewFrame? {
@@ -499,6 +508,7 @@ private fun GlyphExactVirtualPreviewFrame(
         autoScaleEnabled,
         autoScaleStrategy,
         visualTuning,
+        fillOtherVisualTuning,
         autoScaleWindowSeconds,
         autoScaleOffset
     ) {
@@ -515,6 +525,11 @@ private fun GlyphExactVirtualPreviewFrame(
         controller.setAutoScaleStrategy(autoScaleStrategy)
         controller.setVisualTuningOverride(
             visualTuning.takeIf {
+                autoScaleEnabled && autoScaleStrategy == GlyphAutoScaleStrategy.ADAPTIVE
+            }
+        )
+        controller.setFillOtherVisualTuningOverride(
+            fillOtherVisualTuning.takeIf {
                 autoScaleEnabled && autoScaleStrategy == GlyphAutoScaleStrategy.ADAPTIVE
             }
         )

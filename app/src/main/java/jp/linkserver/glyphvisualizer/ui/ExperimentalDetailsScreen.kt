@@ -219,7 +219,7 @@ internal fun ExperimentalDetailsScreenContent(
     }
     val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
     val supportsRecordingLightBehavior = deviceProfile.supportsRecordingLightBehavior()
-    val fillOtherGlyphLightsEnabledForMode = supportsFillOtherGlyphLights &&
+    val fillOtherGlyphLightsAffectsCurrentMode =
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
         glyphRenderMode != GlyphPatternRenderMode.CLASSIC
     val isMatrixDevice = deviceProfile in setOf(
@@ -433,7 +433,8 @@ internal fun ExperimentalDetailsScreenContent(
                                 startPending = startPending,
                                 patternLabel = patternLabel,
                                 fillOtherGlyphLights = fillOtherGlyphLights,
-                                showFillOtherGlyphLights = fillOtherGlyphLightsEnabledForMode,
+                                showFillOtherGlyphLights = supportsFillOtherGlyphLights,
+                                fillOtherGlyphLightsAffectsCurrentMode = fillOtherGlyphLightsAffectsCurrentMode,
                                 recordingLightBehaviorLabel = recordingLightBehaviorLabel,
                                 supportsRecordingLightBehavior = supportsRecordingLightBehavior,
                                 glyphMode = glyphMode,
@@ -644,6 +645,7 @@ private fun ExperimentalDetailsLiveTab(
     patternLabel: String,
     fillOtherGlyphLights: Boolean,
     showFillOtherGlyphLights: Boolean,
+    fillOtherGlyphLightsAffectsCurrentMode: Boolean,
     recordingLightBehaviorLabel: String,
     supportsRecordingLightBehavior: Boolean,
     glyphMode: String,
@@ -787,7 +789,13 @@ private fun ExperimentalDetailsLiveTab(
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.fill_other_glyph_lights_title),
-                    description = stringResource(R.string.fill_other_glyph_lights_desc),
+                    description = stringResource(
+                        if (fillOtherGlyphLightsAffectsCurrentMode) {
+                            R.string.fill_other_glyph_lights_desc
+                        } else {
+                            R.string.fill_other_glyph_lights_desc_no_effect
+                        }
+                    ),
                     checked = fillOtherGlyphLights,
                     onCheckedChange = onFillOtherGlyphLightsChanged,
                     nothingStyle = nothingStyleEnabled,
