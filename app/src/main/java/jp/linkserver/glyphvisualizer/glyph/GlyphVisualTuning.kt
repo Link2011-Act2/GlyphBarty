@@ -215,10 +215,8 @@ internal class SpectrumVisualDynamicsState {
         }
 
         val blend = dynamics.coerceIn(0f, 1f)
-        val sharedMix = smoothStep((blend / SPECTRUM_SHARED_PHASE_END).coerceIn(0f, 1f))
-        val perBandPhase = ((blend - SPECTRUM_SHARED_PHASE_END) /
-            (1f - SPECTRUM_SHARED_PHASE_END)).coerceIn(0f, 1f)
-        val perBandMix = smoothStep(perBandPhase) * SPECTRUM_PER_BAND_MAX_MIX
+        val sharedMix = spectrumSharedDynamicsMix(blend)
+        val perBandMix = spectrumPerBandDynamicsMix(blend)
         // Shared Spectrum dynamics may boost a non-zero frame peak, but must not map the
         // tracker's current minimum below its natural peak and collapse every band together.
         val boostOnlyExpandedPeak = max(framePeak, expandedPeak)
@@ -323,8 +321,21 @@ fun formatGlyphVisualTuningEntry(
 }
 
 private const val MIN_VISUAL_DYNAMICS_RANGE = 0.05f
-private const val SPECTRUM_SHARED_PHASE_END = 0.5f
-private const val SPECTRUM_PER_BAND_MAX_MIX = 0.95f
+
+// Spectrum Dynamics tuning knobs. Overall movement uses the full setting range; only the
+// per-band contrast is delayed and capped so high Dynamics does not amplify small noise.
+internal const val SPECTRUM_PER_BAND_DYNAMICS_START = 0.65f
+internal const val SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX = 0.50f
+
+internal fun spectrumSharedDynamicsMix(dynamics: Float): Float {
+    return smoothStep(dynamics)
+}
+
+internal fun spectrumPerBandDynamicsMix(dynamics: Float): Float {
+    val phase = ((dynamics.coerceIn(0f, 1f) - SPECTRUM_PER_BAND_DYNAMICS_START) /
+        (1f - SPECTRUM_PER_BAND_DYNAMICS_START)).coerceIn(0f, 1f)
+    return smoothStep(phase) * SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX
+}
 
 private fun smoothStep(value: Float): Float {
     val clamped = value.coerceIn(0f, 1f)

@@ -130,11 +130,86 @@ class AutoScaleStrategyTest {
 
         assertTrue(supportsGlyphVisualDynamics(GlyphPatternKind.SPECTRUM))
         assertArrayEquals(floatArrayOf(0.4f, 0.6f), initial, 0.0001f)
-        assertArrayEquals(floatArrayOf(1f / 3f, 1f), shared, 0.0001f)
+        assertArrayEquals(floatArrayOf(19f / 60f, 0.95f), shared, 0.0001f)
         assertEquals(0.3f / 0.9f, shared[0] / shared[1], 0.0001f)
-        assertArrayEquals(floatArrayOf(1f / 60f, 1f), nearPerBand, 0.0001f)
+        assertArrayEquals(floatArrayOf(13f / 60f, 1f), nearPerBand, 0.0001f)
         assertArrayEquals(floatArrayOf(0.3f, 0.9f), afterReset, 0.0001f)
         assertArrayEquals(floatArrayOf(0.2f, 0.8f), legacy, 0.0001f)
+    }
+
+    @Test
+    fun spectrumVisualDynamics_perBandCurveStartsSmoothlyAndStaysCapped() {
+        val justBelowStart = spectrumPerBandDynamicsMix(
+            SPECTRUM_PER_BAND_DYNAMICS_START - 0.01f
+        )
+        val atStart = spectrumPerBandDynamicsMix(SPECTRUM_PER_BAND_DYNAMICS_START)
+        val justAboveStart = spectrumPerBandDynamicsMix(
+            SPECTRUM_PER_BAND_DYNAMICS_START + 0.01f
+        )
+
+        assertEquals(0f, justBelowStart, 0.0001f)
+        assertEquals(0f, atStart, 0.0001f)
+        assertTrue(justAboveStart > 0f)
+        assertTrue(justAboveStart < 0.01f)
+        assertTrue(spectrumPerBandDynamicsMix(0.8f) > justAboveStart)
+        assertEquals(
+            SPECTRUM_PER_BAND_DYNAMICS_MAX_MIX,
+            spectrumPerBandDynamicsMix(1f),
+            0.0001f
+        )
+        assertEquals(0.5f, spectrumSharedDynamicsMix(0.5f), 0.0001f)
+        assertTrue(spectrumSharedDynamicsMix(0.95f) > 0.98f)
+    }
+
+    @Test
+    fun spectrumVisualDynamics_commonPathCoversSpectrumAndClassicPatterns() {
+        val patternIds = listOf(
+            GlyphPatternRegistry.P2_C1_SPECTRUM,
+            GlyphPatternRegistry.P2_CLASSIC
+        )
+
+        patternIds.forEach { patternId ->
+            val state = SpectrumVisualDynamicsState()
+            applyAdaptiveSpectrumVisualDynamics(
+                agcBands = floatArrayOf(0.4f, 0.6f),
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                profile = GlyphDeviceProfile.PHONE2,
+                patternId = patternId,
+                patternKind = GlyphPatternRegistry.kindOf(patternId),
+                state = state,
+                nowMs = 1_000L,
+                windowMs = 30_000f,
+                override = GlyphVisualTuning(dynamics = 1f)
+            )
+            applyAdaptiveSpectrumVisualDynamics(
+                agcBands = floatArrayOf(0.4f, 0.6f),
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                profile = GlyphDeviceProfile.PHONE2,
+                patternId = patternId,
+                patternKind = GlyphPatternRegistry.kindOf(patternId),
+                state = state,
+                nowMs = 31_000L,
+                windowMs = 30_000f,
+                override = GlyphVisualTuning(dynamics = 1f)
+            )
+            val output = applyAdaptiveSpectrumVisualDynamics(
+                agcBands = floatArrayOf(0.3f, 0.9f),
+                autoScaleEnabled = true,
+                strategy = GlyphAutoScaleStrategy.ADAPTIVE,
+                profile = GlyphDeviceProfile.PHONE2,
+                patternId = patternId,
+                patternKind = GlyphPatternRegistry.kindOf(patternId),
+                state = state,
+                nowMs = 31_000L,
+                windowMs = 30_000f,
+                override = GlyphVisualTuning(dynamics = 1f)
+            )
+
+            assertEquals(GlyphPatternKind.SPECTRUM, GlyphPatternRegistry.kindOf(patternId))
+            assertArrayEquals(floatArrayOf(13f / 60f, 1f), output, 0.0001f)
+        }
     }
 
     @Test
@@ -267,28 +342,46 @@ class AutoScaleStrategyTest {
     }
 
     @Test
-    fun tuningDatabase_keepsPatternIdsIndependent() {
-        assertEquals(
-            0.3f,
-            GlyphVisualTuningDatabase.tuningFor(
+    fun tuningResolution_keepsProfileAndPatternKeysIndependent() {
+        val overrides = mapOf(
+            GlyphVisualTuningKey(
                 GlyphDeviceProfile.PHONE4A,
                 GlyphPatternRegistry.P4A_LINEAR
-            ).dynamics,
-            0.0001f
-        )
-        assertEquals(
-            0.6f,
-            GlyphVisualTuningDatabase.tuningFor(
+            ) to 0.13f,
+            GlyphVisualTuningKey(
                 GlyphDeviceProfile.PHONE4A,
                 GlyphPatternRegistry.P4A_CENTER
+            ) to 0.57f,
+            GlyphVisualTuningKey(
+                GlyphDeviceProfile.PHONE4B,
+                GlyphPatternRegistry.P4A_CENTER
+            ) to 0.91f
+        )
+
+        assertEquals(
+            0.13f,
+            resolveGlyphVisualTuning(
+                GlyphDeviceProfile.PHONE4A,
+                GlyphPatternRegistry.P4A_LINEAR,
+                overrides
             ).dynamics,
             0.0001f
         )
         assertEquals(
-            0.8f,
-            GlyphVisualTuningDatabase.tuningFor(
+            0.57f,
+            resolveGlyphVisualTuning(
+                GlyphDeviceProfile.PHONE4A,
+                GlyphPatternRegistry.P4A_CENTER,
+                overrides
+            ).dynamics,
+            0.0001f
+        )
+        assertEquals(
+            0.91f,
+            resolveGlyphVisualTuning(
                 GlyphDeviceProfile.PHONE4B,
-                GlyphPatternRegistry.P4A_CENTER
+                GlyphPatternRegistry.P4A_CENTER,
+                overrides
             ).dynamics,
             0.0001f
         )
