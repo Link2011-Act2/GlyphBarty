@@ -78,6 +78,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mainHandler = Handler(android.os.Looper.getMainLooper())
+    private val faceDownDetector = BatteryFaceDownDetector()
     private val shakeDetector = BatteryShakeDetector()
     private val gravity = FloatArray(3)
     private var hasGravitySample = false
@@ -182,6 +183,12 @@ class BatteryGlyphService : Service(), SensorEventListener {
             }
 
             Sensor.TYPE_ACCELEROMETER -> {
+                faceDownDetector.onSample(
+                    xAcceleration = event.values[0],
+                    yAcceleration = event.values[1],
+                    zAcceleration = event.values[2],
+                    timestampMs = event.timestamp / 1_000_000L
+                )
                 if (gravitySensor == null) {
                     for (index in 0..2) {
                         gravity[index] = SENSOR_ALPHA * gravity[index] +
@@ -206,7 +213,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
         if (
             shakeDetector.onSample(
                 charging = charging,
-                gravityZ = gravity[2],
+                faceDown = faceDownDetector.isFaceDown,
                 linearAccelerationMagnitude = linearMagnitude,
                 timestampMs = timestampMs
             )
@@ -355,6 +362,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
         if (sensorsRegistered) return
         hasGravitySample = false
         gravity.fill(0f)
+        faceDownDetector.reset()
         shakeDetector.reset()
         gravitySensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -362,15 +370,14 @@ class BatteryGlyphService : Service(), SensorEventListener {
         linearAccelerationSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
-        if (gravitySensor == null || linearAccelerationSensor == null) {
-            accelerometerSensor?.let {
-                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-            }
+        accelerometerSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
         sensorsRegistered = true
         AppLogger.i(
             TAG,
-            "Shake sensors started: gravity=${gravitySensor != null} linear=${linearAccelerationSensor != null}"
+            "Shake sensors started: accelerometer=${accelerometerSensor != null} " +
+                "gravity=${gravitySensor != null} linear=${linearAccelerationSensor != null}"
         )
     }
 
@@ -379,6 +386,7 @@ class BatteryGlyphService : Service(), SensorEventListener {
         sensorManager.unregisterListener(this)
         sensorsRegistered = false
         hasGravitySample = false
+        faceDownDetector.reset()
         shakeDetector.reset()
         AppLogger.i(TAG, "Shake sensors stopped")
     }

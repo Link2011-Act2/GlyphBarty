@@ -53,22 +53,72 @@ class BatteryGlyphLogicTest {
     }
 
     @Test
+    fun faceDownRequiresStrictZThresholdAndOneSecondDuration() {
+        val detector = BatteryFaceDownDetector()
+
+        assertFalse(detector.onSample(0f, 0f, -9.5f, 0L))
+        assertFalse(detector.onSample(0f, 0f, -9.5f, 1_000L))
+        assertFalse(detector.isFaceDown)
+
+        detector.reset()
+        assertFalse(detector.onSample(0f, 0f, -10f, 0L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 100L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 200L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 300L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 400L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 1_399L))
+        assertTrue(detector.onSample(0f, 0f, -10f, 1_400L))
+    }
+
+    @Test
+    fun faceDownRequiresOneSecondWithoutXyMovement() {
+        val detector = BatteryFaceDownDetector()
+
+        detector.onSample(0f, 0f, -10f, 0L)
+        detector.onSample(0f, 0f, -10f, 100L)
+        detector.onSample(0f, 0f, -10f, 200L)
+        detector.onSample(0f, 0f, -10f, 300L)
+        detector.onSample(0f, 0f, -10f, 400L)
+        assertFalse(detector.onSample(1f, 0f, -10f, 500L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 600L))
+        assertFalse(detector.onSample(0f, 0f, -10f, 1_599L))
+        assertTrue(detector.onSample(0f, 0f, -10f, 1_600L))
+    }
+
+    @Test
+    fun confirmedFaceDownUsesLenientExitThreshold() {
+        val detector = BatteryFaceDownDetector()
+
+        detector.onSample(0f, 0f, -10f, 0L)
+        detector.onSample(0f, 0f, -10f, 100L)
+        detector.onSample(0f, 0f, -10f, 200L)
+        detector.onSample(0f, 0f, -10f, 300L)
+        detector.onSample(0f, 0f, -10f, 400L)
+        assertTrue(detector.onSample(0f, 0f, -10f, 1_400L))
+
+        assertTrue(detector.onSample(0f, 0f, -9f, 1_500L))
+        assertTrue(detector.onSample(0f, 0f, -9f, 1_600L))
+        assertTrue(detector.onSample(0f, 0f, -8f, 1_700L))
+        assertFalse(detector.onSample(0f, 0f, -8f, 1_800L))
+    }
+
+    @Test
     fun shakeRequiresChargingFaceDownTwoPeaksAndCooldown() {
         val detector = BatteryShakeDetector()
 
-        assertFalse(detector.onSample(false, -9f, 14f, 100L))
-        assertFalse(detector.onSample(false, -9f, 14f, 200L))
-        assertFalse(detector.onSample(true, 9f, 14f, 300L))
-        assertFalse(detector.onSample(true, 9f, 14f, 400L))
+        assertFalse(detector.onSample(false, true, 14f, 100L))
+        assertFalse(detector.onSample(false, true, 14f, 200L))
+        assertFalse(detector.onSample(true, false, 14f, 300L))
+        assertFalse(detector.onSample(true, false, 14f, 400L))
 
-        assertFalse(detector.onSample(true, -9f, 14f, 500L))
-        assertTrue(detector.onSample(true, -9f, 14f, 600L))
+        assertFalse(detector.onSample(true, true, 14f, 500L))
+        assertTrue(detector.onSample(true, true, 14f, 600L))
 
-        assertFalse(detector.onSample(true, -9f, 14f, 700L))
-        assertFalse(detector.onSample(true, -9f, 14f, 800L))
+        assertFalse(detector.onSample(true, true, 14f, 700L))
+        assertFalse(detector.onSample(true, true, 14f, 800L))
 
-        assertFalse(detector.onSample(true, -9f, 14f, 2_200L))
-        assertTrue(detector.onSample(true, -9f, 14f, 2_300L))
+        assertFalse(detector.onSample(true, true, 14f, 2_200L))
+        assertTrue(detector.onSample(true, true, 14f, 2_300L))
     }
 
     @Test
