@@ -170,8 +170,8 @@ internal fun ExperimentalMainScreenContent(
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
     }
     val startButtonContainerColor by animateColorAsState(
-        targetValue = if (isCapturing && nothingStyleEnabled) {
-            NothingRed
+        targetValue = if (isCapturing) {
+            if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
         } else {
             MaterialTheme.colorScheme.primary
         },
@@ -179,8 +179,8 @@ internal fun ExperimentalMainScreenContent(
         label = "experimental_home_start_button_container"
     )
     val startButtonContentColor by animateColorAsState(
-        targetValue = if (isCapturing && nothingStyleEnabled) {
-            Color.White
+        targetValue = if (isCapturing) {
+            if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
         } else {
             MaterialTheme.colorScheme.onPrimary
         },

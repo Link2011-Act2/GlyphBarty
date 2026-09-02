@@ -243,7 +243,8 @@ private fun detectChannel(value: String): String {
     return when {
         "intdev" in lower || "internal" in lower -> "IntDev"
         "beta" in lower -> "Beta"
-        "stable" in lower || "release" in lower -> "Release"
+        "stable" in lower -> "Stable"
+        "release" in lower -> "Release"
         else -> "Unknown"
     }
 }

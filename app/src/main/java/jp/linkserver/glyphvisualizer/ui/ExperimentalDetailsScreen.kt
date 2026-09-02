@@ -721,13 +721,13 @@ private fun ExperimentalDetailsLiveTab(
                         enabled = !startPending,
                         shape = RoundedCornerShape(999.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isCapturing && nothingStyleEnabled) {
-                                NothingRed
+                            containerColor = if (isCapturing) {
+                                if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
                             } else {
                                 MaterialTheme.colorScheme.primary
                             },
-                            contentColor = if (isCapturing && nothingStyleEnabled) {
-                                Color.White
+                            contentColor = if (isCapturing) {
+                                if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
                             } else {
                                 MaterialTheme.colorScheme.onPrimary
                             },

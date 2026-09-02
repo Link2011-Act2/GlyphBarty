@@ -85,6 +85,17 @@ fun AboutScreen(
     val simpleVersion = channelInfo.first
     val channelName = remember(versionName) { detectReleaseChannel(versionName) }
 
+    val channelLabel = when {
+        channelName.equals("IntDev", ignoreCase = true) ->
+            stringResource(R.string.about_dev_channel_value_intdev)
+        channelName.equals("Beta", ignoreCase = true) ->
+            stringResource(R.string.about_dev_channel_value_beta)
+        channelName.equals("Stable", ignoreCase = true) ||
+            channelName.equals("Release", ignoreCase = true) ->
+            stringResource(R.string.about_dev_channel_value_stable)
+        else -> stringResource(R.string.about_dev_channel_value_unknown)
+    }
+
     val channelDescResId = when {
         channelName.equals("IntDev", ignoreCase = true) -> R.string.about_dev_channel_desc_intdev
         channelName.equals("Beta", ignoreCase = true) -> R.string.about_dev_channel_desc_beta
@@ -167,6 +178,7 @@ fun AboutScreen(
         ) {
             AboutOverviewMosaic(
                 channelName = channelName,
+                channelLabel = channelLabel,
                 versionName = versionName,
                 simpleVersion = simpleVersion,
                 versionCode = versionCode,
@@ -347,7 +359,7 @@ fun AboutScreen(
         AlertDialog(
             onDismissRequest = { showChannelDialog = false },
             title = {
-                Text(stringResource(R.string.about_dev_channel_dialog_title, channelName))
+                Text(stringResource(R.string.about_dev_channel_dialog_title, channelLabel))
             },
             text = { Text(stringResource(channelDescResId)) },
             confirmButton = {
@@ -457,6 +469,7 @@ private fun AboutSettingsActionCardContent(
 @Composable
 private fun AboutOverviewMosaic(
     channelName: String,
+    channelLabel: String,
     versionName: String,
     simpleVersion: String,
     versionCode: Int,
@@ -521,12 +534,13 @@ private fun AboutOverviewMosaic(
                             fontSize = 27.sp,
                             lineHeight = 32.sp
                         )
+                        val releaseLine = stringResource(
+                            R.string.about_overview_release_line,
+                            versionName,
+                            versionCode
+                        ).replace(' ', '\u00A0')
                         Text(
-                            text = stringResource(
-                                R.string.about_overview_release_line,
-                                versionName,
-                                versionCode
-                            ),
+                            text = "$channelLabel $releaseLine",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 21.sp

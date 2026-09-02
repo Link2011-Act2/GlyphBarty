@@ -169,7 +169,9 @@ import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
+import jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
+import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
 import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
 import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
@@ -306,6 +308,8 @@ internal fun ControlCard(
     levelAutoScale: Boolean,
     spectrumAutoScale: Boolean,
     allBrightnessAutoScale: Boolean,
+    legacyAutoScaleEnabled: Boolean,
+    visualDynamics: Float,
     mediaProjectionEnabled: Boolean,
     nothingStyleEnabled: Boolean,
     turnOffWhenBackDown: Boolean,
@@ -330,6 +334,9 @@ internal fun ControlCard(
     onLevelAutoScaleChanged: (Boolean) -> Unit,
     onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
+    onLegacyAutoScaleEnabledChanged: (Boolean) -> Unit,
+    onVisualDynamicsChanged: (Float) -> Unit,
+    onVisualDynamicsChangeFinished: () -> Unit,
     onRecordingLightBehaviorChanged: (RecordingLightBehavior) -> Unit,
     onTurnOffWhenBackDownChanged: (Boolean) -> Unit,
     startPending: Boolean,
@@ -346,14 +353,28 @@ internal fun ControlCard(
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
     var showImportExportDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordingLightBehaviorDialog by rememberSaveable { mutableStateOf(false) }
-    val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.primary
-    val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onPrimary
+    val stopButtonColor = if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
+    val stopButtonContentColor = if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
     val supportsFillOtherGlyphLights = deviceProfile.supportsFillOtherGlyphLights()
     val isMatrixDevice = deviceProfile in setOf(
         GlyphDeviceProfile.PHONE3_MATRIX,
         GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     )
     val glyphRenderMode = GlyphPatternRegistry.definition(glyphMode)?.recipe?.renderMode
+    val glyphPatternKind = GlyphPatternRegistry.kindOf(glyphMode)
+    val visualDynamicsAvailable = !legacyAutoScaleEnabled &&
+        GlyphPatternRegistry.isSupported(deviceProfile, glyphMode) &&
+        supportsGlyphVisualDynamics(glyphPatternKind) &&
+        when (glyphPatternKind) {
+            GlyphPatternKind.SPECTRUM -> spectrumAutoScale
+            GlyphPatternKind.ALL_BRIGHTNESS -> allBrightnessAutoScale
+            GlyphPatternKind.LINEAR,
+            GlyphPatternKind.CENTER,
+            GlyphPatternKind.MATRIX_BAR,
+            GlyphPatternKind.MATRIX_FIELD,
+            GlyphPatternKind.MATRIX_CIRCLE -> levelAutoScale
+            null -> false
+        }
     var oscilloscopeTimeAxisMultiplier by remember { mutableStateOf(1f) }
     val fillOtherGlyphLightsAffectsCurrentMode =
         !GlyphPatternRegistry.isAllBrightness(glyphMode) &&
@@ -790,6 +811,39 @@ internal fun ControlCard(
                 nothingStyleEnabled = nothingStyleEnabled
             )
 
+            if (visualDynamicsAvailable) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    ParameterSlider(
+                        title = stringResource(R.string.visual_dynamics_title),
+                        valueText = stringResource(
+                            R.string.visual_dynamics_value,
+                            (visualDynamics * 100f).toInt()
+                        ),
+                        description = stringResource(R.string.visual_dynamics_desc),
+                        value = visualDynamics,
+                        onValueChange = onVisualDynamicsChanged,
+                        onValueChangeFinished = onVisualDynamicsChangeFinished,
+                        valueRange = 0f..1f,
+                        nothingStyleEnabled = nothingStyleEnabled
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.visual_dynamics_natural),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.visual_dynamics_extreme),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { advancedExpanded = !advancedExpanded },
@@ -1065,8 +1119,27 @@ internal fun ControlCard(
                 }
             }
 
-            // Kept in state/service for possible future revival, but hidden in UI because
-            // some devices already force this behavior at the OS level.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.legacy_auto_scale_title),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = stringResource(R.string.legacy_auto_scale_desc),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                StableSwitch(
+                    checked = legacyAutoScaleEnabled,
+                    onCheckedChange = onLegacyAutoScaleEnabledChanged
+                )
+            }
 
         }
     }
