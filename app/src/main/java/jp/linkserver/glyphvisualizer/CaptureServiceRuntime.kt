@@ -1,5 +1,11 @@
 package jp.linkserver.glyphvisualizer
 
+/**
+ * Keep the Bluetooth startup stabilization path available for a future return, while the
+ * current builds treat the removed setting as permanently disabled.
+ */
+internal const val BLUETOOTH_STARTUP_STABILIZATION_ENABLED = false
+
 internal fun defaultServiceCaptureConfig(): CaptureConfig = CaptureConfig(
     sensitivity = 1.75f,
     noiseGate = 0.08f,

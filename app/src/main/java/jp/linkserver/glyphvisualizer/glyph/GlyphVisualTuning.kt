@@ -75,20 +75,20 @@ object GlyphVisualTuningDatabase {
         // Phone (3) matrix
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_BAR) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_FIELD) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_CIRCLE) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RIPPLE) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_CENTER) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_BOTTOM) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTROGRAM) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_ANALYZER) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_CIRCLE) to GlyphVisualTuning(dynamics = 0.4f), // Previously unspecified dynamics.
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RIPPLE) to GlyphVisualTuning(dynamics = 0.7f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM) to GlyphVisualTuning(dynamics = 0.65f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_CENTER) to GlyphVisualTuning(dynamics = 0.65f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_BOTTOM) to GlyphVisualTuning(dynamics = 0.8f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTROGRAM) to GlyphVisualTuning(dynamics = 0.6f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_ANALYZER) to GlyphVisualTuning(dynamics = 0.75f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_OSCILLOSCOPE) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RADIAL_SPECTRUM) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RADIAL_SPECTRUM) to GlyphVisualTuning(dynamics = 0.75f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_OPEN_REEL) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RAIN) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_WAVE_FIELD) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SKYLINE) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_PULSE_GRID) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RAIN) to GlyphVisualTuning(dynamics = 0.5f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_WAVE_FIELD) to GlyphVisualTuning(dynamics = 0.85f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SKYLINE) to GlyphVisualTuning(dynamics = 0.7f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_PULSE_GRID) to GlyphVisualTuning(dynamics = 0.9f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (4a) Pro matrix

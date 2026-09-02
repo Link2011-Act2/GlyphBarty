@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import jp.linkserver.glyphvisualizer.AppLogger
+import jp.linkserver.glyphvisualizer.BLUETOOTH_STARTUP_STABILIZATION_ENABLED
 import jp.linkserver.glyphvisualizer.R
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -115,6 +116,10 @@ class OutputMixVisualizer(
         onSignalStalled: () -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
+        // Keep the old parameter and implementation path for a future return, but gate it off
+        // for current builds so saved or externally supplied true values have no effect.
+        val stabilizationEnabled =
+            BLUETOOTH_STARTUP_STABILIZATION_ENABLED && experimentalVisualizerStabilizationEnabled
         stop()
         val startAt = SystemClock.elapsedRealtime()
         val generation = sessionOwner.begin()
@@ -133,7 +138,7 @@ class OutputMixVisualizer(
                 try {
                     AppLogger.i(TAG, "Starting Visualizer(0) output-mix capture. ${AudioRouteDiagnostics.snapshot(context)}")
                     var routeProbe = captureRouteProbe()
-                    if (experimentalVisualizerStabilizationEnabled) {
+                    if (stabilizationEnabled) {
                         routeProbe = waitForStablePlaybackRoute(
                             initialProbe = routeProbe,
                             startAt = startAt,
@@ -144,9 +149,9 @@ class OutputMixVisualizer(
                     val musicActive = routeProbe.musicActive
                     val remoteSubmixPresent = routeProbe.remoteSubmixPresent
                     val prepareDelayMs = when {
-                        experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> EXPERIMENTAL_REMOTE_SUBMIX_PREPARE_DELAY_MS
-                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> EXPERIMENTAL_BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
-                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected -> EXPERIMENTAL_BLUETOOTH_PREPARE_DELAY_MS
+                        stabilizationEnabled && remoteSubmixPresent -> EXPERIMENTAL_REMOTE_SUBMIX_PREPARE_DELAY_MS
+                        stabilizationEnabled && bluetoothLikelyConnected && musicActive -> EXPERIMENTAL_BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
+                        stabilizationEnabled && bluetoothLikelyConnected -> EXPERIMENTAL_BLUETOOTH_PREPARE_DELAY_MS
                         bluetoothLikelyConnected && musicActive -> BLUETOOTH_ACTIVE_PLAYBACK_PREPARE_DELAY_MS
                         bluetoothLikelyConnected -> BLUETOOTH_PREPARE_DELAY_MS
                         else -> 0L
@@ -154,7 +159,7 @@ class OutputMixVisualizer(
                     if (prepareDelayMs > 0L) {
                         AppLogger.i(
                             TAG,
-                            "Bluetooth-like output detected; waiting ${prepareDelayMs}ms before Visualizer(0) init (musicActive=$musicActive remoteSubmix=$remoteSubmixPresent experimental=$experimentalVisualizerStabilizationEnabled)"
+                            "Bluetooth-like output detected; waiting ${prepareDelayMs}ms before Visualizer(0) init (musicActive=$musicActive remoteSubmix=$remoteSubmixPresent experimental=$stabilizationEnabled)"
                         )
                         Thread.sleep(prepareDelayMs)
                         AppLogger.i(
@@ -170,8 +175,8 @@ class OutputMixVisualizer(
                     var lastError: Throwable? = null
                     var unrecoverableSpatializerConflict = false
                     val initAttempts = when {
-                        experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 8
-                        experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 6
+                        stabilizationEnabled && remoteSubmixPresent -> 8
+                        stabilizationEnabled && bluetoothLikelyConnected && musicActive -> 6
                         bluetoothLikelyConnected && musicActive -> 5
                         else -> 3
                     }
@@ -196,8 +201,8 @@ class OutputMixVisualizer(
                                 break
                             }
                             val retryDelayMs = when {
-                                experimentalVisualizerStabilizationEnabled && remoteSubmixPresent -> 450L * (attemptIndex + 1)
-                                experimentalVisualizerStabilizationEnabled && bluetoothLikelyConnected && musicActive -> 280L * (attemptIndex + 1)
+                                stabilizationEnabled && remoteSubmixPresent -> 450L * (attemptIndex + 1)
+                                stabilizationEnabled && bluetoothLikelyConnected && musicActive -> 280L * (attemptIndex + 1)
                                 bluetoothLikelyConnected && musicActive -> 220L * (attemptIndex + 1)
                                 else -> 120L * (attemptIndex + 1)
                             }

@@ -414,7 +414,7 @@
     <string name="extras_battery_glyph_description">Shows the battery level on the Glyph Interface when charging starts.\nYou can also check it by shaking the phone with the Glyph side facing up.</string>
     <string name="extras_battery_glyph_unsupported">This device is not supported by this feature.</string>
     <string name="extras_sync_nothing_os_glyph_title">Sync with Nothing OS Glyph setting</string>
-    <string name="extras_sync_nothing_os_glyph_description">When the Glyph Interface is turned off in Nothing OS, this app also stops Glyph output. This is a best-effort feature and may not work on every device or OS version.</string>
+    <string name="extras_sync_nothing_os_glyph_description">Prevents Glyph output when the OS-side Glyph Interface setting is off or the Glyphs are turned off by a schedule.\nThis may not work in some cases.</string>
     <string name="battery_glyph_notification_channel">Glyph Battery Meter</string>
     <string name="battery_glyph_notification_title">Checking for charging</string>
     <string name="battery_glyph_notification_charging">Charging: shake the face-down phone to show the battery level</string>
@@ -438,6 +438,7 @@
     <string name="visual_dynamics_title">Display dynamics</string>
     <string name="visual_dynamics_profile">DeviceProfile: %1$s</string>
     <string name="visual_dynamics_pattern">Pattern: %1$s (%2$s)</string>
+    <string name="visual_dynamics_pattern_public">Pattern: %1$s</string>
     <string name="visual_dynamics_value">%1$d%%</string>
     <string name="visual_dynamics_desc">Expand the Adaptive AGC movement for this pattern.</string>
     <string name="visual_dynamics_natural">Natural</string>

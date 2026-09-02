@@ -107,6 +107,7 @@ import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
 import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
 import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
+import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 
 internal enum class ExperimentalDetailsTab {
     LIVE,
@@ -985,23 +986,34 @@ private fun ExperimentalDetailsTuneTab(
     if (visualDynamicsAvailable) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ExperimentalDetailsSectionTitle(text = stringResource(R.string.visual_dynamics_title))
-            Text(
-                text = stringResource(
-                    R.string.visual_dynamics_profile,
-                    deviceProfile.name
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = stringResource(
-                    R.string.visual_dynamics_pattern,
-                    patternLabel,
-                    patternId
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (isIntDevBuild()) {
+                Text(
+                    text = stringResource(
+                        R.string.visual_dynamics_profile,
+                        deviceProfile.name
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stringResource(
+                        R.string.visual_dynamics_pattern,
+                        patternLabel,
+                        patternId
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = stringResource(
+                        R.string.visual_dynamics_pattern_public,
+                        patternLabel
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             SettingsItemSurface(
                 nothingStyle = nothingStyleEnabled,
                 position = SettingsGroupPosition.Single

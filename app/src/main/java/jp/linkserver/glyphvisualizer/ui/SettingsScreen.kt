@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import jp.linkserver.glyphvisualizer.BLUETOOTH_STARTUP_STABILIZATION_ENABLED
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
@@ -358,15 +359,17 @@ fun SettingsScreen(
                     nothingStyle = nothingStyleEnabled,
                     position = SettingsGroupPosition.Middle
                 )
-                SettingsDividerGap()
-                SettingsToggleEntry(
-                    title = stringResource(R.string.settings_visualizer_stabilization_title),
-                    description = stringResource(R.string.settings_visualizer_stabilization_desc),
-                    checked = experimentalVisualizerStabilizationEnabled,
-                    onCheckedChange = onExperimentalVisualizerStabilizationEnabledChanged,
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Middle
-                )
+                if (BLUETOOTH_STARTUP_STABILIZATION_ENABLED) {
+                    SettingsDividerGap()
+                    SettingsToggleEntry(
+                        title = stringResource(R.string.settings_visualizer_stabilization_title),
+                        description = stringResource(R.string.settings_visualizer_stabilization_desc),
+                        checked = experimentalVisualizerStabilizationEnabled,
+                        onCheckedChange = onExperimentalVisualizerStabilizationEnabledChanged,
+                        nothingStyle = nothingStyleEnabled,
+                        position = SettingsGroupPosition.Middle
+                    )
+                }
                 SettingsDividerGap()
                 SettingsToggleEntry(
                     title = stringResource(R.string.settings_visualizer_signal_watchdog_title),
