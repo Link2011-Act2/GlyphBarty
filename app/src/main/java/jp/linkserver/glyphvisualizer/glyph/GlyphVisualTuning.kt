@@ -73,9 +73,9 @@ object GlyphVisualTuningDatabase {
         key(GlyphDeviceProfile.PHONE4B, GlyphPatternRegistry.P4A_ALL_BRIGHTNESS) to GlyphVisualTuning(dynamics = 0.8f),
 
         // Phone (3) matrix
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_BAR) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_FIELD) to GlyphVisualTuning(dynamics = 0.5f), // Previously unspecified dynamics.
-        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_CIRCLE) to GlyphVisualTuning(dynamics = 0.4f), // Previously unspecified dynamics.
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_BAR) to GlyphVisualTuning(dynamics = 0.3f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_FIELD) to GlyphVisualTuning(dynamics = 0.3f),
+        key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_CIRCLE) to GlyphVisualTuning(dynamics = 0.4f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_RIPPLE) to GlyphVisualTuning(dynamics = 0.7f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM) to GlyphVisualTuning(dynamics = 0.65f),
         key(GlyphDeviceProfile.PHONE3_MATRIX, GlyphPatternRegistry.P3_MATRIX_SPECTRUM_CENTER) to GlyphVisualTuning(dynamics = 0.65f),
