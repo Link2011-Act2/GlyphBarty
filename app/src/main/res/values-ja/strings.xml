@@ -25,7 +25,7 @@
     <string name="about_version_details_title">バージョン詳細</string>
     <string name="about_version_details_message">バージョン: %1$s\n内部バージョン番号: %2$d\nビルド番号: %3$s</string>
     <string name="about_updates_title">最新情報</string>
-    <string name="about_updates_body">・Matrix機種において動作が重い問題を改善\n・Auto Scaleの再設計(実験的)</string>
+    <string name="about_updates_body">・全体的なメーター動作の調整\n・おまけ機能の追加\n・その他機能追加</string>
     <string name="about_update_check_button">アップデートを確認</string>
     <string name="about_update_not_checked">未確認</string>
     <string name="about_update_checking">GitHub Releases を確認しています…</string>
