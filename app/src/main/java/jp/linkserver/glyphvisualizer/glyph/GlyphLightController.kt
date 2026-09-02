@@ -197,7 +197,7 @@ class GlyphLightController(
     private var smoothingBalance = 0f
     private var autoScaleWindowMs = DEFAULT_AUTO_SCALE_WINDOW_MS
     private var autoScaleOffset = 0f
-    private var autoScaleStrategy = GlyphAutoScaleStrategy.LEGACY
+    private var autoScaleStrategy = GlyphAutoScaleStrategy.ADAPTIVE
     private var visualTuningOverride: GlyphVisualTuning? = null
     private var fillOtherVisualTuningOverride: GlyphVisualTuning? = null
     private val legacyLevelAutoScale = LegacyAutoScaleController()

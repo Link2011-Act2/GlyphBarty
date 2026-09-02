@@ -440,7 +440,7 @@
     <string name="visual_dynamics_pattern">設定中のパターン: %1$s（%2$s）</string>
     <string name="visual_dynamics_pattern_public">設定中のパターン: %1$s</string>
     <string name="visual_dynamics_value">%1$d%%</string>
-    <string name="visual_dynamics_desc">このパターンのAdaptive AGCの変化幅を強調します。</string>
+    <string name="visual_dynamics_desc">このパターンのメーターの暴れ方を調整します\nこのパラメータはパターンごとに別々で保存されます。デフォルト値もパターンごとに異なります</string>
     <string name="visual_dynamics_natural">自然</string>
     <string name="visual_dynamics_extreme">強調</string>
     <string name="visual_dynamics_reset">デフォルトに戻す</string>
@@ -560,8 +560,8 @@
 
     <string name="level_auto_scale_title">レベル自動スケール</string>
     <string name="level_auto_scale_desc">メーターの最大/最小値を自動で変化させます</string>
-    <string name="adaptive_auto_scale_title">適応型自動スケール(実験的)</string>
-    <string name="adaptive_auto_scale_desc">自動スケールをAGC方式にします\n⚠️この機能はまだ調整中です。まだ見た目は悪いし、作りかけの部分もあります</string>
+    <string name="legacy_auto_scale_title">旧方式の自動スケールを使用</string>
+    <string name="legacy_auto_scale_desc">自動スケールを従来の最小値／最大値追従方式に切り替えます。オフの場合は新方式のAdaptive Auto Scaleを使用します。</string>
 
     <string name="spectrum_auto_scale_title">自動スケール調整</string>
     <string name="spectrum_auto_scale_desc">バンドごとにメーターの最大/最小値を自動で変化させます</string>

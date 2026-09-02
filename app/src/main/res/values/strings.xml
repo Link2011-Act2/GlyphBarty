@@ -440,7 +440,7 @@
     <string name="visual_dynamics_pattern">Pattern: %1$s (%2$s)</string>
     <string name="visual_dynamics_pattern_public">Pattern: %1$s</string>
     <string name="visual_dynamics_value">%1$d%%</string>
-    <string name="visual_dynamics_desc">Expand the Adaptive AGC movement for this pattern.</string>
+    <string name="visual_dynamics_desc">Adjusts how much the meter fluctuates for this pattern.\nThis parameter is saved separately for each pattern. The default value also varies by pattern.</string>
     <string name="visual_dynamics_natural">Natural</string>
     <string name="visual_dynamics_extreme">Extreme</string>
     <string name="visual_dynamics_reset">Reset to default</string>
@@ -560,8 +560,8 @@
 
     <string name="level_auto_scale_title">Level auto scale</string>
     <string name="level_auto_scale_desc">Automatically adjusts the meter’s minimum and maximum values.</string>
-    <string name="adaptive_auto_scale_title">Adaptive Auto Scale (Experimental)</string>
-    <string name="adaptive_auto_scale_desc">Uses an AGC-based method for auto scaling.\n⚠️ This feature is still being tuned. The visuals are not polished yet, and some parts are still unfinished.</string>
+    <string name="legacy_auto_scale_title">Use Legacy Auto Scale</string>
+    <string name="legacy_auto_scale_desc">Switches auto scaling to the previous min/max tracking method. When off, the new Adaptive Auto Scale is used.</string>
 
     <string name="spectrum_auto_scale_title">Spectrum auto scale</string>
     <string name="spectrum_auto_scale_desc">Automatically adjusts each band’s minimum and maximum meter values.</string>

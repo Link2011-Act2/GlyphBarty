@@ -30,7 +30,7 @@ data class PersistedSettings(
     val levelAutoScale: Boolean,
     val spectrumAutoScale: Boolean,
     val allBrightnessAutoScale: Boolean,
-    val experimentalAdaptiveAutoScaleEnabled: Boolean,
+    val legacyAutoScaleEnabled: Boolean,
     val visualDynamicsOverrides: Map<GlyphVisualTuningKey, Float>,
     val autoScaleWindowSeconds: Float,
     val autoScaleOffset: Float,
@@ -92,7 +92,7 @@ internal object PersistedSettingsSchema {
         levelAutoScale = state.levelAutoScale,
         spectrumAutoScale = state.spectrumAutoScale,
         allBrightnessAutoScale = state.allBrightnessAutoScale,
-        experimentalAdaptiveAutoScaleEnabled = state.experimentalAdaptiveAutoScaleEnabled,
+        legacyAutoScaleEnabled = state.legacyAutoScaleEnabled,
         visualDynamicsOverrides = state.visualDynamicsOverrides,
         autoScaleWindowSeconds = state.autoScaleWindowSeconds,
         autoScaleOffset = state.autoScaleOffset,
@@ -149,7 +149,7 @@ internal object PersistedSettingsSchema {
         levelAutoScale = settings.levelAutoScale,
         spectrumAutoScale = settings.spectrumAutoScale,
         allBrightnessAutoScale = settings.allBrightnessAutoScale,
-        experimentalAdaptiveAutoScaleEnabled = settings.experimentalAdaptiveAutoScaleEnabled,
+        legacyAutoScaleEnabled = settings.legacyAutoScaleEnabled,
         visualDynamicsOverrides = settings.visualDynamicsOverrides,
         autoScaleWindowSeconds = settings.autoScaleWindowSeconds,
         autoScaleOffset = settings.autoScaleOffset,
@@ -340,9 +340,9 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.ALL_BRIGHTNESS_AUTO_SCALE,
                 defaults.allBrightnessAutoScale
             ),
-            experimentalAdaptiveAutoScaleEnabled = preferences.getBoolean(
-                Keys.EXPERIMENTAL_ADAPTIVE_AUTO_SCALE_ENABLED,
-                defaults.experimentalAdaptiveAutoScaleEnabled
+            legacyAutoScaleEnabled = preferences.getBoolean(
+                Keys.LEGACY_AUTO_SCALE_ENABLED,
+                defaults.legacyAutoScaleEnabled
             ),
             visualDynamicsOverrides = decodeVisualDynamicsOverrides(
                 preferences.getString(Keys.VISUAL_DYNAMICS_OVERRIDES, null)
@@ -492,8 +492,8 @@ internal object PersistedSettingsPreferenceCodec {
             .putBoolean(Keys.SPECTRUM_AUTO_SCALE, settings.spectrumAutoScale)
             .putBoolean(Keys.ALL_BRIGHTNESS_AUTO_SCALE, settings.allBrightnessAutoScale)
             .putBoolean(
-                Keys.EXPERIMENTAL_ADAPTIVE_AUTO_SCALE_ENABLED,
-                settings.experimentalAdaptiveAutoScaleEnabled
+                Keys.LEGACY_AUTO_SCALE_ENABLED,
+                settings.legacyAutoScaleEnabled
             )
             .putString(
                 Keys.VISUAL_DYNAMICS_OVERRIDES,
@@ -618,6 +618,8 @@ internal object PersistedSettingsPreferenceCodec {
         const val LEVEL_AUTO_SCALE = "level_auto_scale"
         const val SPECTRUM_AUTO_SCALE = "spectrum_auto_scale"
         const val ALL_BRIGHTNESS_AUTO_SCALE = "all_brightness_auto_scale"
+        const val LEGACY_AUTO_SCALE_ENABLED = "legacy_auto_scale_enabled"
+        // Kept reserved so the old setting is never reused with inverted semantics.
         const val EXPERIMENTAL_ADAPTIVE_AUTO_SCALE_ENABLED =
             "experimental_adaptive_auto_scale_enabled"
         const val VISUAL_DYNAMICS_OVERRIDES = "glyph_visual_dynamics_overrides_v1"

@@ -509,10 +509,10 @@ class AutoScaleStrategyTest {
     }
 
     @Test
-    fun adaptiveAutoScale_defaultsOffForSettingsCompatibility() {
-        assertFalse(DEFAULT_ADAPTIVE_AUTO_SCALE_ENABLED)
-        assertEquals(GlyphAutoScaleStrategy.LEGACY, glyphAutoScaleStrategy(false))
-        assertEquals(GlyphAutoScaleStrategy.ADAPTIVE, glyphAutoScaleStrategy(true))
+    fun legacyAutoScale_defaultsOffSoAdaptiveIsStandard() {
+        assertFalse(DEFAULT_LEGACY_AUTO_SCALE_ENABLED)
+        assertEquals(GlyphAutoScaleStrategy.ADAPTIVE, glyphAutoScaleStrategy(false))
+        assertEquals(GlyphAutoScaleStrategy.LEGACY, glyphAutoScaleStrategy(true))
     }
 
     @Test

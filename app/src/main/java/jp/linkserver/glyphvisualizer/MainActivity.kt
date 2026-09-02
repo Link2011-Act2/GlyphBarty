@@ -739,9 +739,9 @@ class MainActivity : ComponentActivity() {
                                     it.copy(allBrightnessAutoScale = newValue)
                                 }
                             },
-                            onExperimentalAdaptiveAutoScaleEnabledChanged = { enabled ->
+                            onLegacyAutoScaleEnabledChanged = { enabled ->
                                 mainCoordinator.updatePersistAndSync {
-                                    it.copy(experimentalAdaptiveAutoScaleEnabled = enabled)
+                                    it.copy(legacyAutoScaleEnabled = enabled)
                                 }
                             },
                             onMediaProjectionEnabledChanged = { newValue ->
@@ -1019,8 +1019,7 @@ class MainActivity : ComponentActivity() {
                 levelAutoScale = parameters.levelAutoScale,
                 spectrumAutoScale = parameters.spectrumAutoScale,
                 allBrightnessAutoScale = parameters.allBrightnessAutoScale,
-                experimentalAdaptiveAutoScaleEnabled =
-                    parameters.experimentalAdaptiveAutoScaleEnabled,
+                legacyAutoScaleEnabled = parameters.legacyAutoScaleEnabled,
                 visualDynamicsOverrides = parameters.visualDynamicsOverrides,
                 experimentalVisualizerStabilizationEnabled = parameters.experimentalVisualizerStabilizationEnabled,
                 experimentalVisualizerSignalWatchdogEnabled = parameters.experimentalVisualizerSignalWatchdogEnabled,

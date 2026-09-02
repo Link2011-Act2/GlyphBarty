@@ -8,13 +8,13 @@ enum class GlyphAutoScaleStrategy {
     ADAPTIVE
 }
 
-const val DEFAULT_ADAPTIVE_AUTO_SCALE_ENABLED = false
+const val DEFAULT_LEGACY_AUTO_SCALE_ENABLED = false
 
-fun glyphAutoScaleStrategy(adaptiveEnabled: Boolean): GlyphAutoScaleStrategy {
-    return if (adaptiveEnabled) {
-        GlyphAutoScaleStrategy.ADAPTIVE
-    } else {
+fun glyphAutoScaleStrategy(legacyEnabled: Boolean): GlyphAutoScaleStrategy {
+    return if (legacyEnabled) {
         GlyphAutoScaleStrategy.LEGACY
+    } else {
+        GlyphAutoScaleStrategy.ADAPTIVE
     }
 }
 

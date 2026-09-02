@@ -1497,7 +1497,7 @@ class GlyphVisualizerService : Service() {
             levelAutoScale = levelAutoScale,
             spectrumAutoScale = spectrumAutoScale,
             autoScaleStrategy = glyphAutoScaleStrategy(
-                savedSettings.experimentalAdaptiveAutoScaleEnabled
+                savedSettings.legacyAutoScaleEnabled
             ),
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,

@@ -82,7 +82,7 @@ internal data class VisualizerSettingsActions(
     val onLevelAutoScaleChanged: (Boolean) -> Unit,
     val onSpectrumAutoScaleChanged: (Boolean) -> Unit,
     val onAllBrightnessAutoScaleChanged: (Boolean) -> Unit,
-    val onExperimentalAdaptiveAutoScaleEnabledChanged: (Boolean) -> Unit,
+    val onLegacyAutoScaleEnabledChanged: (Boolean) -> Unit,
     val onMediaProjectionEnabledChanged: (Boolean) -> Unit,
     val onNothingStyleEnabledChanged: (Boolean) -> Unit,
     val onExperimentalMainUiEnabledChanged: (Boolean) -> Unit,

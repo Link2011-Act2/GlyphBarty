@@ -60,7 +60,7 @@ class SettingsPreferencesCharacterizationTest {
             levelAutoScale = false,
             spectrumAutoScale = false,
             allBrightnessAutoScale = false,
-            experimentalAdaptiveAutoScaleEnabled = false,
+            legacyAutoScaleEnabled = true,
             visualDynamicsOverrides = mapOf(visualKey to 0.65f),
             autoScaleWindowSeconds = 42f,
             autoScaleOffset = -0.12f,
@@ -119,6 +119,38 @@ class SettingsPreferencesCharacterizationTest {
     fun nothingOsGlyphSyncDefaultsToOffForExistingInstallations() {
         assertFalse(SettingsPreferences.load(application).syncWithNothingOsGlyphSettingEnabled)
         assertFalse(preferences().contains("sync_with_nothing_os_glyph_setting"))
+    }
+
+    @Test
+    fun legacyAutoScale_defaultsOffAndIgnoresTheFormerExperimentalPreference() {
+        assertFalse(SettingsPreferences.load(application).legacyAutoScaleEnabled)
+
+        preferences().edit()
+            .putBoolean("experimental_adaptive_auto_scale_enabled", false)
+            .commit()
+        assertFalse(SettingsPreferences.load(application).legacyAutoScaleEnabled)
+
+        preferences().edit()
+            .putBoolean("experimental_adaptive_auto_scale_enabled", true)
+            .commit()
+        assertFalse(SettingsPreferences.load(application).legacyAutoScaleEnabled)
+        assertFalse(preferences().contains("legacy_auto_scale_enabled"))
+    }
+
+    @Test
+    fun save_writesLegacyAutoScaleToANewKeyWithoutRemovingTheFormerPreference() {
+        preferences().edit()
+            .putBoolean("experimental_adaptive_auto_scale_enabled", true)
+            .commit()
+
+        SettingsPreferences.save(
+            application,
+            CaptureUiState(legacyAutoScaleEnabled = true)
+        )
+
+        assertTrue(preferences().getBoolean("legacy_auto_scale_enabled", false))
+        assertTrue(preferences().getBoolean("experimental_adaptive_auto_scale_enabled", false))
+        assertTrue(SettingsPreferences.load(application).legacyAutoScaleEnabled)
     }
 
     @Test
@@ -332,10 +364,7 @@ class SettingsPreferencesCharacterizationTest {
         assertEquals(expected.levelAutoScale, actual.levelAutoScale)
         assertEquals(expected.spectrumAutoScale, actual.spectrumAutoScale)
         assertEquals(expected.allBrightnessAutoScale, actual.allBrightnessAutoScale)
-        assertEquals(
-            expected.experimentalAdaptiveAutoScaleEnabled,
-            actual.experimentalAdaptiveAutoScaleEnabled
-        )
+        assertEquals(expected.legacyAutoScaleEnabled, actual.legacyAutoScaleEnabled)
         assertEquals(expected.visualDynamicsOverrides, actual.visualDynamicsOverrides)
         assertFloatEquals(expected.autoScaleWindowSeconds, actual.autoScaleWindowSeconds)
         assertFloatEquals(expected.autoScaleOffset, actual.autoScaleOffset)
@@ -426,7 +455,7 @@ class SettingsPreferencesCharacterizationTest {
             "level_auto_scale",
             "spectrum_auto_scale",
             "all_brightness_auto_scale",
-            "experimental_adaptive_auto_scale_enabled",
+            "legacy_auto_scale_enabled",
             "glyph_visual_dynamics_overrides_v1",
             "auto_scale_window_seconds",
             "auto_scale_offset",
