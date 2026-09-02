@@ -102,11 +102,20 @@ class BatteryGlyphService : Service(), SensorEventListener {
             val action = intent?.action ?: return
             AppLogger.i(TAG, "Battery event received: action=$action")
             refreshChargingState(allowDisplay = true)
-            if (action == Intent.ACTION_POWER_CONNECTED && !charging) {
-                mainHandler.postDelayed(
-                    confirmChargingRunnable,
-                    BATTERY_CONFIRM_RETRY_MS
+            if (action == Intent.ACTION_POWER_CONNECTED) {
+                // Some chargers briefly oscillate between charging and not-charging while
+                // negotiating. The connection broadcast is the stable user-visible event, so
+                // do not require a second battery snapshot to agree before showing the meter.
+                requestBatteryDisplay(
+                    source = "power connected",
+                    allowUnconfirmedCharging = true
                 )
+                if (!charging) {
+                    mainHandler.postDelayed(
+                        confirmChargingRunnable,
+                        BATTERY_CONFIRM_RETRY_MS
+                    )
+                }
             }
         }
     }
@@ -230,17 +239,23 @@ class BatteryGlyphService : Service(), SensorEventListener {
             AppLogger.i(TAG, "Charging state changed: $wasCharging -> $charging")
             updateSensorMonitoring()
             updateNotification()
-            if (!charging) cancelActiveDisplay("charging ended")
         }
         if (allowDisplay && !wasCharging && charging) {
             requestBatteryDisplay("charging started")
         }
     }
 
-    private fun requestBatteryDisplay(source: String) {
-        if (!charging || !glyphOutputAllowed || animationJob?.isActive == true) return
+    private fun requestBatteryDisplay(
+        source: String,
+        allowUnconfirmedCharging: Boolean = false
+    ) {
+        if (
+            (!charging && !allowUnconfirmedCharging) ||
+            !glyphOutputAllowed ||
+            animationJob?.isActive == true
+        ) return
         val latest = currentBatterySnapshot()
-        if (!latest.charging) {
+        if (!latest.charging && !allowUnconfirmedCharging) {
             refreshChargingState(allowDisplay = false)
             return
         }
