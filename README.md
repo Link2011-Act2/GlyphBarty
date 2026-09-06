@@ -7,7 +7,7 @@
 
 A customizable Glyph visualizer with support for a wide range of Nothing Phone models.
 
-Overview
+## Overview
 
 Up until the Phone (3a), Nothing smartphones had an official feature that allowed the Glyph lights to pulse in sync with music.
 
@@ -15,7 +15,7 @@ However, this feature was removed in later models. I also wanted more predictabl
 
 To solve this, I created an alternative Glyph visualizer that works on unsupported devices like the Phone (3) and offers multiple visualization styles and customization options.
 
-Features
+## Features
 
 * Real-time Visualization: The Glyph Interface lights up in sync with your currently playing music.
 * Quick Settings Integration: Easily toggle the feature ON/OFF via a Quick Settings tile.
