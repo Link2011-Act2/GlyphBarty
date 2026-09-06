@@ -5,23 +5,23 @@
 
 # Glyph Barty
 
-A Glyph visualizer that is cooler than the official feature and supports a wider range of devices.
+A customizable Glyph visualizer with support for a wide range of Nothing Phone models.
 
-## Overview
+Overview
 
 Up until the Phone (3a), Nothing smartphones had an official feature that allowed the Glyph lights to pulse in sync with music.
 
-However, this feature was removed in later models. Furthermore, the official implementation felt somewhat random and wasn't particularly "cool."
+However, this feature was removed in later models. I also wanted more predictable and customizable visualization patterns than the original implementation provided.
 
-To solve this, I created a "Better" Glyph visualizer that works on unsupported devices like the Phone (3) and offers a more polished visual experience than the original.
+To solve this, I created an alternative Glyph visualizer that works on unsupported devices like the Phone (3) and offers multiple visualization styles and customization options.
 
-### Features
+Features
 
-* **Real-time Visualization:** The Glyph Interface lights up in sync with your currently playing music.
-* **Quick Settings Integration:** Easily toggle the feature ON/OFF via a Quick Settings tile.
+* Real-time Visualization: The Glyph Interface lights up in sync with your currently playing music.
+* Quick Settings Integration: Easily toggle the feature ON/OFF via a Quick Settings tile.
   * It feels just like a native OS feature!
 * Extra features (e.g. displaying charging status on the Glyph Interface)
-* **No Screen Recording Required:** Unlike other apps that require screen recording permissions to capture audio, this app works without them.
+* No Screen Recording Required: Audio visualization works without MediaProjection or screen-capture permissions.
 
 ## Supported Devices
 
