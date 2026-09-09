@@ -46,7 +46,7 @@ class GlyphLightController(
         private const val PULSE_TRAIN_SPEED_PER_SECOND = 1.8f
         private const val PULSE_TRAIN_BRIGHTNESS_FALLOFF = 0.42f
         internal const val SPECTRUM_BRIGHTNESS_BOOST_EXPONENT = 1.5f
-        private const val SPECTRUM_MARKER_RESPONSE_PER_SECOND = 9f
+        private const val SPECTRUM_MARKER_RESPONSE_PER_SECOND = 5.5f
         private const val SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS = 0.8f
         private const val SPECTRUM_MARKER_PHONE4A_MAX_RADIUS_SEGMENTS = 2.5f
         private const val SPECTRUM_MARKER_PHONE4B_MAX_RADIUS_SEGMENTS = 2f
@@ -54,7 +54,7 @@ class GlyphLightController(
         private const val SPECTRUM_MARKER_RADIUS_RELEASE_PER_SECOND = 3.5f
         private const val SPECTRUM_MARKER_RADIUS_LEVEL_EXPONENT = 0.65f
         private const val SPECTRUM_MARKER_EDGE_PADDING_SEGMENTS = 2f
-        private const val SPECTRUM_MARKER_MAX_STEP_SEGMENTS = 2f
+        private const val SPECTRUM_MARKER_MAX_STEP_SEGMENTS = 0.9f
         private const val SPECTRUM_MARKER_PEAK_WINDOW = 2
         private const val SPECTRUM_MARKER_MIN_PEAK = 0.001f
         private const val PHONE4A_BASE_INDICATOR_EPSILON = 0.000001f
@@ -230,10 +230,12 @@ class GlyphLightController(
     private var spectrumBands = FloatArray(0)
     private var fillOtherSpectrumBands = FloatArray(0)
     private var rawSpectrumPeak = 0f
+    private var spectrumMarkerRawPeak = 0f
     private var smoothedSpectrumBands = FloatArray(0)
     private val classicPatternSmoothingState = ClassicOutputSmoothingState()
     private val fillOtherSmoothingState = ClassicOutputSmoothingState()
     private var spectrumMarkerPosition: Float? = null
+    private val spectrumMarkerPeakTracker = SpectrumMarkerPeakTracker()
     private var lastSpectrumMarkerUpdateMs = 0L
     private var spectrumMarkerRadiusSegments = SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS
     private var lastSpectrumMarkerRadiusUpdateMs = 0L
@@ -569,6 +571,7 @@ class GlyphLightController(
         this.highEnergy = highEnergy.coerceIn(0f, 1f)
         val raw = spectrumBands ?: FloatArray(0)
         rawSpectrumPeak = raw.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+        spectrumMarkerRawPeak = spectrumRawPeak.coerceIn(0f, 1f)
         this.spectrumBands = normalizeSpectrumBands(
             input = applySpectrumSmoothing(raw),
             spectrumRawPeak = spectrumRawPeak
@@ -716,6 +719,8 @@ class GlyphLightController(
 
     private fun resetSpectrumMarkerTracking() {
         spectrumMarkerPosition = null
+        spectrumMarkerPeakTracker.reset()
+        spectrumMarkerRawPeak = 0f
         lastSpectrumMarkerUpdateMs = 0L
         spectrumMarkerRadiusSegments = SPECTRUM_MARKER_MIN_RADIUS_SEGMENTS
         lastSpectrumMarkerRadiusUpdateMs = 0L
@@ -1388,7 +1393,12 @@ class GlyphLightController(
         val bands = spectrumBands
         if (bands.isEmpty()) return null
 
-        val peakIndex = bands.indices.maxByOrNull { bands[it] } ?: return null
+        val peakIndex = spectrumMarkerPeakTracker.selectPeakIndex(
+            bands = bands,
+            rawPeak = spectrumMarkerRawPeak,
+            nowMs = SystemClock.elapsedRealtime()
+        )
+        if (peakIndex !in bands.indices) return null
         val peak = bands[peakIndex].coerceIn(0f, 1f)
         if (peak <= SPECTRUM_MARKER_MIN_PEAK) return null
         if (bands.size == 1) return 0f
