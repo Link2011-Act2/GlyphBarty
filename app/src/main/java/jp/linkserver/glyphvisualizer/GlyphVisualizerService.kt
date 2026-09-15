@@ -374,6 +374,10 @@ class GlyphVisualizerService : Service() {
     private var openReelPausedTimeoutRunnable: Runnable? = null
     @Volatile
     private var openReelPausedTimeoutHandler: Handler? = null
+    @Volatile
+    private var openReelMediaSessionWatchdogRunnable: Runnable? = null
+    @Volatile
+    private var openReelMediaSessionWatchdogHandler: Handler? = null
     private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
@@ -648,13 +652,19 @@ class GlyphVisualizerService : Service() {
         val wasOpenReel = isOpenReelMode(captureConfig.glyphMode)
         captureConfig = config
         if (wasOpenReel && !isOpenReelMode(config.glyphMode)) {
+            stopOpenReelMediaSessionWatchdog()
             cancelOpenReelPausedTimeout()
             mediaPlaybackActivityTracker.clearOpenReelPausedHoldState()
+        } else if (!wasOpenReel && isOpenReelMode(config.glyphMode) &&
+            CaptureUiStore.runtimeState.isCapturing
+        ) {
+            startOpenReelMediaSessionWatchdog()
         }
         WaveformSampler.setAutoTimeAxisEnabled(oscilloscopeAutoTimeAxisEnabled)
     }
 
     override fun onDestroy() {
+        stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
         cancelPendingVisualizerCrashRetry()
         captureSessionCoordinator.invalidate()
@@ -743,6 +753,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun resetMediaPlaybackTracking() {
+        stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
         lastMediaPlaybackCheckAtMs = 0L
         mediaPlaybackActivityTracker.reset()
@@ -830,6 +841,7 @@ class GlyphVisualizerService : Service() {
                         activeMode = ACTIVE_MODE_VISUALIZER
                     )
                 }
+                if (isOpenReelMode()) startOpenReelMediaSessionWatchdog()
                 notifyTile()
             },
             onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, spectrumRawPeak, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
@@ -980,6 +992,7 @@ class GlyphVisualizerService : Service() {
                         activeMode = ACTIVE_MODE_MEDIA_PROJECTION
                     )
                 }
+                if (isOpenReelMode()) startOpenReelMediaSessionWatchdog()
                 notifyTile()
             },
             onLevelChanged = { level, peak, lowEnergy, highEnergy, leftLevel, rightLevel, spectrumBands, spectrumRawPeak, phone4aBaseBandLevel, waveformSamples, leftWaveformSamples, rightWaveformSamples ->
@@ -1436,6 +1449,8 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun stopRunningCapture(clearStatus: Boolean, releaseGlyphSession: Boolean = false) {
+        stopOpenReelMediaSessionWatchdog()
+        cancelOpenReelPausedTimeout()
         try {
             outputMixVisualizer.stop()
         } catch (error: Throwable) {
@@ -1775,78 +1790,163 @@ class GlyphVisualizerService : Service() {
         }
     }
 
+    private fun handleMediaPlaybackTrackerEvents(
+        events: List<MediaPlaybackActivityTracker.Event>,
+    ) {
+        events.forEach { event ->
+            when (event) {
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_STARTED ->
+                    AppLogger.i(TAG, "Open Reel MediaSession missing; starting grace window")
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_KEEPING_ALIVE ->
+                    AppLogger.i(
+                        TAG,
+                        "Open Reel MediaSession still missing; keeping Glyph session alive",
+                    )
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_RECOVERED ->
+                    AppLogger.i(
+                        TAG,
+                        "Open Reel MediaSession recovered within grace window",
+                    )
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_EXPIRED ->
+                    AppLogger.i(
+                        TAG,
+                        "Open Reel MediaSession grace expired; suspending Glyph session",
+                    )
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_STARTED -> {
+                    AppLogger.i(TAG, "Open Reel watchdog detected PAUSED")
+                    AppLogger.i(TAG, "Open Reel PAUSED hold started")
+                    scheduleOpenReelPausedTimeout()
+                }
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED -> {
+                    AppLogger.i(TAG, "Open Reel PAUSED hold recovered / cleared")
+                    cancelOpenReelPausedTimeout()
+                }
+
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED -> {
+                    AppLogger.i(
+                        TAG,
+                        "Open Reel PAUSED hold expired; suspending session",
+                    )
+                    cancelOpenReelPausedTimeout(logCancellation = false)
+                }
+
+                MediaPlaybackActivityTracker.Event.PLAYBACK_RESUMED_CONFIRMED ->
+                    AppLogger.i(
+                        TAG,
+                        "MediaSession playback remained active; allowing Glyph session resume",
+                    )
+            }
+        }
+    }
+
+    private fun updateOpenReelMediaSessionFromWatchdog() {
+        if (!isOpenReelPlaybackContextActive()) return
+        val snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(
+            context = this,
+            forceRefresh = true,
+        )
+        val now = SystemClock.uptimeMillis()
+        lastMediaPlaybackCheckAtMs = now
+        val result = mediaPlaybackActivityTracker.update(
+            nowMs = now,
+            rawMediaPlaybackActive = snapshot.activeForOpenReel,
+            allowPaused = true,
+            openReelNonPlayingSessionActive =
+                snapshot.activeForOpenReel &&
+                    snapshot.status != MediaSessionPlaybackGate.PlaybackStatus.PLAYING,
+            openReelMotionPaused = snapshot.motionPaused,
+        )
+        handleMediaPlaybackTrackerEvents(result.events)
+        if (
+            !result.allowed &&
+            !mediaPlaybackSuppressed &&
+            (!snapshot.activeForOpenReel ||
+                result.events.contains(
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED,
+                )) &&
+            isOpenReelPlaybackContextActive()
+        ) {
+            mediaPlaybackSuppressed = true
+            runGlyphControllerCommand {
+                try {
+                    suspendSession()
+                    AppLogger.i(TAG, "Glyph session suspended because no playing MediaSession is active")
+                } catch (error: Throwable) {
+                    AppLogger.w(
+                        TAG,
+                        "glyphController.suspendSession failed during media playback suppression",
+                        error,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startOpenReelMediaSessionWatchdog() {
+        if (!isOpenReelPlaybackContextActive()) return
+        if (openReelMediaSessionWatchdogRunnable != null) return
+        val handler = matrixOutputHandler ?: mainHandler
+        lateinit var watchdogRunnable: Runnable
+        watchdogRunnable = Runnable {
+            if (openReelMediaSessionWatchdogRunnable !== watchdogRunnable) return@Runnable
+            if (!isOpenReelPlaybackContextActive()) {
+                stopOpenReelMediaSessionWatchdog()
+                cancelOpenReelPausedTimeout()
+                return@Runnable
+            }
+            updateOpenReelMediaSessionFromWatchdog()
+            if (openReelMediaSessionWatchdogRunnable === watchdogRunnable) {
+                if (!handler.postDelayed(watchdogRunnable, MEDIA_PLAYBACK_CHECK_INTERVAL_MS)) {
+                    stopOpenReelMediaSessionWatchdog()
+                }
+            }
+        }
+        openReelMediaSessionWatchdogRunnable = watchdogRunnable
+        openReelMediaSessionWatchdogHandler = handler
+        AppLogger.i(TAG, "Open Reel MediaSession watchdog started")
+        updateOpenReelMediaSessionFromWatchdog()
+        if (
+            openReelMediaSessionWatchdogRunnable === watchdogRunnable &&
+            !handler.postDelayed(watchdogRunnable, MEDIA_PLAYBACK_CHECK_INTERVAL_MS)
+        ) {
+            stopOpenReelMediaSessionWatchdog()
+        }
+    }
+
+    private fun stopOpenReelMediaSessionWatchdog() {
+        val watchdogRunnable = openReelMediaSessionWatchdogRunnable ?: return
+        openReelMediaSessionWatchdogHandler?.removeCallbacks(watchdogRunnable)
+        openReelMediaSessionWatchdogRunnable = null
+        openReelMediaSessionWatchdogHandler = null
+        AppLogger.i(TAG, "Open Reel MediaSession watchdog stopped")
+    }
+
     private fun isMediaPlaybackAllowed(allowPaused: Boolean = false): Boolean {
-        if (!shouldTrackMediaPlayback(allowPaused, mediaPlaybackOnlyEnabled)) return true
+        if (allowPaused) {
+            startOpenReelMediaSessionWatchdog()
+            return mediaPlaybackActivityTracker.lastMediaPlaybackActive
+        }
+        if (!shouldTrackMediaPlayback(allowPaused, mediaPlaybackOnlyEnabled)) {
+            stopOpenReelMediaSessionWatchdog()
+            return true
+        }
         val now = SystemClock.uptimeMillis()
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
-            val playbackSnapshot = if (allowPaused) {
-                MediaSessionPlaybackGate.currentPlaybackSnapshot(this)
-            } else {
-                null
-            }
-            val rawMediaPlaybackActive = if (allowPaused) {
-                playbackSnapshot?.activeForOpenReel == true
-            } else {
-                MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
-            }
+            val rawMediaPlaybackActive = MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
             val result = mediaPlaybackActivityTracker.update(
                 nowMs = now,
                 rawMediaPlaybackActive = rawMediaPlaybackActive,
                 allowPaused = allowPaused,
-                openReelNonPlayingSessionActive =
-                    playbackSnapshot?.activeForOpenReel == true &&
-                        playbackSnapshot.status != MediaSessionPlaybackGate.PlaybackStatus.PLAYING,
-                openReelMotionPaused = playbackSnapshot?.motionPaused == true,
+                openReelNonPlayingSessionActive = false,
+                openReelMotionPaused = false,
             )
-            result.events.forEach { event ->
-                when (event) {
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_STARTED ->
-                        AppLogger.i(TAG, "Open Reel MediaSession missing; starting grace window")
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_KEEPING_ALIVE ->
-                        AppLogger.i(
-                            TAG,
-                            "Open Reel MediaSession still missing; keeping Glyph session alive",
-                        )
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_RECOVERED ->
-                        AppLogger.i(
-                            TAG,
-                            "Open Reel MediaSession recovered within grace window",
-                        )
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_EXPIRED ->
-                        AppLogger.i(
-                            TAG,
-                            "Open Reel MediaSession grace expired; suspending Glyph session",
-                        )
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_STARTED -> {
-                        AppLogger.i(TAG, "Open Reel PAUSED hold started")
-                        scheduleOpenReelPausedTimeout()
-                    }
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED -> {
-                        AppLogger.i(TAG, "Open Reel PAUSED hold recovered / cleared")
-                        cancelOpenReelPausedTimeout()
-                    }
-
-                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED -> {
-                        AppLogger.i(
-                            TAG,
-                            "Open Reel PAUSED hold expired; suspending session",
-                        )
-                        cancelOpenReelPausedTimeout(logCancellation = false)
-                    }
-
-                    MediaPlaybackActivityTracker.Event.PLAYBACK_RESUMED_CONFIRMED ->
-                        AppLogger.i(
-                            TAG,
-                            "MediaSession playback remained active; allowing Glyph session resume",
-                        )
-                }
-            }
+            handleMediaPlaybackTrackerEvents(result.events)
         }
         return mediaPlaybackActivityTracker.lastMediaPlaybackActive
     }
