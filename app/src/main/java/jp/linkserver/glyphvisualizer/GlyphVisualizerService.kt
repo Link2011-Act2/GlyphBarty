@@ -1932,7 +1932,6 @@ class GlyphVisualizerService : Service() {
             return mediaPlaybackActivityTracker.lastMediaPlaybackActive
         }
         if (!shouldTrackMediaPlayback(allowPaused, mediaPlaybackOnlyEnabled)) {
-            stopOpenReelMediaSessionWatchdog()
             return true
         }
         val now = SystemClock.uptimeMillis()
