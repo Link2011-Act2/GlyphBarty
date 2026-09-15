@@ -61,6 +61,7 @@ class GlyphVisualizerService : Service() {
         private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
         private const val MEDIA_PLAYBACK_RESUME_CONFIRM_MS = 1_000L
         private const val OPEN_REEL_MEDIA_SESSION_GRACE_MS = 750L
+        private const val OPEN_REEL_PAUSED_HOLD_MS = 30_000L
         private const val UI_LEVEL_QUANTIZATION_STEPS = 64f
         private const val UI_PEAK_QUANTIZATION_STEPS = 64f
         private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
@@ -360,6 +361,7 @@ class GlyphVisualizerService : Service() {
     private val mediaPlaybackActivityTracker = MediaPlaybackActivityTracker(
         resumeConfirmMs = MEDIA_PLAYBACK_RESUME_CONFIRM_MS,
         openReelGraceMs = OPEN_REEL_MEDIA_SESSION_GRACE_MS,
+        openReelPausedHoldMs = OPEN_REEL_PAUSED_HOLD_MS,
     )
     private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
@@ -1674,8 +1676,7 @@ class GlyphVisualizerService : Service() {
                 null
             }
             val rawMediaPlaybackActive = if (allowPaused) {
-                playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PLAYING ||
-                    playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+                playbackSnapshot?.activeForOpenReel == true
             } else {
                 MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
             }
@@ -1683,8 +1684,10 @@ class GlyphVisualizerService : Service() {
                 nowMs = now,
                 rawMediaPlaybackActive = rawMediaPlaybackActive,
                 allowPaused = allowPaused,
-                pausedPlayback = playbackSnapshot?.status ==
-                    MediaSessionPlaybackGate.PlaybackStatus.PAUSED,
+                openReelNonPlayingSessionActive =
+                    playbackSnapshot?.activeForOpenReel == true &&
+                        playbackSnapshot.status != MediaSessionPlaybackGate.PlaybackStatus.PLAYING,
+                openReelMotionPaused = playbackSnapshot?.motionPaused == true,
             )
             result.events.forEach { event ->
                 when (event) {
@@ -1707,6 +1710,18 @@ class GlyphVisualizerService : Service() {
                         AppLogger.i(
                             TAG,
                             "Open Reel MediaSession grace expired; suspending Glyph session",
+                        )
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_STARTED ->
+                        AppLogger.i(TAG, "Open Reel PAUSED hold started")
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED ->
+                        AppLogger.i(TAG, "Open Reel PAUSED hold recovered / cleared")
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED ->
+                        AppLogger.i(
+                            TAG,
+                            "Open Reel PAUSED hold expired; suspending session",
                         )
 
                     MediaPlaybackActivityTracker.Event.PLAYBACK_RESUMED_CONFIRMED ->

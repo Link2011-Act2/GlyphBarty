@@ -19,6 +19,7 @@ internal object MediaSessionPlaybackGate {
     private const val SNAPSHOT_CACHE_MS = 250L
     private var lastLogAtMs = 0L
     private var lastLogSummary = ""
+    private var lastPlaybackStateLogSummary = ""
     private var cachedSnapshotAtMs = 0L
     private var cachedSnapshot = PlaybackSnapshot(PlaybackStatus.NONE, null)
     private val trackChangeDirectionResolver = MediaTrackChangeDirectionResolver()
@@ -27,6 +28,7 @@ internal object MediaSessionPlaybackGate {
         NONE,
         PLAYING,
         PAUSED,
+        BUFFERING,
         STOPPED
     }
 
@@ -36,7 +38,19 @@ internal object MediaSessionPlaybackGate {
         val packageName: String? = null,
         val durationMs: Long? = null,
         val trackKey: String? = null,
-        val trackChangeDirection: MediaTrackChangeDirection? = null
+        val trackChangeDirection: MediaTrackChangeDirection? = null,
+        val motionPaused: Boolean = false,
+    ) {
+        val activeForOpenReel: Boolean
+            get() = status == PlaybackStatus.PLAYING ||
+                status == PlaybackStatus.PAUSED ||
+                status == PlaybackStatus.BUFFERING
+    }
+
+    internal data class PlaybackStateSemantics(
+        val status: PlaybackStatus,
+        val activeForOpenReel: Boolean,
+        val motionPaused: Boolean,
     )
 
     fun hasNotificationAccess(context: Context): Boolean {
@@ -96,19 +110,24 @@ internal object MediaSessionPlaybackGate {
     }
 
     private fun readPlaybackSnapshot(context: Context, now: Long): PlaybackSnapshot {
-        if (!hasNotificationAccess(context)) return PlaybackSnapshot(PlaybackStatus.NONE, null)
+        if (!hasNotificationAccess(context)) return emptyPlaybackSnapshot()
         val manager = context.getSystemService(MediaSessionManager::class.java)
-            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+            ?: return emptyPlaybackSnapshot()
         val listener = ComponentName(context, MediaSessionNotificationListenerService::class.java)
         val sessions = runCatching { manager.getActiveSessions(listener) }.getOrNull()
-            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+            ?: return emptyPlaybackSnapshot()
         val controller = sessions.firstOrNull(::isSessionPlaying)
-            ?: sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PAUSED }
-            ?: sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_STOPPED }
-            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null)
+            ?: sessions.firstOrNull {
+                playbackStateSemantics(it.playbackState?.state).activeForOpenReel
+            }
+            ?: sessions.firstOrNull {
+                playbackStateSemantics(it.playbackState?.state).status == PlaybackStatus.STOPPED
+            }
+            ?: return emptyPlaybackSnapshot()
         val state = controller.playbackState
-            ?: return PlaybackSnapshot(PlaybackStatus.NONE, null, controller.packageName)
-        val status = playbackStatus(state.state)
+            ?: return emptyPlaybackSnapshot(controller.packageName)
+        val semantics = playbackStateSemantics(state.state)
+        val status = semantics.status
         val metadata = controller.metadata
         val duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.takeIf { it > 0L }
         val trackKey = buildTrackKey(controller.packageName, metadata, duration)
@@ -146,8 +165,11 @@ internal object MediaSessionPlaybackGate {
             packageName = controller.packageName,
             durationMs = duration,
             trackKey = trackKey,
-            trackChangeDirection = directionResolution.resolvedDirection
-        )
+            trackChangeDirection = directionResolution.resolvedDirection,
+            motionPaused = semantics.motionPaused,
+        ).also { snapshot ->
+            logPlaybackState(state.state, snapshot)
+        }
     }
 
     private fun logTrackChangeDirection(resolution: MediaTrackDirectionResolution) {
@@ -217,22 +239,72 @@ internal object MediaSessionPlaybackGate {
         return values.firstOrNull { !it.isNullOrBlank() }
     }
 
-    private fun playbackStatus(state: Int?): PlaybackStatus {
+    internal fun playbackStateSemantics(state: Int?): PlaybackStateSemantics {
         return when (state) {
             PlaybackState.STATE_PLAYING,
             PlaybackState.STATE_FAST_FORWARDING,
             PlaybackState.STATE_REWINDING,
             PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
             PlaybackState.STATE_SKIPPING_TO_NEXT,
-            PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> PlaybackStatus.PLAYING
-            PlaybackState.STATE_PAUSED,
+            PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> PlaybackStateSemantics(
+                status = PlaybackStatus.PLAYING,
+                activeForOpenReel = true,
+                motionPaused = false,
+            )
+
+            PlaybackState.STATE_PAUSED -> PlaybackStateSemantics(
+                status = PlaybackStatus.PAUSED,
+                activeForOpenReel = true,
+                motionPaused = true,
+            )
+
             PlaybackState.STATE_BUFFERING,
-            PlaybackState.STATE_CONNECTING -> PlaybackStatus.PAUSED
+            PlaybackState.STATE_CONNECTING -> PlaybackStateSemantics(
+                status = PlaybackStatus.BUFFERING,
+                activeForOpenReel = true,
+                motionPaused = false,
+            )
+
             PlaybackState.STATE_STOPPED,
             PlaybackState.STATE_NONE,
-            PlaybackState.STATE_ERROR -> PlaybackStatus.STOPPED
-            else -> PlaybackStatus.NONE
+            PlaybackState.STATE_ERROR -> PlaybackStateSemantics(
+                status = PlaybackStatus.STOPPED,
+                activeForOpenReel = false,
+                motionPaused = false,
+            )
+
+            else -> PlaybackStateSemantics(
+                status = PlaybackStatus.NONE,
+                activeForOpenReel = false,
+                motionPaused = false,
+            )
         }
+    }
+
+    private fun playbackStatus(state: Int?): PlaybackStatus {
+        return playbackStateSemantics(state).status
+    }
+
+    private fun emptyPlaybackSnapshot(packageName: String? = null): PlaybackSnapshot {
+        return PlaybackSnapshot(
+            status = PlaybackStatus.NONE,
+            progress = null,
+            packageName = packageName,
+        ).also { snapshot ->
+            logPlaybackState(null, snapshot)
+        }
+    }
+
+    private fun logPlaybackState(rawState: Int?, snapshot: PlaybackSnapshot) {
+        if (!DEBUG_MEDIA_SESSION_LOGS) return
+        val summary = "rawPlaybackState=${stateName(rawState)}($rawState) " +
+            "mappedPlaybackStatus=${snapshot.status} " +
+            "motionPaused=${snapshot.motionPaused} " +
+            "trackKey=${debugTrackKey(snapshot.trackKey)} " +
+            "packageName=${snapshot.packageName}"
+        if (summary == lastPlaybackStateLogSummary) return
+        lastPlaybackStateLogSummary = summary
+        AppLogger.i(TAG, summary)
     }
 
     private fun logStatus(summary: String) {

@@ -5,6 +5,7 @@ internal data class MatrixAudioSilenceDecision(
     val drainsBeforeRelease: Boolean,
     val blackoutDue: Boolean,
     val releaseDue: Boolean,
+    val renderWhileSilent: Boolean,
 )
 
 internal object MatrixAudioSilencePolicy {
@@ -28,15 +29,17 @@ internal object MatrixAudioSilencePolicy {
             renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
         val blackoutMs = if (isOpenReel) OPEN_REEL_SILENCE_BLACKOUT_MS else BLACKOUT_MS
         val releaseMs = if (isOpenReel) OPEN_REEL_SILENCE_RELEASE_MS else RELEASE_MS
+        val blackoutDue = isSilent &&
+            !drainsBeforeRelease &&
+            silenceElapsedMs >= blackoutMs
         return MatrixAudioSilenceDecision(
             isSilent = isSilent,
             drainsBeforeRelease = drainsBeforeRelease,
-            blackoutDue = isSilent &&
-                !drainsBeforeRelease &&
-                silenceElapsedMs >= blackoutMs,
+            blackoutDue = blackoutDue,
             releaseDue = isSilent &&
                 !drainsBeforeRelease &&
                 silenceElapsedMs >= releaseMs,
+            renderWhileSilent = isOpenReel && isSilent && !blackoutDue,
         )
     }
 }

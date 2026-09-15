@@ -12,6 +12,7 @@ class MatrixAudioSilencePolicyTest {
         assertTrue(decision.isSilent)
         assertFalse(decision.blackoutDue)
         assertFalse(decision.releaseDue)
+        assertTrue(decision.renderWhileSilent)
     }
 
     @Test
@@ -20,8 +21,10 @@ class MatrixAudioSilencePolicyTest {
         val atBlackout = openReelDecision(elapsedMs = 2_000L)
 
         assertFalse(beforeBlackout.blackoutDue)
+        assertTrue(beforeBlackout.renderWhileSilent)
         assertTrue(atBlackout.blackoutDue)
         assertFalse(atBlackout.releaseDue)
+        assertFalse(atBlackout.renderWhileSilent)
     }
 
     @Test
@@ -49,9 +52,11 @@ class MatrixAudioSilencePolicyTest {
         assertFalse(recovered.isSilent)
         assertFalse(recovered.blackoutDue)
         assertFalse(recovered.releaseDue)
+        assertFalse(recovered.renderWhileSilent)
         assertTrue(nextSilenceStart.isSilent)
         assertFalse(nextSilenceStart.blackoutDue)
         assertFalse(nextSilenceStart.releaseDue)
+        assertTrue(nextSilenceStart.renderWhileSilent)
     }
 
     @Test
@@ -66,6 +71,7 @@ class MatrixAudioSilencePolicyTest {
         assertFalse(decision.isSilent)
         assertFalse(decision.blackoutDue)
         assertFalse(decision.releaseDue)
+        assertFalse(decision.renderWhileSilent)
     }
 
     @Test
@@ -78,6 +84,7 @@ class MatrixAudioSilencePolicyTest {
         assertTrue(beforeBlackout.isSilent)
         assertFalse(beforeBlackout.blackoutDue)
         assertTrue(atBlackout.blackoutDue)
+        assertFalse(atBlackout.renderWhileSilent)
         assertFalse(beforeRelease.releaseDue)
         assertTrue(atRelease.releaseDue)
     }
@@ -99,6 +106,7 @@ class MatrixAudioSilencePolicyTest {
             assertTrue(decision.drainsBeforeRelease)
             assertFalse(decision.blackoutDue)
             assertFalse(decision.releaseDue)
+            assertFalse(decision.renderWhileSilent)
         }
     }
 

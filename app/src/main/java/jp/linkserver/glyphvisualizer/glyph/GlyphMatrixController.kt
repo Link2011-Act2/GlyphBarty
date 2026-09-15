@@ -704,7 +704,7 @@ class GlyphMatrixController(
             null
         }
         val holdOpenReelFrameForPause =
-            openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            openReelPlayback?.motionPaused == true
         var silenceDecision = MatrixAudioSilencePolicy.evaluate(
             renderMode = renderMode,
             activity = activity,
@@ -753,7 +753,9 @@ class GlyphMatrixController(
             if (!matrixReleasedForSilence && silenceDecision.releaseDue) {
                 releaseMatrixForSilence()
             }
-            return
+            if (!silenceDecision.renderWhileSilent) {
+                return
+            }
         }
         if (isSilent && matrixReleasedForSilence) {
             return
@@ -1395,8 +1397,7 @@ class GlyphMatrixController(
             val fallbackProgress = (((now - openReelStartMs).coerceAtLeast(0L) % 180_000L) / 180_000f)
                 .coerceIn(0f, 1f)
             val targetProgress = openReelPlayback?.progress ?: fallbackProgress
-            val playbackPaused =
-                openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            val playbackPaused = openReelPlayback?.motionPaused == true
             val centerX = (matrixLength - 1f) / 2f
             val centerY = (matrixLength - 1f) / 2f
             val reelRadius = (matrixLength * 0.36f).coerceAtMost(centerX + 0.8f)

@@ -128,9 +128,128 @@ class MediaPlaybackActivityTrackerTest {
         assertEquals(0L, tracker.openReelMediaSessionMissingSinceMs)
     }
 
+    @Test
+    fun `paused remains active at ten seconds and 29999ms`() {
+        val tracker = tracker()
+        val started = tracker.update(1_000L, true, true, true, true)
+        val atTenSeconds = tracker.update(11_000L, true, true, true, true)
+        val beforeExpiry = tracker.update(30_999L, true, true, true, true)
+
+        assertTrue(started.allowed)
+        assertTrue(atTenSeconds.allowed)
+        assertTrue(beforeExpiry.allowed)
+        assertEquals(1_000L, tracker.openReelPausedSinceMs)
+        assertEquals(
+            listOf(MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_STARTED),
+            started.events,
+        )
+    }
+
+    @Test
+    fun `paused expires at exactly thirty seconds and stays inactive`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+
+        val expired = tracker.update(31_000L, true, true, true, true)
+        val stillPaused = tracker.update(40_000L, true, true, true, true)
+
+        assertFalse(expired.allowed)
+        assertFalse(stillPaused.allowed)
+        assertFalse(tracker.lastMediaPlaybackActive)
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+        assertEquals(
+            listOf(MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED),
+            expired.events,
+        )
+        assertTrue(stillPaused.events.isEmpty())
+    }
+
+    @Test
+    fun `playing recovery before paused timeout clears hold without suspension`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+        tracker.update(16_000L, true, true, true, true)
+
+        val recovered = tracker.update(16_100L, true, true, false, false)
+
+        assertTrue(recovered.allowed)
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+        assertEquals(0L, tracker.mediaPlaybackResumeCandidateAtMs)
+        assertEquals(
+            listOf(MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED),
+            recovered.events,
+        )
+    }
+
+    @Test
+    fun `buffering or connecting does not start paused timeout`() {
+        val tracker = tracker()
+
+        val buffering = tracker.update(1_000L, true, true, true, false)
+        val connectingAfterThirtySeconds = tracker.update(31_000L, true, true, true, false)
+
+        assertTrue(buffering.allowed)
+        assertTrue(connectingAfterThirtySeconds.allowed)
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+    }
+
+    @Test
+    fun `buffering clears an existing paused timeout`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+        tracker.update(16_000L, true, true, true, true)
+
+        val buffering = tracker.update(16_100L, true, true, true, false)
+        val stillBuffering = tracker.update(46_100L, true, true, true, false)
+
+        assertTrue(buffering.allowed)
+        assertTrue(stillBuffering.allowed)
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+        assertEquals(
+            listOf(MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED),
+            buffering.events,
+        )
+    }
+
+    @Test
+    fun `playing after paused timeout uses resume confirmation and clears old hold`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+        tracker.update(31_000L, true, true, true, true)
+
+        val candidate = tracker.update(31_100L, true, true, false, false)
+        val confirmed = tracker.update(32_100L, true, true, false, false)
+
+        assertFalse(candidate.allowed)
+        assertTrue(confirmed.allowed)
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+        assertTrue(
+            candidate.events.contains(
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_CLEARED,
+            ),
+        )
+        assertEquals(
+            listOf(MediaPlaybackActivityTracker.Event.PLAYBACK_RESUMED_CONFIRMED),
+            confirmed.events,
+        )
+    }
+
+    @Test
+    fun `reset clears paused hold state`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+        assertEquals(1_000L, tracker.openReelPausedSinceMs)
+
+        tracker.reset()
+
+        assertEquals(0L, tracker.openReelPausedSinceMs)
+        assertFalse(tracker.lastMediaPlaybackActive)
+    }
+
     private fun tracker() = MediaPlaybackActivityTracker(
         resumeConfirmMs = 1_000L,
         openReelGraceMs = 750L,
+        openReelPausedHoldMs = 30_000L,
     )
 
     private fun activateOpenReel(
@@ -141,7 +260,7 @@ class MediaPlaybackActivityTrackerTest {
             nowMs = nowMs,
             rawMediaPlaybackActive = true,
             allowPaused = true,
-            pausedPlayback = true,
+            openReelNonPlayingSessionActive = true,
         )
         assertTrue(active.allowed)
     }
