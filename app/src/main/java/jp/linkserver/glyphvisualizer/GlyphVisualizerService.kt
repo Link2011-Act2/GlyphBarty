@@ -66,6 +66,13 @@ class GlyphVisualizerService : Service() {
         private const val UI_PEAK_QUANTIZATION_STEPS = 64f
         private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
 
+        internal fun shouldTrackMediaPlayback(
+            allowPaused: Boolean,
+            mediaPlaybackOnlyEnabled: Boolean,
+        ): Boolean {
+            return allowPaused || mediaPlaybackOnlyEnabled
+        }
+
         fun startVisualizer(
             context: Context,
             sensitivity: Float,
@@ -1666,7 +1673,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun isMediaPlaybackAllowed(allowPaused: Boolean = false): Boolean {
-        if (!mediaPlaybackOnlyEnabled) return true
+        if (!shouldTrackMediaPlayback(allowPaused, mediaPlaybackOnlyEnabled)) return true
         val now = SystemClock.uptimeMillis()
         if (now - lastMediaPlaybackCheckAtMs >= MEDIA_PLAYBACK_CHECK_INTERVAL_MS) {
             lastMediaPlaybackCheckAtMs = now
