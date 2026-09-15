@@ -20,6 +20,7 @@ import android.os.SystemClock
 import android.service.quicksettings.TileService
 import jp.linkserver.glyphvisualizer.audio.AudioPlaybackVisualizer
 import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
+import jp.linkserver.glyphvisualizer.audio.MediaPlaybackActivityTracker
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
@@ -59,6 +60,7 @@ class GlyphVisualizerService : Service() {
         private const val LIGHTWEIGHT_METER_UI_UPDATE_INTERVAL_MS = 100L
         private const val MEDIA_PLAYBACK_CHECK_INTERVAL_MS = 250L
         private const val MEDIA_PLAYBACK_RESUME_CONFIRM_MS = 1_000L
+        private const val OPEN_REEL_MEDIA_SESSION_GRACE_MS = 750L
         private const val UI_LEVEL_QUANTIZATION_STEPS = 64f
         private const val UI_PEAK_QUANTIZATION_STEPS = 64f
         private const val UI_SPECTRUM_QUANTIZATION_STEPS = 32f
@@ -355,8 +357,10 @@ class GlyphVisualizerService : Service() {
     private var publishUiFrameCallCount = 0
     private var lastPublishUiFrameCallLogAtMs = 0L
     private var lastMediaPlaybackCheckAtMs = 0L
-    private var lastMediaPlaybackActive = false
-    private var mediaPlaybackResumeCandidateAtMs = 0L
+    private val mediaPlaybackActivityTracker = MediaPlaybackActivityTracker(
+        resumeConfirmMs = MEDIA_PLAYBACK_RESUME_CONFIRM_MS,
+        openReelGraceMs = OPEN_REEL_MEDIA_SESSION_GRACE_MS,
+    )
     private var mediaPlaybackSuppressed = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
@@ -721,8 +725,7 @@ class GlyphVisualizerService : Service() {
 
     private fun resetMediaPlaybackTracking() {
         lastMediaPlaybackCheckAtMs = 0L
-        lastMediaPlaybackActive = false
-        mediaPlaybackResumeCandidateAtMs = 0L
+        mediaPlaybackActivityTracker.reset()
         mediaPlaybackSuppressed = false
     }
 
@@ -1676,27 +1679,45 @@ class GlyphVisualizerService : Service() {
             } else {
                 MediaSessionPlaybackGate.isMediaSessionPlaybackActive(this)
             }
-            if (!rawMediaPlaybackActive) {
-                lastMediaPlaybackActive = false
-                mediaPlaybackResumeCandidateAtMs = 0L
-            } else if (
-                allowPaused &&
-                playbackSnapshot?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
-            ) {
-                lastMediaPlaybackActive = true
-                mediaPlaybackResumeCandidateAtMs = 0L
-            } else if (!lastMediaPlaybackActive) {
-                if (mediaPlaybackResumeCandidateAtMs <= 0L) {
-                    mediaPlaybackResumeCandidateAtMs = now
-                }
-                if (now - mediaPlaybackResumeCandidateAtMs >= MEDIA_PLAYBACK_RESUME_CONFIRM_MS) {
-                    lastMediaPlaybackActive = true
-                    mediaPlaybackResumeCandidateAtMs = 0L
-                    AppLogger.i(TAG, "MediaSession playback remained active; allowing Glyph session resume")
+            val result = mediaPlaybackActivityTracker.update(
+                nowMs = now,
+                rawMediaPlaybackActive = rawMediaPlaybackActive,
+                allowPaused = allowPaused,
+                pausedPlayback = playbackSnapshot?.status ==
+                    MediaSessionPlaybackGate.PlaybackStatus.PAUSED,
+            )
+            result.events.forEach { event ->
+                when (event) {
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_STARTED ->
+                        AppLogger.i(TAG, "Open Reel MediaSession missing; starting grace window")
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_KEEPING_ALIVE ->
+                        AppLogger.i(
+                            TAG,
+                            "Open Reel MediaSession still missing; keeping Glyph session alive",
+                        )
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_RECOVERED ->
+                        AppLogger.i(
+                            TAG,
+                            "Open Reel MediaSession recovered within grace window",
+                        )
+
+                    MediaPlaybackActivityTracker.Event.OPEN_REEL_GRACE_EXPIRED ->
+                        AppLogger.i(
+                            TAG,
+                            "Open Reel MediaSession grace expired; suspending Glyph session",
+                        )
+
+                    MediaPlaybackActivityTracker.Event.PLAYBACK_RESUMED_CONFIRMED ->
+                        AppLogger.i(
+                            TAG,
+                            "MediaSession playback remained active; allowing Glyph session resume",
+                        )
                 }
             }
         }
-        return lastMediaPlaybackActive
+        return mediaPlaybackActivityTracker.lastMediaPlaybackActive
     }
 
     private fun publishUiFrame(

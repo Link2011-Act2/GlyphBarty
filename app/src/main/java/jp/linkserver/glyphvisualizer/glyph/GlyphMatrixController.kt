@@ -54,9 +54,7 @@ class GlyphMatrixController(
         private const val TAG = "GlyphMatrixController"
         private const val COLOR_ON = 255
         private const val COLOR_OFF = 0
-        private const val SILENCE_BLACKOUT_MS = 120L
-        private const val SILENCE_RELEASE_MS = 450L
-        private const val SILENCE_ACTIVITY_THRESHOLD = 0.003f
+        private const val SILENCE_ACTIVITY_THRESHOLD = MatrixAudioSilencePolicy.ACTIVITY_THRESHOLD
         private const val RIPPLE_SILENCE_DRAIN_MS = 900L
         private const val SILENCE_DRAIN_BRIGHTNESS_THRESHOLD = 0.02f
         private const val DEFAULT_AUTO_SCALE_WINDOW_MS = 30_000f
@@ -187,6 +185,8 @@ class GlyphMatrixController(
     private var ripplePhase = 0f
     private var openReelStartMs = 0L
     private val openReelMotionController = OpenReelMotionController()
+    private val openReelTrackSwapController = OpenReelTrackSwapController()
+    private var lastOpenReelMotionFrame: OpenReelMotionFrame? = null
     private var pulseGridSeed = 0
     private val renderEngine = MatrixRenderEngine()
     private val callback = object : GlyphMatrixManager.Callback {
@@ -698,13 +698,6 @@ class GlyphMatrixController(
         }
         val maxBand = rawSpectrumPeak
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
-        if (previewDeviceProfile != null && activity < SILENCE_ACTIVITY_THRESHOLD) {
-            spectrumOverallLevelEnvelope.reset()
-            spectrumVisualDynamicsState.reset()
-            frameBuffer.fill(COLOR_OFF)
-            submitMatrixFrame(frameBuffer)
-            return
-        }
         val openReelPlayback = if (renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
             MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         } else {
@@ -712,10 +705,24 @@ class GlyphMatrixController(
         }
         val holdOpenReelFrameForPause =
             openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
-        val silenceDrainsBeforeRelease = renderMode == GlyphPatternRenderMode.MATRIX_RAIN ||
-            renderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
-            renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE
-        val isSilent = activity < SILENCE_ACTIVITY_THRESHOLD && !holdOpenReelFrameForPause
+        var silenceDecision = MatrixAudioSilencePolicy.evaluate(
+            renderMode = renderMode,
+            activity = activity,
+            silenceElapsedMs = 0L,
+            holdOpenReelFrameForPause = holdOpenReelFrameForPause,
+        )
+        if (
+            previewDeviceProfile != null &&
+            renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
+            silenceDecision.isSilent
+        ) {
+            spectrumOverallLevelEnvelope.reset()
+            spectrumVisualDynamicsState.reset()
+            frameBuffer.fill(COLOR_OFF)
+            submitMatrixFrame(frameBuffer)
+            return
+        }
+        val isSilent = silenceDecision.isSilent
         if (isSilent) {
             spectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
@@ -726,6 +733,13 @@ class GlyphMatrixController(
         } else {
             0L
         }
+        silenceDecision = MatrixAudioSilencePolicy.evaluate(
+            renderMode = renderMode,
+            activity = activity,
+            silenceElapsedMs = silenceElapsedMs,
+            holdOpenReelFrameForPause = holdOpenReelFrameForPause,
+        )
+        val silenceDrainsBeforeRelease = silenceDecision.drainsBeforeRelease
         val renderingSilenceDrain = isSilent && silenceDrainsBeforeRelease
         val rippleDrainProgress = if (renderingSilenceDrain && renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE) {
             (silenceElapsedMs / RIPPLE_SILENCE_DRAIN_MS.toFloat()).coerceIn(0f, 1f)
@@ -733,10 +747,10 @@ class GlyphMatrixController(
             0f
         }
         if (isSilent && !silenceDrainsBeforeRelease) {
-            if (!matrixTurnedOffForSilence && now - silenceStartedAt >= SILENCE_BLACKOUT_MS) {
+            if (!matrixTurnedOffForSilence && silenceDecision.blackoutDue) {
                 blackoutMatrixForSilence()
             }
-            if (!matrixReleasedForSilence && now - silenceStartedAt >= SILENCE_RELEASE_MS) {
+            if (!matrixReleasedForSilence && silenceDecision.releaseDue) {
                 releaseMatrixForSilence()
             }
             return
@@ -1383,22 +1397,37 @@ class GlyphMatrixController(
             val targetProgress = openReelPlayback?.progress ?: fallbackProgress
             val playbackPaused =
                 openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
-            val motion = openReelMotionController.update(
-                nowMs = now,
-                frameIntervalMs = frameIntervalMs,
-                targetProgress = targetProgress,
-                durationMs = openReelPlayback?.durationMs ?: 180_000L,
-                playbackPaused = playbackPaused
-            )
-            val progress = motion.progress
             val centerX = (matrixLength - 1f) / 2f
             val centerY = (matrixLength - 1f) / 2f
             val reelRadius = (matrixLength * 0.36f).coerceAtMost(centerX + 0.8f)
                 .coerceAtLeast(3f)
             val hubRadius = (matrixLength * 0.07f).coerceAtLeast(0.75f)
-            val tapeProgress = progress.coerceIn(0f, 1f)
-            val tapeExitAngle = 0.92f - tapeProgress * 0.82f
-            val phase = motion.phase
+            val previousMotion = lastOpenReelMotionFrame
+            val swap = openReelTrackSwapController.update(
+                nowMs = now,
+                matrixLength = matrixLength,
+                matrixCenterX = centerX,
+                matrixCenterY = centerY,
+                trackKey = openReelPlayback?.trackKey,
+                directionHint = openReelPlayback?.trackChangeDirection,
+                currentProgress = previousMotion?.progress ?: targetProgress,
+                currentPhase = previousMotion?.phase ?: 0f,
+                latestTrackProgress = targetProgress
+            )
+            val motion = if (swap.active) {
+                null
+            } else {
+                if (swap.completed) {
+                    openReelMotionController.reset()
+                }
+                openReelMotionController.update(
+                    nowMs = now,
+                    frameIntervalMs = frameIntervalMs,
+                    targetProgress = targetProgress,
+                    durationMs = openReelPlayback?.durationMs ?: 180_000L,
+                    playbackPaused = playbackPaused
+                ).also { lastOpenReelMotionFrame = it }
+            }
 
             fun putPixel(x: Int, y: Int, brightness: Float) {
                 if (x !in 0 until matrixLength || y !in 0 until matrixLength) return
@@ -1417,13 +1446,18 @@ class GlyphMatrixController(
                 putPixel(xi, yi, brightness)
             }
 
-            fun drawDottedCircle(radius: Float, brightness: Float) {
+            fun drawDottedCircle(
+                reelCenterX: Float,
+                reelCenterY: Float,
+                radius: Float,
+                brightness: Float
+            ) {
                 val steps = max(40, (radius * 12f).roundToInt())
                 for (step in 0 until steps) {
                     val angle = step / steps.toFloat() * Math.PI.toFloat() * 2f
                     plotPoint(
-                        centerX + cos(angle) * radius,
-                        centerY + sin(angle) * radius,
+                        reelCenterX + cos(angle) * radius,
+                        reelCenterY + sin(angle) * radius,
                         brightness
                     )
                 }
@@ -1445,36 +1479,53 @@ class GlyphMatrixController(
                 }
             }
 
-            drawDottedCircle(reelRadius, 1f)
-            for (y in 0 until matrixLength) {
-                for (x in 0 until matrixLength) {
-                    val dx = x - centerX
-                    val dy = y - centerY
-                    val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                    if (distance <= hubRadius) {
-                        putPixel(x, y, 1f)
+            fun drawReel(reelCenterX: Float, reelCenterY: Float, phase: Float) {
+                drawDottedCircle(reelCenterX, reelCenterY, reelRadius, 1f)
+                for (y in 0 until matrixLength) {
+                    for (x in 0 until matrixLength) {
+                        val dx = x - reelCenterX
+                        val dy = y - reelCenterY
+                        val distance = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                        if (distance <= hubRadius) {
+                            putPixel(x, y, 1f)
+                        }
                     }
+                }
+
+                for (slot in 0 until 2) {
+                    val angle = phase + slot * Math.PI.toFloat()
+                    val slotInner = hubRadius + 0.9f
+                    val slotOuter = (reelRadius * 0.70f).coerceAtLeast(slotInner + 1.2f)
+                    drawLine(
+                        reelCenterX + cos(angle) * slotInner,
+                        reelCenterY + sin(angle) * slotInner,
+                        reelCenterX + cos(angle) * slotOuter,
+                        reelCenterY + sin(angle) * slotOuter,
+                        1f
+                    )
                 }
             }
 
-            for (slot in 0 until 2) {
-                val angle = phase + slot * Math.PI.toFloat()
-                val slotInner = hubRadius + 0.9f
-                val slotOuter = (reelRadius * 0.70f).coerceAtLeast(slotInner + 1.2f)
-                drawLine(
-                    centerX + cos(angle) * slotInner,
-                    centerY + sin(angle) * slotInner,
-                    centerX + cos(angle) * slotOuter,
-                    centerY + sin(angle) * slotOuter,
-                    1f
-                )
+            fun drawTapeExit(reelCenterX: Float, reelCenterY: Float, tapeProgress: Float) {
+                val clampedProgress = tapeProgress.coerceIn(0f, 1f)
+                val tapeExitAngle = 0.92f - clampedProgress * 0.82f
+                val tapeStartX = reelCenterX + cos(tapeExitAngle) * reelRadius
+                val tapeStartY = reelCenterY + sin(tapeExitAngle) * reelRadius
+                val tapeEndX = (matrixLength - 1f).coerceAtLeast(tapeStartX)
+                val tapeEndY = reelCenterY + reelRadius * (0.46f - clampedProgress * 0.38f)
+                drawLine(tapeStartX, tapeStartY, tapeEndX, tapeEndY, 0.78f, 0.66f)
             }
 
-            val tapeStartX = centerX + cos(tapeExitAngle) * reelRadius
-            val tapeStartY = centerY + sin(tapeExitAngle) * reelRadius
-            val tapeEndX = (matrixLength - 1f).coerceAtLeast(tapeStartX)
-            val tapeEndY = centerY + reelRadius * (0.46f - tapeProgress * 0.38f)
-            drawLine(tapeStartX, tapeStartY, tapeEndX, tapeEndY, 0.78f, 0.66f)
+            if (swap.active) {
+                drawReel(swap.outgoingCenter.x, swap.outgoingCenter.y, swap.outgoingPhase)
+                drawReel(swap.incomingCenter.x, swap.incomingCenter.y, swap.incomingPhase)
+            } else {
+                val currentMotion = checkNotNull(motion)
+                drawReel(centerX, centerY, currentMotion.phase)
+                if (swap.drawTapeExit) {
+                    drawTapeExit(centerX, centerY, currentMotion.progress)
+                }
+            }
         }
 
         fun drawPulseGrid() {
@@ -2081,6 +2132,8 @@ class GlyphMatrixController(
         ripplePhase = 0f
         openReelStartMs = 0L
         openReelMotionController.reset()
+        openReelTrackSwapController.reset()
+        lastOpenReelMotionFrame = null
     }
 
     private fun quantizeForSignature(value: Int, step: Int): Int {

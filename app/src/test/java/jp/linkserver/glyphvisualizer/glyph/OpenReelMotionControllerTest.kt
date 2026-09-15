@@ -102,4 +102,27 @@ class OpenReelMotionControllerTest {
         assertEquals(OpenReelMotionStage.NORMAL, frame.stage)
         assertEquals(0.27f, frame.progress, 0f)
     }
+
+    @Test
+    fun pausedPlayback_keepsReelRotationStopped() {
+        val controller = OpenReelMotionController(transitionStopMs = 0L)
+        val beforePause = controller.update(
+            nowMs = 1_000L,
+            frameIntervalMs = 16L,
+            targetProgress = 0.25f,
+            durationMs = 180_000L,
+            playbackPaused = false,
+        )
+
+        val paused = controller.update(
+            nowMs = 2_000L,
+            frameIntervalMs = 1_000L,
+            targetProgress = 0.25f,
+            durationMs = 180_000L,
+            playbackPaused = true,
+        )
+
+        assertEquals(OpenReelMotionStage.NORMAL, paused.stage)
+        assertEquals(beforePause.phase, paused.phase, 0f)
+    }
 }
