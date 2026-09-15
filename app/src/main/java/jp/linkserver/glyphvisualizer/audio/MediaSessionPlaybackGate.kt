@@ -95,9 +95,12 @@ internal object MediaSessionPlaybackGate {
         return currentPlaybackSnapshot(context).progress
     }
 
-    fun currentPlaybackSnapshot(context: Context): PlaybackSnapshot {
+    fun currentPlaybackSnapshot(
+        context: Context,
+        forceRefresh: Boolean = false,
+    ): PlaybackSnapshot {
         val now = SystemClock.elapsedRealtime()
-        if (now - cachedSnapshotAtMs < SNAPSHOT_CACHE_MS) {
+        if (!forceRefresh && now - cachedSnapshotAtMs < SNAPSHOT_CACHE_MS) {
             return cachedSnapshot
         }
         cachedSnapshotAtMs = now

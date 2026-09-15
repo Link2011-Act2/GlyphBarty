@@ -130,6 +130,10 @@ internal class MediaPlaybackActivityTracker(
         lastMediaPlaybackActive = false
         mediaPlaybackResumeCandidateAtMs = 0L
         clearOpenReelGrace()
+        clearOpenReelPausedHoldState()
+    }
+
+    fun clearOpenReelPausedHoldState() {
         openReelPausedSinceMs = 0L
         openReelPausedHoldExpired = false
     }
@@ -143,7 +147,6 @@ internal class MediaPlaybackActivityTracker(
         if (openReelPausedSinceMs != 0L || openReelPausedHoldExpired) {
             events += Event.OPEN_REEL_PAUSED_HOLD_CLEARED
         }
-        openReelPausedSinceMs = 0L
-        openReelPausedHoldExpired = false
+        clearOpenReelPausedHoldState()
     }
 }

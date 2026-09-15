@@ -246,6 +246,20 @@ class MediaPlaybackActivityTrackerTest {
         assertFalse(tracker.lastMediaPlaybackActive)
     }
 
+    @Test
+    fun `cleared paused hold does not carry its old deadline into a later pause`() {
+        val tracker = tracker()
+        tracker.update(1_000L, true, true, true, true)
+        tracker.clearOpenReelPausedHoldState()
+
+        val secondPause = tracker.update(20_000L, true, true, true, true)
+        val beforeSecondDeadline = tracker.update(49_999L, true, true, true, true)
+
+        assertTrue(secondPause.allowed)
+        assertTrue(beforeSecondDeadline.allowed)
+        assertEquals(20_000L, tracker.openReelPausedSinceMs)
+    }
+
     private fun tracker() = MediaPlaybackActivityTracker(
         resumeConfirmMs = 1_000L,
         openReelGraceMs = 750L,
