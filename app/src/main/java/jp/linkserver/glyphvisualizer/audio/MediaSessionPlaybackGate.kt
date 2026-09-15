@@ -31,7 +31,8 @@ internal object MediaSessionPlaybackGate {
     data class PlaybackSnapshot(
         val status: PlaybackStatus,
         val progress: Float?,
-        val packageName: String? = null
+        val packageName: String? = null,
+        val durationMs: Long? = null
     )
 
     fun hasNotificationAccess(context: Context): Boolean {
@@ -133,7 +134,8 @@ internal object MediaSessionPlaybackGate {
         return PlaybackSnapshot(
             status = status,
             progress = (projectedPosition / duration.toFloat()).coerceIn(0f, 1f),
-            packageName = controller.packageName
+            packageName = controller.packageName,
+            durationMs = duration
         )
     }
 

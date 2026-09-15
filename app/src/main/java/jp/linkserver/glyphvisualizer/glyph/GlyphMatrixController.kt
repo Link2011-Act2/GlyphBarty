@@ -186,9 +186,7 @@ class GlyphMatrixController(
     private var pulsePhase = 0f
     private var ripplePhase = 0f
     private var openReelStartMs = 0L
-    private var openReelPhase = 0f
-    private var lastOpenReelUpdateMs = 0L
-    private var openReelDisplayedProgress = Float.NaN
+    private val openReelMotionController = OpenReelMotionController()
     private var pulseGridSeed = 0
     private val renderEngine = MatrixRenderEngine()
     private val callback = object : GlyphMatrixManager.Callback {
@@ -1383,25 +1381,16 @@ class GlyphMatrixController(
             val fallbackProgress = (((now - openReelStartMs).coerceAtLeast(0L) % 180_000L) / 180_000f)
                 .coerceIn(0f, 1f)
             val targetProgress = openReelPlayback?.progress ?: fallbackProgress
-            if (openReelDisplayedProgress.isNaN()) {
-                openReelDisplayedProgress = targetProgress
-            }
-            val openReelDeltaMs = if (lastOpenReelUpdateMs <= 0L) {
-                frameIntervalMs
-            } else {
-                (now - lastOpenReelUpdateMs).coerceIn(1L, 120L)
-            }
-            lastOpenReelUpdateMs = now
-            val openReelDeltaSeconds = openReelDeltaMs / 1000f
-            val progressDelta = targetProgress - openReelDisplayedProgress
-            val catchingUp = abs(progressDelta) > 0.012f
-            if (catchingUp) {
-                val catchUpStep = (openReelDeltaSeconds * 0.72f).coerceAtLeast(0.002f)
-                openReelDisplayedProgress += progressDelta.coerceIn(-catchUpStep, catchUpStep)
-            } else {
-                openReelDisplayedProgress = targetProgress
-            }
-            val progress = openReelDisplayedProgress.coerceIn(0f, 1f)
+            val playbackPaused =
+                openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
+            val motion = openReelMotionController.update(
+                nowMs = now,
+                frameIntervalMs = frameIntervalMs,
+                targetProgress = targetProgress,
+                durationMs = openReelPlayback?.durationMs ?: 180_000L,
+                playbackPaused = playbackPaused
+            )
+            val progress = motion.progress
             val centerX = (matrixLength - 1f) / 2f
             val centerY = (matrixLength - 1f) / 2f
             val reelRadius = (matrixLength * 0.36f).coerceAtMost(centerX + 0.8f)
@@ -1409,25 +1398,7 @@ class GlyphMatrixController(
             val hubRadius = (matrixLength * 0.07f).coerceAtLeast(0.75f)
             val tapeProgress = progress.coerceIn(0f, 1f)
             val tapeExitAngle = 0.92f - tapeProgress * 0.82f
-            val baseRotationSpeed = 2.094f + progress * 4.189f
-            val rotationDirection = if (catchingUp && progressDelta < 0f) {
-                1f
-            } else {
-                -1f
-            }
-            val playbackPaused = openReelPlayback?.status == MediaSessionPlaybackGate.PlaybackStatus.PAUSED
-            val catchUpBoost = if (catchingUp) {
-                (baseRotationSpeed * 1.7f + abs(progressDelta) * 18f).coerceAtMost(18f)
-            } else {
-                0f
-            }
-            val rotationSpeed = when {
-                catchingUp -> baseRotationSpeed + catchUpBoost
-                playbackPaused -> 0f
-                else -> baseRotationSpeed
-            }
-            openReelPhase += rotationDirection * rotationSpeed * openReelDeltaSeconds
-            val phase = openReelPhase
+            val phase = motion.phase
 
             fun putPixel(x: Int, y: Int, brightness: Float) {
                 if (x !in 0 until matrixLength || y !in 0 until matrixLength) return
@@ -2109,9 +2080,7 @@ class GlyphMatrixController(
         pulsePhase = 0f
         ripplePhase = 0f
         openReelStartMs = 0L
-        openReelPhase = 0f
-        lastOpenReelUpdateMs = 0L
-        openReelDisplayedProgress = Float.NaN
+        openReelMotionController.reset()
     }
 
     private fun quantizeForSignature(value: Int, step: Int): Int {
