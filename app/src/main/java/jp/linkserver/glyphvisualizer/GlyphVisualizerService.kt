@@ -379,6 +379,10 @@ class GlyphVisualizerService : Service() {
     @Volatile
     private var openReelMediaSessionWatchdogHandler: Handler? = null
     private var mediaPlaybackSuppressed = false
+    @Volatile
+    private var openReelPausedTimeoutSuppressed = false
+    @Volatile
+    private var openReelPausedSuppressionDropLogged = false
     private data class DelayedLevelFrame(
         val dueAtMs: Long,
         val level: Float,
@@ -655,6 +659,7 @@ class GlyphVisualizerService : Service() {
             stopOpenReelMediaSessionWatchdog()
             cancelOpenReelPausedTimeout()
             mediaPlaybackActivityTracker.clearOpenReelPausedHoldState()
+            clearOpenReelPausedTimeoutSuppression()
         } else if (!wasOpenReel && isOpenReelMode(config.glyphMode) &&
             CaptureUiStore.runtimeState.isCapturing
         ) {
@@ -666,6 +671,7 @@ class GlyphVisualizerService : Service() {
     override fun onDestroy() {
         stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
+        clearOpenReelPausedTimeoutSuppression()
         cancelPendingVisualizerCrashRetry()
         captureSessionCoordinator.invalidate()
         try {
@@ -755,6 +761,7 @@ class GlyphVisualizerService : Service() {
     private fun resetMediaPlaybackTracking() {
         stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
+        clearOpenReelPausedTimeoutSuppression()
         lastMediaPlaybackCheckAtMs = 0L
         mediaPlaybackActivityTracker.reset()
         mediaPlaybackSuppressed = false
@@ -1212,6 +1219,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun renderLevelFrame(frame: DelayedLevelFrame) {
+        if (shouldDropOpenReelPausedTimeoutFrame()) return
         val allowPausedMediaSession =
             GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
         val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
@@ -1282,6 +1290,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun renderMatrixLevelFrame(frame: DelayedLevelFrame): MatrixUiFrame? {
+        if (shouldDropOpenReelPausedTimeoutFrame()) return null
         val allowPausedMediaSession =
             GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
         val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
@@ -1451,6 +1460,7 @@ class GlyphVisualizerService : Service() {
     private fun stopRunningCapture(clearStatus: Boolean, releaseGlyphSession: Boolean = false) {
         stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
+        clearOpenReelPausedTimeoutSuppression()
         try {
             outputMixVisualizer.stop()
         } catch (error: Throwable) {
@@ -1707,6 +1717,27 @@ class GlyphVisualizerService : Service() {
         return CaptureUiStore.runtimeState.isCapturing && isOpenReelMode()
     }
 
+    private fun enableOpenReelPausedTimeoutSuppression() {
+        if (openReelPausedTimeoutSuppressed) return
+        openReelPausedTimeoutSuppressed = true
+        openReelPausedSuppressionDropLogged = false
+        AppLogger.i(TAG, "Open Reel PAUSED output suppression enabled")
+    }
+
+    private fun clearOpenReelPausedTimeoutSuppression() {
+        openReelPausedTimeoutSuppressed = false
+        openReelPausedSuppressionDropLogged = false
+    }
+
+    private fun shouldDropOpenReelPausedTimeoutFrame(): Boolean {
+        if (!isOpenReelMode() || !openReelPausedTimeoutSuppressed) return false
+        if (!openReelPausedSuppressionDropLogged) {
+            openReelPausedSuppressionDropLogged = true
+            AppLogger.i(TAG, "Open Reel frame dropped due to PAUSED timeout suppression")
+        }
+        return true
+    }
+
     private fun scheduleOpenReelPausedTimeout(
         delayMs: Long = OPEN_REEL_PAUSED_HOLD_MS,
     ) {
@@ -1756,6 +1787,7 @@ class GlyphVisualizerService : Service() {
                 if (!isOpenReelPlaybackContextActive()) return@Runnable
                 AppLogger.i(TAG, "Open Reel PAUSED hold expired; suspending session")
                 AppLogger.i(TAG, "Open Reel PAUSED timeout confirmed; suspending session")
+                enableOpenReelPausedTimeoutSuppression()
                 mediaPlaybackSuppressed = true
                 runGlyphControllerCommand {
                     try {
@@ -1861,6 +1893,23 @@ class GlyphVisualizerService : Service() {
                     snapshot.status != MediaSessionPlaybackGate.PlaybackStatus.PLAYING,
             openReelMotionPaused = snapshot.motionPaused,
         )
+        if (
+            openReelPausedTimeoutSuppressed &&
+            (
+                snapshot.status == MediaSessionPlaybackGate.PlaybackStatus.PLAYING ||
+                    snapshot.status == MediaSessionPlaybackGate.PlaybackStatus.BUFFERING
+                )
+        ) {
+            clearOpenReelPausedTimeoutSuppression()
+            AppLogger.i(TAG, "Open Reel PAUSED output suppression cleared: playback resumed")
+        }
+        if (
+            result.events.contains(
+                MediaPlaybackActivityTracker.Event.OPEN_REEL_PAUSED_HOLD_EXPIRED,
+            )
+        ) {
+            enableOpenReelPausedTimeoutSuppression()
+        }
         handleMediaPlaybackTrackerEvents(result.events)
         if (
             !result.allowed &&
