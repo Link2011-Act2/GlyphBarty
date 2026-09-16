@@ -73,6 +73,20 @@ class GlyphVisualizerService : Service() {
             return allowPaused || mediaPlaybackOnlyEnabled
         }
 
+        internal fun shouldDropOpenReelFrameForPausedTimeout(
+            currentModeIsOpenReel: Boolean,
+            pausedTimeoutSuppressed: Boolean,
+        ): Boolean {
+            return currentModeIsOpenReel && pausedTimeoutSuppressed
+        }
+
+        internal fun shouldClearOpenReelPausedTimeoutSuppression(
+            status: MediaSessionPlaybackGate.PlaybackStatus,
+        ): Boolean {
+            return status == MediaSessionPlaybackGate.PlaybackStatus.PLAYING ||
+                status == MediaSessionPlaybackGate.PlaybackStatus.BUFFERING
+        }
+
         fun startVisualizer(
             context: Context,
             sensitivity: Float,
@@ -1730,7 +1744,12 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun shouldDropOpenReelPausedTimeoutFrame(): Boolean {
-        if (!isOpenReelMode() || !openReelPausedTimeoutSuppressed) return false
+        if (
+            !shouldDropOpenReelFrameForPausedTimeout(
+                currentModeIsOpenReel = isOpenReelMode(),
+                pausedTimeoutSuppressed = openReelPausedTimeoutSuppressed,
+            )
+        ) return false
         if (!openReelPausedSuppressionDropLogged) {
             openReelPausedSuppressionDropLogged = true
             AppLogger.i(TAG, "Open Reel frame dropped due to PAUSED timeout suppression")
@@ -1895,10 +1914,7 @@ class GlyphVisualizerService : Service() {
         )
         if (
             openReelPausedTimeoutSuppressed &&
-            (
-                snapshot.status == MediaSessionPlaybackGate.PlaybackStatus.PLAYING ||
-                    snapshot.status == MediaSessionPlaybackGate.PlaybackStatus.BUFFERING
-                )
+            shouldClearOpenReelPausedTimeoutSuppression(snapshot.status)
         ) {
             clearOpenReelPausedTimeoutSuppression()
             AppLogger.i(TAG, "Open Reel PAUSED output suppression cleared: playback resumed")
