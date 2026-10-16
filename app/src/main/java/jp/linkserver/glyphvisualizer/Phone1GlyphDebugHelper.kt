@@ -8,6 +8,9 @@ import java.util.Locale
 import rikka.shizuku.Shizuku
 import rikka.sui.Sui
 
+// Re-enable only for builds that need the test-key Glyph debug workaround.
+internal const val PHONE1_GLYPH_DEBUG_ASSIST_ENABLED = false
+
 object Phone1GlyphDebugHelper {
     private const val TAG = "Phone1GlyphDebug"
     private const val AUTO_ENABLE_PERMISSION_REQUEST_CODE = 1402
@@ -66,6 +69,10 @@ object Phone1GlyphDebugHelper {
         return profile == GlyphDeviceProfile.PHONE1
     }
 
+    fun isAvailable(profile: GlyphDeviceProfile): Boolean {
+        return PHONE1_GLYPH_DEBUG_ASSIST_ENABLED && supports(profile)
+    }
+
     data class BackendStatus(
         val suiAvailable: Boolean,
         val apiAvailable: Boolean,
@@ -80,9 +87,10 @@ object Phone1GlyphDebugHelper {
 
     internal fun shouldAutoEnableOnStart(
         profile: GlyphDeviceProfile,
-        autoEnableOnStart: Boolean
+        autoEnableOnStart: Boolean,
+        debugAssistEnabled: Boolean = PHONE1_GLYPH_DEBUG_ASSIST_ENABLED
     ): Boolean {
-        return autoEnableOnStart && supports(profile)
+        return debugAssistEnabled && autoEnableOnStart && supports(profile)
     }
 
     internal fun resolveAutoEnableBackendAction(
@@ -189,6 +197,7 @@ object Phone1GlyphDebugHelper {
     }
 
     fun requestPermission(requestCode: Int): Boolean {
+        if (!PHONE1_GLYPH_DEBUG_ASSIST_ENABLED) return false
         AppLogger.i(TAG, "requestPermission called requestCode=$requestCode")
         val apiAvailable = runCatching { Shizuku.pingBinder() }
             .onFailure { error -> AppLogger.w(TAG, "Shizuku.pingBinder failed before permission request", error) }
@@ -204,6 +213,7 @@ object Phone1GlyphDebugHelper {
 
     fun enableGlyphDebug(): Result<Unit> {
         return runCatching {
+            check(PHONE1_GLYPH_DEBUG_ASSIST_ENABLED) { "Phone (1) glyph debug assist is disabled" }
             val backendStatus = backendStatus()
             AppLogger.i(
                 TAG,

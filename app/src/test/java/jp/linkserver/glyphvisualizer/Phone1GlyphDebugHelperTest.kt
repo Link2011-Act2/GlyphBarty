@@ -12,13 +12,15 @@ class Phone1GlyphDebugHelperTest {
         assertTrue(
             Phone1GlyphDebugHelper.shouldAutoEnableOnStart(
                 profile = GlyphDeviceProfile.PHONE1,
-                autoEnableOnStart = true
+                autoEnableOnStart = true,
+                debugAssistEnabled = true
             )
         )
         assertFalse(
             Phone1GlyphDebugHelper.shouldAutoEnableOnStart(
                 profile = GlyphDeviceProfile.PHONE1,
-                autoEnableOnStart = false
+                autoEnableOnStart = false,
+                debugAssistEnabled = true
             )
         )
 
@@ -28,10 +30,24 @@ class Phone1GlyphDebugHelperTest {
                 assertFalse(
                     Phone1GlyphDebugHelper.shouldAutoEnableOnStart(
                         profile = profile,
-                        autoEnableOnStart = true
+                        autoEnableOnStart = true,
+                        debugAssistEnabled = true
                     )
                 )
         }
+    }
+
+    @Test
+    fun disabledDebugAssist_keepsPhone1SupportedButSkipsSavedAutoEnableSetting() {
+        assertTrue(Phone1GlyphDebugHelper.supports(GlyphDeviceProfile.PHONE1))
+        assertFalse(Phone1GlyphDebugHelper.isAvailable(GlyphDeviceProfile.PHONE1))
+        assertFalse(
+            Phone1GlyphDebugHelper.shouldAutoEnableOnStart(
+                profile = GlyphDeviceProfile.PHONE1,
+                autoEnableOnStart = true
+            )
+        )
+        assertFalse(Phone1GlyphDebugHelper.requestPermission(1402))
     }
 
     @Test

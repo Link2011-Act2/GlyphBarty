@@ -266,7 +266,9 @@ class MainActivity : ComponentActivity() {
 
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-            if (requestCode == PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE) {
+            if (requestCode == PHONE1_GLYPH_DEBUG_PERMISSION_REQUEST_CODE &&
+                Phone1GlyphDebugHelper.isAvailable(currentEffectiveUiDeviceProfile())
+            ) {
                 AppLogger.i(
                     "Phone1GlyphDebug",
                     "Manual permission result received requestCode=$requestCode grantResult=$grantResult"
@@ -1216,7 +1218,7 @@ class MainActivity : ComponentActivity() {
 
     private fun requestPhone1GlyphDebug() {
         val effectiveUiProfile = currentEffectiveUiDeviceProfile()
-        val debugAllowed = Phone1GlyphDebugHelper.supports(effectiveUiProfile)
+        val debugAllowed = Phone1GlyphDebugHelper.isAvailable(effectiveUiProfile)
         AppLogger.i(
             "Phone1GlyphDebug",
             "Manual debug request debugAllowed=$debugAllowed actualProfile=$deviceProfile effectiveUiProfile=$effectiveUiProfile"
@@ -1253,7 +1255,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun enablePhone1GlyphDebug() {
-        val debugAllowed = Phone1GlyphDebugHelper.supports(currentEffectiveUiDeviceProfile())
+        val debugAllowed = Phone1GlyphDebugHelper.isAvailable(currentEffectiveUiDeviceProfile())
         AppLogger.i(
             "Phone1GlyphDebug",
             "Manual enablePhone1GlyphDebug debugAllowed=$debugAllowed"

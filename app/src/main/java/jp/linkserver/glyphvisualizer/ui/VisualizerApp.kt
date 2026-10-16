@@ -202,7 +202,8 @@ internal fun GlyphVisualizerApp(
                             with(dialogs) {
     val context = LocalContext.current
     val repositoryUrl = stringResource(R.string.about_support_site_url)
-    val showPhone1GlyphDebugControls = isPhone1Device
+    val showPhone1GlyphDebugControls =
+        Phone1GlyphDebugHelper.isAvailable(deviceProfile)
     val effectiveNativeMeterViewEnabled =
         NATIVE_METER_VIEW_ALWAYS_ENABLED || nativeMeterViewEnabled
     val intDevBuild = rememberSaveable { isIntDevBuild() }
@@ -284,7 +285,7 @@ internal fun GlyphVisualizerApp(
                 }
         }
     }
-    if (showPhone1GlyphDebugPermissionDialog) {
+    if (showPhone1GlyphDebugControls && showPhone1GlyphDebugPermissionDialog) {
         AlertDialog(
             onDismissRequest = onDismissPhone1GlyphDebugPermissionDialog,
             title = { Text(stringResource(R.string.phone1_glyph_debug_dialog_title)) },
@@ -577,7 +578,7 @@ internal fun GlyphVisualizerApp(
                         onExperimentalVisualizerStabilizationEnabledChanged = onExperimentalVisualizerStabilizationEnabledChanged,
                         experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
                         onExperimentalVisualizerSignalWatchdogEnabledChanged = onExperimentalVisualizerSignalWatchdogEnabledChanged,
-                        showAutoEnablePhone1GlyphDebugOnStart = isPhone1Device,
+                        showAutoEnablePhone1GlyphDebugOnStart = showPhone1GlyphDebugControls,
                         autoEnablePhone1GlyphDebugOnStart = autoEnablePhone1GlyphDebugOnStart,
                         onAutoEnablePhone1GlyphDebugOnStartChanged = onAutoEnablePhone1GlyphDebugOnStartChanged,
                         experimentalMainUiEnabled = experimentalMainUiEnabled,
