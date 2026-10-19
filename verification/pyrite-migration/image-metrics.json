@@ -1,0 +1,848 @@
+[
+  {
+    "name": "material-dark-about-actions.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 28067,
+    "changedPercent": 3.432,
+    "meanChannelDifference": 0.1519,
+    "beforeTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 411603
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 367943
+      },
+      {
+        "rgb": "#B2C5FF",
+        "pixels": 82898
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 411669
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 367943
+      },
+      {
+        "rgb": "#B2C5FF",
+        "pixels": 82898
+      }
+    ]
+  },
+  {
+    "name": "material-dark-about-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 770,
+    "changedPercent": 0.094,
+    "meanChannelDifference": 0.0884,
+    "beforeTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 489086
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 370575
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 22200
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 489116
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 370575
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 22200
+      }
+    ]
+  },
+  {
+    "name": "material-dark-settings-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 487425
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 393035
+      },
+      {
+        "rgb": "#E3E2E9",
+        "pixels": 9885
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 487425
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 393035
+      },
+      {
+        "rgb": "#E3E2E9",
+        "pixels": 9885
+      }
+    ]
+  },
+  {
+    "name": "material-dark-settings-updates.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 521544
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 327496
+      },
+      {
+        "rgb": "#C5C6D0",
+        "pixels": 12772
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#292A2F",
+        "pixels": 521544
+      },
+      {
+        "rgb": "#121318",
+        "pixels": 327496
+      },
+      {
+        "rgb": "#C5C6D0",
+        "pixels": 12772
+      }
+    ]
+  },
+  {
+    "name": "material-dark-update.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 780,
+    "changedPercent": 0.095,
+    "meanChannelDifference": 0.0618,
+    "beforeTopColors": [
+      {
+        "rgb": "#121318",
+        "pixels": 686155
+      },
+      {
+        "rgb": "#1F222B",
+        "pixels": 98541
+      },
+      {
+        "rgb": "#292A2F",
+        "pixels": 57930
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#121318",
+        "pixels": 686155
+      },
+      {
+        "rgb": "#1F222B",
+        "pixels": 98541
+      },
+      {
+        "rgb": "#292A2F",
+        "pixels": 57930
+      }
+    ]
+  },
+  {
+    "name": "material-light-about-actions.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 27973,
+    "changedPercent": 3.42,
+    "meanChannelDifference": 0.1768,
+    "beforeTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 411611
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 367946
+      },
+      {
+        "rgb": "#495D92",
+        "pixels": 82898
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 411651
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 367946
+      },
+      {
+        "rgb": "#495D92",
+        "pixels": 82898
+      }
+    ]
+  },
+  {
+    "name": "material-light-about-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 766,
+    "changedPercent": 0.094,
+    "meanChannelDifference": 0.0893,
+    "beforeTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 489211
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 370612
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 22230
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 489242
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 370612
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 22230
+      }
+    ]
+  },
+  {
+    "name": "material-light-settings-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 487406
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 393040
+      },
+      {
+        "rgb": "#1A1B21",
+        "pixels": 9885
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 487406
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 393040
+      },
+      {
+        "rgb": "#1A1B21",
+        "pixels": 9885
+      }
+    ]
+  },
+  {
+    "name": "material-light-settings-updates.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 521529
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 327498
+      },
+      {
+        "rgb": "#45464F",
+        "pixels": 12772
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 521529
+      },
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 327498
+      },
+      {
+        "rgb": "#45464F",
+        "pixels": 12772
+      }
+    ]
+  },
+  {
+    "name": "material-light-update.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 780,
+    "changedPercent": 0.095,
+    "meanChannelDifference": 0.0663,
+    "beforeTopColors": [
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 683995
+      },
+      {
+        "rgb": "#EBEBF6",
+        "pixels": 98544
+      },
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 57863
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#FAF8FF",
+        "pixels": 684011
+      },
+      {
+        "rgb": "#EBEBF6",
+        "pixels": 98544
+      },
+      {
+        "rgb": "#E8E7EF",
+        "pixels": 57863
+      }
+    ]
+  },
+  {
+    "name": "nothing-dark-about-actions.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 30591,
+    "changedPercent": 3.74,
+    "meanChannelDifference": 0.696,
+    "beforeTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 410415
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 374277
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 86883
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 410455
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 374277
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 86883
+      }
+    ]
+  },
+  {
+    "name": "nothing-dark-about-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 15801,
+    "changedPercent": 1.932,
+    "meanChannelDifference": 1.5927,
+    "beforeTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 489891
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 377497
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 27895
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 489882
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 377594
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 27886
+      }
+    ]
+  },
+  {
+    "name": "nothing-dark-settings-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 485906
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 401813
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 6200
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 485906
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 401813
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 6200
+      }
+    ]
+  },
+  {
+    "name": "nothing-dark-settings-updates.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 258671,
+    "changedPercent": 31.625,
+    "meanChannelDifference": 23.0628,
+    "beforeTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 522557
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 334636
+      },
+      {
+        "rgb": "#D0D0D0",
+        "pixels": 12767
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#121212",
+        "pixels": 522688
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 337121
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 14559
+      }
+    ],
+    "captureScrollOffsetPx": 165,
+    "alignedCommonCardAreaChangedPercent": 0.005,
+    "alignmentNote": "performScrollTo targets the merged row after migration, versus its separate title before. Alignment measures overlap only; no production scroll adjustment."
+  },
+  {
+    "name": "nothing-dark-update.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 752,
+    "changedPercent": 0.092,
+    "meanChannelDifference": 0.0441,
+    "beforeTopColors": [
+      {
+        "rgb": "#000000",
+        "pixels": 694916
+      },
+      {
+        "rgb": "#151515",
+        "pixels": 98562
+      },
+      {
+        "rgb": "#121212",
+        "pixels": 57871
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#000000",
+        "pixels": 694916
+      },
+      {
+        "rgb": "#151515",
+        "pixels": 98570
+      },
+      {
+        "rgb": "#121212",
+        "pixels": 57863
+      }
+    ]
+  },
+  {
+    "name": "nothing-light-about-actions.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 30575,
+    "changedPercent": 3.738,
+    "meanChannelDifference": 0.6623,
+    "beforeTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 411737
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 373017
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 86883
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 411825
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 373029
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 86883
+      }
+    ]
+  },
+  {
+    "name": "nothing-light-about-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 15722,
+    "changedPercent": 1.922,
+    "meanChannelDifference": 1.4633,
+    "beforeTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 512399
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 375724
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 7429
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 512394
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 375791
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 7431
+      }
+    ]
+  },
+  {
+    "name": "nothing-light-settings-top.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 0,
+    "changedPercent": 0.0,
+    "meanChannelDifference": 0.0,
+    "beforeTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 488096
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 401849
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 6200
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 488096
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 401849
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 6200
+      }
+    ]
+  },
+  {
+    "name": "nothing-light-settings-updates.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 252448,
+    "changedPercent": 30.865,
+    "meanChannelDifference": 20.3164,
+    "beforeTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 529857
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 332992
+      },
+      {
+        "rgb": "#565656",
+        "pixels": 12776
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 529876
+      },
+      {
+        "rgb": "#EDEDED",
+        "pixels": 333767
+      },
+      {
+        "rgb": "#000000",
+        "pixels": 14559
+      }
+    ],
+    "captureScrollOffsetPx": 165,
+    "alignedCommonCardAreaChangedPercent": 0.005,
+    "alignmentNote": "performScrollTo targets the merged row after migration, versus its separate title before. Alignment measures overlap only; no production scroll adjustment."
+  },
+  {
+    "name": "nothing-light-update.png",
+    "size": [
+      720,
+      1280
+    ],
+    "comparedRows": [
+      60,
+      1196
+    ],
+    "changedPixels": 752,
+    "changedPercent": 0.092,
+    "meanChannelDifference": 0.0343,
+    "beforeTopColors": [
+      {
+        "rgb": "#EDEDED",
+        "pixels": 690086
+      },
+      {
+        "rgb": "#D9D9D9",
+        "pixels": 98581
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 59169
+      }
+    ],
+    "afterTopColors": [
+      {
+        "rgb": "#EDEDED",
+        "pixels": 690094
+      },
+      {
+        "rgb": "#D9D9D9",
+        "pixels": 98581
+      },
+      {
+        "rgb": "#FFFFFF",
+        "pixels": 59169
+      }
+    ]
+  }
+]

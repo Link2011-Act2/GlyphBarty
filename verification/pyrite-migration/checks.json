@@ -1,0 +1,33 @@
+{
+  "unitTests": 220,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "lint": {
+    "Warning": 201,
+    "Hint": 8
+  },
+  "finalUiTests": 9,
+  "finalUiSeconds": 37.368,
+  "mainApk": {
+    "bytes": 67818038,
+    "sha256": "d4dbb78cd7daf708bf2c5eb08bff4e386fcc38702133ccdcad94f3d62e5c5779"
+  },
+  "standaloneApk": {
+    "bytes": 66538299,
+    "sha256": "202ba3976064332a90801e3d0f9f908b3013a41bcbabf065069e03d63914771c"
+  },
+  "standaloneBuild": {
+    "result": "success",
+    "seconds": 131,
+    "pyriteSourceIncluded": false,
+    "localProjectDependency": false,
+    "noBuildCache": true,
+    "globalDependencyCacheShared": true,
+    "coordinate": "com.github.Link2011-Act2:Pyrite:eeedbfe5005bf1ed781d0cf1ef2cbe2a0923e7dd"
+  },
+  "standaloneApkPayload": {
+    "entries": 163,
+    "differentEntries": [],
+    "note": "APK container bytes differ; decompressed entry hashes are compared separately."
+  }
+}

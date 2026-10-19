@@ -1757,10 +1757,10 @@ class GlyphMatrixController(
         }
         lastRenderedMode = renderMode
 
-            return MatrixRenderResult.GeneratedFrame(
-                deviceFrame = frameForPhysicalDevice(),
-                silenceDrainComplete = silenceDrainComplete
-            )
+        return MatrixRenderResult.GeneratedFrame(
+            deviceFrame = frameForPhysicalDevice(),
+            silenceDrainComplete = silenceDrainComplete
+        )
         }
     }
 

@@ -47,11 +47,7 @@ val generatedBuildNumber =
 android {
     namespace = "jp.linkserver.glyphvisualizer"
 
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "jp.linkserver.glyphvisualizer"
@@ -112,11 +108,13 @@ android {
 }
 
 dependencies {
+    implementation("com.github.Link2011-Act2:Pyrite:eeedbfe5005bf1ed781d0cf1ef2cbe2a0923e7dd")
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.animation)
     implementation(files("libs/glyph-matrix-sdk-2.0.aar"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -130,7 +128,6 @@ dependencies {
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

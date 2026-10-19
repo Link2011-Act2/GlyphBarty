@@ -56,6 +56,10 @@ private fun JSONObject.optMeaningfulString(key: String): String? {
 }
 
 private fun loadOssEntries(context: android.content.Context): List<OssEntry> {
+    val pyrite = OssEntry("Pyrite", "com.github.Link2011-Act2:Pyrite:eeedbfe5005bf1ed781d0cf1ef2cbe2a0923e7dd", "MIT",
+        "https://github.com/Link2011-Act2/Pyrite",
+        context.assets.open("oss_licenses/Pyrite-MIT.txt").bufferedReader().use { it.readText() } + "\n\n" +
+            context.assets.open("oss_licenses/Pyrite-NOTICE.txt").bufferedReader().use { it.readText() })
     return try {
         val json = context.assets.open("oss_licenses/oss_licenses_auto.json")
             .bufferedReader().use { it.readText() }
@@ -77,9 +81,9 @@ private fun loadOssEntries(context: android.content.Context): List<OssEntry> {
                 )
             )
         }
-        results
+        listOf(pyrite) + results
     } catch (_: Exception) {
-        emptyList()
+        listOf(pyrite)
     }
 }
 

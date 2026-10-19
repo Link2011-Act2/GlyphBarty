@@ -64,28 +64,22 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.AnimatedContent
+import jp.linkserver.pyrite.screen.PyriteScreenTransition
+import jp.linkserver.pyrite.screen.PyriteNavigationDirection
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Info
@@ -98,8 +92,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -177,7 +169,6 @@ import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
 import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
-import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
@@ -302,19 +293,12 @@ internal fun GlyphVisualizerApp(
         color = MaterialTheme.colorScheme.surface
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AnimatedContent(
+            PyriteScreenTransition(
                 targetState = screen,
-                transitionSpec = {
-                    val forward = targetState.ordinal > initialState.ordinal
-                    if (forward) {
-                        (slideInHorizontally { it / 5 } + fadeIn()) togetherWith
-                            (slideOutHorizontally { -it / 5 } + fadeOut())
-                    } else {
-                        (slideInHorizontally { -it / 5 } + fadeIn()) togetherWith
-                            (slideOutHorizontally { it / 5 } + fadeOut())
-                    }
-                },
-                label = "screen_transition"
+                direction = { initial, target ->
+                    if (target.ordinal > initial.ordinal) PyriteNavigationDirection.Forward
+                    else PyriteNavigationDirection.Backward
+                }, modifier = Modifier.fillMaxSize()
             ) { targetScreen ->
                 when (targetScreen) {
                     Screen.WELCOME -> WelcomeScreen(

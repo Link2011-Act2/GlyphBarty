@@ -1,0 +1,28 @@
+
+A web-based, searchable dependency report is available by adding the --scan option.
+
+> Task :app:compileDebugKotlin
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/audio/AudioRouteDiagnostics.kt:106:33 'var isSpeakerphoneOn: Boolean' is deprecated. Deprecated in Java.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/audio/AudioRouteDiagnostics.kt:108:33 'var isBluetoothScoOn: Boolean' is deprecated. Deprecated in Java.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/ExperimentalDetailsScreen.kt:359:44 'fun centerAlignedTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/ExtrasScreen.kt:40:44 'fun centerAlignedTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/GlyphInterfaceInspectorScreen.kt:299:28 'val LocalClipboardManager: ProvidableCompositionLocal<ClipboardManager>' is deprecated. Use LocalClipboard instead which supports suspend functions.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/GlyphInterfaceInspectorScreen.kt:726:21 'fun Slider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = ..., enabled: Boolean = ..., valueRange: ClosedFloatingPointRange<Float> = ..., steps: Int = ..., onValueChangeFinished: (() -> Unit)? = ..., colors: SliderColors = ..., interactionSource: MutableInteractionSource = ...): Unit' is deprecated. Use the Slider overload that accepts SliderState, onValueChange, and onValueChangeFinished instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/GlyphInterfaceInspectorScreen.kt:860:9 'fun Slider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = ..., enabled: Boolean = ..., valueRange: ClosedFloatingPointRange<Float> = ..., steps: Int = ..., onValueChangeFinished: (() -> Unit)? = ..., colors: SliderColors = ..., interactionSource: MutableInteractionSource = ...): Unit' is deprecated. Use the Slider overload that accepts SliderState, onValueChange, and onValueChangeFinished instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/SettingsScreen.kt:136:26 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/VisualizerControls.kt:231:9 'fun Slider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = ..., enabled: Boolean = ..., valueRange: ClosedFloatingPointRange<Float> = ..., steps: Int = ..., onValueChangeFinished: (() -> Unit)? = ..., colors: SliderColors = ..., interactionSource: MutableInteractionSource = ...): Unit' is deprecated. Use the Slider overload that accepts SliderState, onValueChange, and onValueChangeFinished instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/VisualizerScreens.kt:663:44 'fun centerAlignedTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/apps/glyphvisualizer/build/pyrite-migration/standalone-eeedbfe/app/src/main/java/jp/linkserver/glyphvisualizer/ui/VisualizerScreens.kt:967:44 'fun centerAlignedTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:mergeDebugJavaResource
+> Task :app:dexBuilderDebug
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+
+BUILD SUCCESSFUL in 2m 11s
+38 actionable tasks: 38 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html

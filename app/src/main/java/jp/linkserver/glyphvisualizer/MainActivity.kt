@@ -14,6 +14,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -374,6 +376,12 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    override fun onPostCreate(savedInstanceState: Bundle?) {
+        super.onPostCreate(savedInstanceState)
+        val content = findViewById<android.view.View>(android.R.id.content)
+        ViewCompat.getRootWindowInsets(content)?.let { ViewCompat.dispatchApplyWindowInsets(content, it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.init(this)
@@ -397,6 +405,8 @@ class MainActivity : ComponentActivity() {
             }
         pendingExportContent = savedInstanceState?.getString(STATE_PENDING_EXPORT_CONTENT)
         CaptureUiStore.setUiVisible(true)
+        // Initialize the preserved Window before its first insets/Compose measure.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         enableEdgeToEdge()
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         val savedSettings = SettingsPreferences.load(this)

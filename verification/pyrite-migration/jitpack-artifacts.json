@@ -1,0 +1,51 @@
+{
+  "sha": "eeedbfe5005bf1ed781d0cf1ef2cbe2a0923e7dd",
+  "files": {
+    "Pyrite-sources.jar": {
+      "bytes": 23446,
+      "sha256": "705075ba47cee1862acd72d3ad03c1efbc43a9743c49e778720c6229768da0b3"
+    },
+    "Pyrite.aar": {
+      "bytes": 191632,
+      "sha256": "d11f4c6fbc1085d7295b6800118dd7a85c214557054a8381ede24ad0ba891700"
+    },
+    "Pyrite.pom": {
+      "bytes": 2395,
+      "sha256": "0a072649b4d9019b2943690fcbdb5a0742c53d7c89b642c245e953e7526d561c"
+    }
+  },
+  "pomDependencies": [
+    {
+      "group": "androidx.compose.ui",
+      "artifact": "ui",
+      "version": "1.12.0"
+    },
+    {
+      "group": "androidx.compose.foundation",
+      "artifact": "foundation",
+      "version": "1.12.0"
+    },
+    {
+      "group": "androidx.compose.material3",
+      "artifact": "material3",
+      "version": "1.5.0-beta01"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "artifact": "kotlin-stdlib",
+      "version": "2.2.10"
+    },
+    {
+      "group": "androidx.compose.material",
+      "artifact": "material-icons-core",
+      "version": "1.7.8"
+    },
+    {
+      "group": "androidx.compose.animation",
+      "artifact": "animation",
+      "version": "1.12.0"
+    }
+  ],
+  "fontSourcePresent": true,
+  "bundledFontFiles": []
+}

@@ -10,6 +10,9 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import jp.linkserver.pyrite.theme.PyriteTheme
+import jp.linkserver.pyrite.theme.PyriteStyle
+import jp.linkserver.pyrite.theme.PyriteFonts
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
@@ -62,56 +65,6 @@ private val LightColorScheme = lightColorScheme(
     outlineVariant = Color(0xFFE7D2CA)
 )
 
-private val NothingDarkColorScheme = darkColorScheme(
-    primary = NothingWhite,
-    onPrimary = NothingBlack,
-    primaryContainer = Color(0xFFE7E7E7),
-    onPrimaryContainer = NothingBlack,
-    secondary = Color(0xFFD8D8D8),
-    onSecondary = NothingBlack,
-    secondaryContainer = Color(0xFF1B1B1B),
-    onSecondaryContainer = NothingWhite,
-    tertiary = NothingRed,
-    onTertiary = NothingWhite,
-    tertiaryContainer = Color(0xFF2B1113),
-    onTertiaryContainer = Color(0xFFFFDAD9),
-    background = NothingBlack,
-    surface = NothingBlack,
-    surfaceContainer = Color(0xFF050505),
-    surfaceContainerHigh = Color(0xFF121212),
-    surfaceContainerHighest = Color(0xFF181818),
-    surfaceDim = Color(0xFF030303),
-    onSurface = NothingWhite,
-    onSurfaceVariant = Color(0xFFD0D0D0),
-    outline = Color(0xFF707070),
-    outlineVariant = Color(0xFF3A3A3A)
-)
-
-private val NothingLightColorScheme = lightColorScheme(
-    primary = NothingBlack,
-    onPrimary = NothingWhite,
-    primaryContainer = NothingBlack,
-    onPrimaryContainer = NothingWhite,
-    secondary = NothingBlack,
-    onSecondary = NothingWhite,
-    secondaryContainer = Color(0xFFE2E2E2),
-    onSecondaryContainer = NothingBlack,
-    tertiary = NothingRed,
-    onTertiary = NothingWhite,
-    tertiaryContainer = Color(0xFFFFDAD9),
-    onTertiaryContainer = Color(0xFF410005),
-    background = NothingLightSurface,
-    surface = NothingLightSurface,
-    surfaceContainer = NothingWhite,
-    surfaceContainerHigh = NothingWhite,
-    surfaceContainerHighest = NothingWhite,
-    surfaceDim = Color(0xFFD6D6D6),
-    onSurface = NothingBlack,
-    onSurfaceVariant = Color(0xFF565656),
-    outline = Color(0xFFBDBDBD),
-    outlineVariant = Color(0xFFE7E7E7)
-)
-
 @Composable
 fun GlyphBartyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -121,8 +74,6 @@ fun GlyphBartyTheme(
 ) {
     val context = LocalContext.current
     val colorScheme = when {
-        nothingStyle && darkTheme -> NothingDarkColorScheme
-        nothingStyle -> NothingLightColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
@@ -130,12 +81,20 @@ fun GlyphBartyTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = if (nothingStyle) NothingTypography else Typography,
-        // Both modes share the Nothing-like component geometry. Material mode
-        // differs through its dynamic color scheme and standard typography.
-        shapes = Shapes(),
-        content = content
-    )
+    PyriteTheme(
+        style = PyriteStyle.Nothing,
+        darkTheme = darkTheme,
+        fonts = if (nothingStyle) {
+            PyriteFonts(title = NTypeFontFamily, accent = NothingDotFontFamily)
+        } else PyriteFonts()
+    ) {
+        MaterialTheme(
+            // Nothing inherits the published palette. The source Material option
+            // intentionally retains its own colors, typography and component geometry.
+            colorScheme = if (nothingStyle) MaterialTheme.colorScheme else colorScheme,
+            typography = if (nothingStyle) NothingTypography else Typography,
+            shapes = Shapes(),
+            content = content
+        )
+    }
 }

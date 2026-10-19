@@ -24,21 +24,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +59,11 @@ import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
+import jp.linkserver.pyrite.about.AboutOverviewMosaic as PyriteAboutOverviewMosaic
+import jp.linkserver.pyrite.about.AboutInfo
+import jp.linkserver.pyrite.about.AboutDetail
+import jp.linkserver.pyrite.about.AboutOverviewContent
+import jp.linkserver.pyrite.about.AboutUpdateCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -77,6 +77,7 @@ fun AboutScreen(
     nothingStyleEnabled: Boolean = false
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val versionInfo = remember { resolveAppVersionInfo(context) }
     val versionName = versionInfo.first
@@ -115,7 +116,7 @@ fun AboutScreen(
     fun startUpdateCheck(manual: Boolean) {
         if (checkingUpdates) return
         checkingUpdates = true
-        updateStatus = if (manual) context.getString(R.string.about_update_checking) else null
+        updateStatus = if (manual) resources.getString(R.string.about_update_checking) else null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 AppUpdateRepository.checkAndRecord(
@@ -128,14 +129,14 @@ fun AboutScreen(
             result
                 .onSuccess { updateInfo ->
                     if (updateInfo != null) {
-                        updateStatus = context.getString(R.string.about_update_available, updateInfo.tagName)
+                        updateStatus = resources.getString(R.string.about_update_available, updateInfo.tagName)
                         onUpdateAvailable(updateInfo)
                     } else if (manual) {
-                        updateStatus = context.getString(R.string.about_update_latest)
+                        updateStatus = resources.getString(R.string.about_update_latest)
                     }
                 }
                 .onFailure { error ->
-                    updateStatus = context.getString(
+                    updateStatus = resources.getString(
                         R.string.about_update_check_failed,
                         error.localizedMessage ?: error.javaClass.simpleName
                     )
@@ -143,31 +144,8 @@ fun AboutScreen(
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
-                ),
-                title = {
-                    Text(
-                        text = stringResource(R.string.about_screen_title),
-                        fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.cd_back)
-                        )
-                    }
-                }
-            )
-        }
-    ) { padding ->
+    GlyphScreenScaffold(stringResource(R.string.about_screen_title), onBack,
+        nothingStyleEnabled) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -176,7 +154,19 @@ fun AboutScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
-            AboutOverviewMosaic(
+            if (nothingStyleEnabled) PyriteAboutOverviewMosaic(
+                info = AboutInfo(stringResource(R.string.app_name),
+                    "$channelLabel ${stringResource(R.string.about_overview_release_line, versionName, versionCode).replace(' ', '\u00A0')}"),
+                overview = AboutOverviewContent(
+                    channel = AboutDetail(stringResource(R.string.about_overview_channel_title), channelName.ifBlank { channelLabel }),
+                    build = AboutDetail(stringResource(R.string.about_overview_build_title), BuildConfig.BUILD_NUMBER),
+                    version = AboutDetail(stringResource(R.string.about_overview_version_title),
+                        stringResource(R.string.about_overview_version_value, simpleVersion))
+                ),
+                icon = { Image(painterResource(R.drawable.app_icon_foreground), null, Modifier.fillMaxSize()) },
+                onVersionClick = { showVersionDetailsDialog = true },
+                onChannelClick = { showChannelDialog = true }
+            ) else MaterialAboutOverviewMosaic(
                 channelName = channelName,
                 channelLabel = channelLabel,
                 versionName = versionName,
@@ -190,58 +180,13 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AboutSectionTitle(stringResource(R.string.about_updates_title))
-                SettingsItemSurface(
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Single
-                ) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.about_updates_body),
-                            modifier = Modifier.padding(
-                                horizontal = 22.dp,
-                                vertical = 18.dp
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 22.sp
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(
-                                horizontal = 22.dp
-                            ),
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = 22.dp,
-                                    vertical = 14.dp
-                                ),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = updateStatus
-                                    ?: stringResource(R.string.about_update_not_checked),
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (updateStatus == null) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                },
-                                fontWeight = FontWeight.Medium
-                            )
-                            Button(
-                                onClick = { startUpdateCheck(manual = true) },
-                                enabled = !checkingUpdates
-                            ) {
-                                Text(stringResource(R.string.about_update_check_button))
-                            }
-                        }
-                    }
-                }
+                AboutUpdateCard(
+                    description = stringResource(R.string.about_updates_body),
+                    status = updateStatus ?: stringResource(R.string.about_update_not_checked),
+                    actionLabel = stringResource(R.string.about_update_check_button),
+                    onCheck = { startUpdateCheck(manual = true) },
+                    checking = checkingUpdates, hasResult = updateStatus != null
+                )
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -276,7 +221,7 @@ fun AboutScreen(
                             actionLabel = stringResource(R.string.about_support_open_site),
                             nothingStyleEnabled = nothingStyleEnabled,
                             onAction = {
-                                openUrl(context, context.getString(R.string.about_support_site_url))
+                                openUrl(context, resources.getString(R.string.about_support_site_url))
                             }
                         )
                     }
@@ -467,7 +412,7 @@ private fun AboutSettingsActionCardContent(
 }
 
 @Composable
-private fun AboutOverviewMosaic(
+private fun MaterialAboutOverviewMosaic(
     channelName: String,
     channelLabel: String,
     versionName: String,
