@@ -50,6 +50,7 @@ hs_err_pid*.log
 # Files already tracked under artifacts/ remain tracked.
 /artifacts/
 /design-qa.md
+/verification/
 
 # Local AI / automation tool state
 /.agents/

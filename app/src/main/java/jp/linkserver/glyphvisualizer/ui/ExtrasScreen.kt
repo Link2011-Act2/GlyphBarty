@@ -22,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
+import jp.linkserver.pyrite.settings.SettingsGroup
+import jp.linkserver.pyrite.settings.SettingsSwitchItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,21 +75,23 @@ internal fun ExtrasScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            SettingsToggleEntry(
-                title = stringResource(R.string.extras_battery_glyph_title),
-                description = stringResource(
-                    if (batteryGlyphSupported) {
-                        R.string.extras_battery_glyph_description
-                    } else {
-                        R.string.extras_battery_glyph_unsupported
-                    }
-                ),
-                checked = batteryGlyphEnabled && batteryGlyphSupported,
-                onCheckedChange = onBatteryGlyphEnabledChanged,
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Single,
-                enabled = batteryGlyphSupported
-            )
+            SettingsGroup {
+                item("battery-glyph") {
+                    SettingsSwitchItem(
+                        title = stringResource(R.string.extras_battery_glyph_title),
+                        summary = stringResource(
+                            if (batteryGlyphSupported) {
+                                R.string.extras_battery_glyph_description
+                            } else {
+                                R.string.extras_battery_glyph_unsupported
+                            }
+                        ),
+                        checked = batteryGlyphEnabled && batteryGlyphSupported,
+                        onCheckedChange = onBatteryGlyphEnabledChanged,
+                        enabled = batteryGlyphSupported
+                    )
+                }
+            }
         }
     }
 }
