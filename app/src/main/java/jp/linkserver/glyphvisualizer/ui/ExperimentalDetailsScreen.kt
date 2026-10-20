@@ -1,6 +1,7 @@
 package jp.linkserver.glyphvisualizer.ui
 
 import jp.linkserver.glyphvisualizer.*
+import jp.linkserver.pyrite.settings.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -78,11 +79,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import jp.linkserver.glyphvisualizer.ui.SettingsDividerGap
-import jp.linkserver.glyphvisualizer.ui.SettingsEntry
-import jp.linkserver.glyphvisualizer.ui.SettingsGroupPosition
-import jp.linkserver.glyphvisualizer.ui.SettingsItemSurface
-import jp.linkserver.glyphvisualizer.ui.SettingsToggleEntry
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -675,145 +671,133 @@ private fun ExperimentalDetailsLiveTab(
         ExperimentalDetailsSectionTitle(
             text = stringResource(R.string.experimental_details_capture_section)
         )
-        Column {
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Top
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+        SettingsGroup {
+            item("capture_state_live") {
+                SettingsContentCard() {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text(
-                            text = deviceName,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null,
-                            fontSize = 20.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = listOfNotNull(
-                                deviceDetail,
-                                stringResource(
-                                    if (isCapturing) {
-                                        R.string.capture_state_live
-                                    } else {
-                                        R.string.experimental_home_state_waiting
-                                    }
-                                )
-                            ).joinToString("  •  "),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Button(
-                        onClick = if (isCapturing) onStopClick else onStartClick,
-                        enabled = !startPending,
-                        shape = RoundedCornerShape(999.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isCapturing) {
-                                if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            contentColor = if (isCapturing) {
-                                if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
-                            } else {
-                                MaterialTheme.colorScheme.onPrimary
-                            },
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp)
-                    ) {
-                        if (startPending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(17.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = deviceName,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontFamily = if (nothingStyleEnabled) NTypeFontFamily else null,
+                                fontSize = 20.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                        } else {
-                            Icon(
-                                imageVector = if (isCapturing) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                            Text(
+                                text = listOfNotNull(
+                                    deviceDetail,
+                                    stringResource(
+                                        if (isCapturing) {
+                                            R.string.capture_state_live
+                                        } else {
+                                            R.string.experimental_home_state_waiting
+                                        }
+                                    )
+                                ).joinToString("  •  "),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(
-                                if (isCapturing) R.string.button_stop else R.string.button_no_capture
+                        Button(
+                            onClick = if (isCapturing) onStopClick else onStartClick,
+                            enabled = !startPending,
+                            shape = RoundedCornerShape(999.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isCapturing) {
+                                    if (nothingStyleEnabled) NothingRed else MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                contentColor = if (isCapturing) {
+                                    if (nothingStyleEnabled) Color.White else MaterialTheme.colorScheme.onError
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimary
+                                },
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                             ),
-                            maxLines = 1
-                        )
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp)
+                        ) {
+                            if (startPending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(17.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (isCapturing) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    if (isCapturing) R.string.button_stop else R.string.button_no_capture
+                                ),
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
             if (mediaProjectionEnabled) {
-                SettingsDividerGap()
-                SettingsEntry(
-                    title = stringResource(R.string.button_media_projection),
-                    description = stringResource(R.string.button_media_projection_hint),
-                    onClick = onStartProjectionClick,
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Middle
+
+                item("button_media_projection") {
+                    SettingsNavigationItem(
+                        title = stringResource(R.string.button_media_projection),
+                        summary = stringResource(R.string.button_media_projection_hint),
+                        onClick = onStartProjectionClick
+                    )
+                }
+            }
+
+            item("glyph_pattern") {
+                SettingsNavigationItem(
+                    title = stringResource(R.string.glyph_pattern),
+                    summary = patternLabel,
+                    onClick = onOpenPattern
                 )
             }
-            SettingsDividerGap()
-            SettingsEntry(
-                title = stringResource(R.string.glyph_pattern),
-                description = patternLabel,
-                onClick = onOpenPattern,
-                nothingStyle = nothingStyleEnabled,
-                position = if (
-                    showFillOtherGlyphLights ||
-                    supportsRecordingLightBehavior
-                ) {
-                    SettingsGroupPosition.Middle
-                } else {
-                    SettingsGroupPosition.Bottom
-                }
-            )
             if (showFillOtherGlyphLights) {
-                SettingsDividerGap()
-                SettingsToggleEntry(
-                    title = stringResource(R.string.fill_other_glyph_lights_title),
-                    description = stringResource(
-                        if (fillOtherGlyphLightsAffectsCurrentMode) {
-                            R.string.fill_other_glyph_lights_desc
-                        } else {
-                            R.string.fill_other_glyph_lights_desc_no_effect
-                        }
-                    ),
-                    checked = fillOtherGlyphLights,
-                    onCheckedChange = onFillOtherGlyphLightsChanged,
-                    nothingStyle = nothingStyleEnabled,
-                    position = if (supportsRecordingLightBehavior) {
-                        SettingsGroupPosition.Middle
-                    } else {
-                        SettingsGroupPosition.Bottom
-                    }
-                )
+
+                item("fill_other_glyph_lights_title") {
+                    SettingsSwitchItem(
+                        title = stringResource(R.string.fill_other_glyph_lights_title),
+                        summary = stringResource(
+                            if (fillOtherGlyphLightsAffectsCurrentMode) {
+                                R.string.fill_other_glyph_lights_desc
+                            } else {
+                                R.string.fill_other_glyph_lights_desc_no_effect
+                            }
+                        ),
+                        checked = fillOtherGlyphLights,
+                        onCheckedChange = onFillOtherGlyphLightsChanged
+                    )
+                }
             }
             if (supportsRecordingLightBehavior) {
-                SettingsDividerGap()
-                SettingsEntry(
-                    title = stringResource(R.string.recording_light_behavior_title),
-                    description = recordingLightBehaviorLabel,
-                    onClick = onOpenRecordingLight,
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Bottom
-                )
+
+                item("recording_light_behavior_title") {
+                    SettingsNavigationItem(
+                        title = stringResource(R.string.recording_light_behavior_title),
+                        summary = recordingLightBehaviorLabel,
+                        onClick = onOpenRecordingLight
+                    )
+                }
             }
         }
         if (showPhone1GlyphDebugControls) {
@@ -838,10 +822,7 @@ private fun ExperimentalDetailsLiveTab(
             ExperimentalDetailsSectionTitle(
                 text = stringResource(R.string.experimental_details_live_meter_section)
             )
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Single
-            ) {
+            SettingsContentCard() {
                 Box(modifier = Modifier.padding(14.dp)) {
                     ExperimentalMeterPreview(
                         glyphMode = glyphMode,
@@ -917,66 +898,48 @@ private fun ExperimentalDetailsTuneTab(
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ExperimentalDetailsSectionTitle(text = stringResource(R.string.meter_parameters))
-        Column {
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Top
-            ) {
-                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
-                    ParameterSlider(
-                        title = stringResource(R.string.param_sensitivity_title),
-                        valueText = stringResource(R.string.percent_value, (sensitivity * 100).toInt()),
-                        description = stringResource(R.string.param_sensitivity_desc),
-                        value = sensitivity,
-                        onValueChange = onSensitivityChanged,
-                        valueRange = 0.6f..3.0f,
-                        nothingStyleEnabled = nothingStyleEnabled
-                    )
-                }
+        SettingsGroup {
+            item("param_sensitivity_title") {
+                SettingsSliderItem(
+                    title = stringResource(R.string.param_sensitivity_title),
+                    valueText = stringResource(R.string.percent_value, (sensitivity * 100).toInt()),
+                    summary = stringResource(R.string.param_sensitivity_desc),
+                    value = sensitivity,
+                    onValueChange = onSensitivityChanged,
+                    valueRange = 0.6f..3.0f
+                )
             }
-            SettingsDividerGap()
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Middle
-            ) {
-                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
-                    ParameterSlider(
-                        title = stringResource(R.string.param_response_speed_title),
-                        valueText = responseSpeedValueText(smoothing),
-                        description = stringResource(R.string.param_response_speed_desc),
-                        value = smoothing,
-                        onValueChange = onSmoothingChanged,
-                        valueRange = 0.08f..0.55f,
-                        nothingStyleEnabled = nothingStyleEnabled
-                    )
-                }
+
+            item("param_response_speed_title") {
+                SettingsSliderItem(
+                    title = stringResource(R.string.param_response_speed_title),
+                    valueText = responseSpeedValueText(smoothing),
+                    summary = stringResource(R.string.param_response_speed_desc),
+                    value = smoothing,
+                    onValueChange = onSmoothingChanged,
+                    valueRange = 0.08f..0.55f
+                )
             }
-            SettingsDividerGap()
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Bottom
-            ) {
-                Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
-                    ParameterSlider(
-                        title = stringResource(R.string.param_tone_focus_title),
-                        valueText = when {
-                            toneFocus <= -0.1f -> stringResource(
-                                R.string.param_tone_focus_bass,
-                                (toneFocus * -100).toInt()
-                            )
-                            toneFocus >= 0.1f -> stringResource(
-                                R.string.param_tone_focus_treble,
-                                (toneFocus * 100).toInt()
-                            )
-                            else -> stringResource(R.string.param_tone_focus_balanced)
-                        },
-                        description = stringResource(R.string.param_tone_focus_desc),
-                        value = toneFocus,
-                        onValueChange = onToneFocusChanged,
-                        valueRange = -1f..1f,
-                        nothingStyleEnabled = nothingStyleEnabled
-                    )
-                }
+
+            item("param_tone_focus_title") {
+                SettingsSliderItem(
+                    title = stringResource(R.string.param_tone_focus_title),
+                    valueText = when {
+                        toneFocus <= -0.1f -> stringResource(
+                            R.string.param_tone_focus_bass,
+                            (toneFocus * -100).toInt()
+                        )
+                        toneFocus >= 0.1f -> stringResource(
+                            R.string.param_tone_focus_treble,
+                            (toneFocus * 100).toInt()
+                        )
+                        else -> stringResource(R.string.param_tone_focus_balanced)
+                    },
+                    summary = stringResource(R.string.param_tone_focus_desc),
+                    value = toneFocus,
+                    onValueChange = onToneFocusChanged,
+                    valueRange = -1f..1f
+                )
             }
         }
     }
@@ -1012,10 +975,7 @@ private fun ExperimentalDetailsTuneTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            SettingsItemSurface(
-                nothingStyle = nothingStyleEnabled,
-                position = SettingsGroupPosition.Single
-            ) {
+            SettingsContentCard() {
                 Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         ParameterSlider(
@@ -1061,14 +1021,11 @@ private fun ExperimentalDetailsTuneTab(
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ExperimentalDetailsSectionTitle(text = stringResource(R.string.advanced_meter_title))
-        SettingsItemSurface(
-            nothingStyle = nothingStyleEnabled,
-            position = SettingsGroupPosition.Single,
-            onClick = { advancedExpanded = !advancedExpanded }
-        ) {
+        SettingsContentCard() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { advancedExpanded = !advancedExpanded }
                     .padding(horizontal = 22.dp, vertical = 18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1102,69 +1059,69 @@ private fun ExperimentalDetailsTuneTab(
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
-            Column {
-                ExperimentalParameterSettingsCard(
-                    position = SettingsGroupPosition.Top,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    title = stringResource(R.string.param_noise_gate_title),
-                    valueText = stringResource(R.string.percent_value, (noiseGate * 100).toInt()),
-                    description = stringResource(R.string.param_noise_gate_desc),
-                    value = noiseGate,
-                    onValueChange = onNoiseGateChanged,
-                    valueRange = 0f..0.35f
-                )
-                SettingsDividerGap()
-                ExperimentalParameterSettingsCard(
-                    position = SettingsGroupPosition.Middle,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    title = stringResource(R.string.param_dynamics_title),
-                    valueText = stringResource(R.string.param_dynamics_value, dynamics),
-                    description = stringResource(R.string.param_dynamics_desc),
-                    value = dynamics,
-                    onValueChange = onDynamicsChanged,
-                    valueRange = 0.6f..2.2f
-                )
-                SettingsDividerGap()
-                ExperimentalParameterSettingsCard(
-                    position = SettingsGroupPosition.Middle,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    title = stringResource(R.string.param_output_gamma_title),
-                    valueText = stringResource(R.string.param_dynamics_value, outputGamma),
-                    description = stringResource(R.string.param_output_gamma_desc),
-                    value = outputGamma,
-                    onValueChange = onOutputGammaChanged,
-                    valueRange = 0.6f..2.6f
-                )
-                SettingsDividerGap()
-                ExperimentalParameterSettingsCard(
-                    position = SettingsGroupPosition.Middle,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    title = stringResource(R.string.param_auto_scale_window_title),
-                    valueText = stringResource(
-                        R.string.param_auto_scale_window_value,
-                        autoScaleWindowSeconds
-                    ),
-                    description = stringResource(R.string.param_auto_scale_window_desc),
-                    value = autoScaleWindowSeconds,
-                    onValueChange = onAutoScaleWindowSecondsChanged,
-                    onValueChangeFinished = onAutoScaleWindowSecondsChangeFinished,
-                    valueRange = 5f..60f
-                )
-                SettingsDividerGap()
-                ExperimentalParameterSettingsCard(
-                    position = SettingsGroupPosition.Bottom,
-                    nothingStyleEnabled = nothingStyleEnabled,
-                    title = stringResource(R.string.param_auto_scale_offset_title),
-                    valueText = stringResource(
-                        R.string.percent_value,
-                        (autoScaleOffset * 100).toInt()
-                    ),
-                    description = stringResource(R.string.param_auto_scale_offset_desc),
-                    value = autoScaleOffset,
-                    onValueChange = onAutoScaleOffsetChanged,
-                    onValueChangeFinished = onAutoScaleOffsetChangeFinished,
-                    valueRange = 0f..0.4f
-                )
+            SettingsGroup {
+                item("param_noise_gate_title") {
+                    SettingsSliderItem(
+                        title = stringResource(R.string.param_noise_gate_title),
+                        valueText = stringResource(R.string.percent_value, (noiseGate * 100).toInt()),
+                        summary = stringResource(R.string.param_noise_gate_desc),
+                        value = noiseGate,
+                        onValueChange = onNoiseGateChanged,
+                        valueRange = 0f..0.35f
+                    )
+                }
+
+                item("param_dynamics_title") {
+                    SettingsSliderItem(
+                        title = stringResource(R.string.param_dynamics_title),
+                        valueText = stringResource(R.string.param_dynamics_value, dynamics),
+                        summary = stringResource(R.string.param_dynamics_desc),
+                        value = dynamics,
+                        onValueChange = onDynamicsChanged,
+                        valueRange = 0.6f..2.2f
+                    )
+                }
+
+                item("param_output_gamma_title") {
+                    SettingsSliderItem(
+                        title = stringResource(R.string.param_output_gamma_title),
+                        valueText = stringResource(R.string.param_dynamics_value, outputGamma),
+                        summary = stringResource(R.string.param_output_gamma_desc),
+                        value = outputGamma,
+                        onValueChange = onOutputGammaChanged,
+                        valueRange = 0.6f..2.6f
+                    )
+                }
+
+                item("param_auto_scale_window_title") {
+                    SettingsSliderItem(
+                        title = stringResource(R.string.param_auto_scale_window_title),
+                        valueText = stringResource(
+                            R.string.param_auto_scale_window_value,
+                            autoScaleWindowSeconds
+                        ),
+                        summary = stringResource(R.string.param_auto_scale_window_desc),
+                        value = autoScaleWindowSeconds,
+                        onValueChange = onAutoScaleWindowSecondsChanged,
+                        onValueChangeFinished = onAutoScaleWindowSecondsChangeFinished,
+                        valueRange = 5f..60f
+                    )
+                }
+
+                item("param_auto_scale_offset_title") {
+                    SettingsSliderItem(
+                        title = stringResource(R.string.param_auto_scale_offset_title),
+                        valueText = stringResource(
+                            R.string.percent_value,
+                            (autoScaleOffset * 100).toInt()
+                        ),
+                        summary = stringResource(R.string.param_auto_scale_offset_desc),
+                        value = autoScaleOffset,
+                        onValueChange = onAutoScaleOffsetChanged,
+                        onValueChangeFinished = onAutoScaleOffsetChangeFinished,
+                        valueRange = 0f..0.4f
+                    )
+                }
             }
         }
     }
@@ -1173,10 +1130,7 @@ private fun ExperimentalDetailsTuneTab(
         ExperimentalDetailsSectionTitle(
             text = stringResource(R.string.experimental_details_data_section)
         )
-        SettingsItemSurface(
-            nothingStyle = nothingStyleEnabled,
-            position = SettingsGroupPosition.Single
-        ) {
+        SettingsContentCard() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1245,38 +1199,10 @@ private fun ExperimentalDetailsTuneTab(
     }
 }
 
-@Composable
-private fun ExperimentalParameterSettingsCard(
-    position: SettingsGroupPosition,
-    nothingStyleEnabled: Boolean,
-    title: String,
-    valueText: String,
-    description: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    onValueChangeFinished: (() -> Unit)? = null,
-    valueRange: ClosedFloatingPointRange<Float>
-) {
-    SettingsItemSurface(
-        nothingStyle = nothingStyleEnabled,
-        position = position
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {
-            ParameterSlider(
-                title = title,
-                valueText = valueText,
-                description = description,
-                value = value,
-                onValueChange = onValueChange,
-                onValueChangeFinished = onValueChangeFinished,
-                valueRange = valueRange,
-                nothingStyleEnabled = nothingStyleEnabled
-            )
-        }
-    }
-}
+
 
 private data class ExperimentalDetailsToggleItem(
+    val key: String,
     val title: String,
     val description: String,
     val checked: Boolean,
@@ -1327,18 +1253,17 @@ private fun ExperimentalDetailsSystemTab(
         ExperimentalDetailsSectionTitle(
             text = stringResource(R.string.experimental_details_system_section)
         )
-        SettingsEntry(
+        SettingsNavigationItem(
             title = stringResource(R.string.latency_title),
-            description = stringResource(R.string.latency_value_ms, latencyMs),
-            onClick = onOpenLatency,
-            nothingStyle = nothingStyleEnabled,
-            position = SettingsGroupPosition.Single
+            summary = stringResource(R.string.latency_value_ms, latencyMs),
+            onClick = onOpenLatency
         )
     }
 
     val toggles = buildList {
         add(
             ExperimentalDetailsToggleItem(
+                    key = "glyph_direction_title",
                 title = stringResource(R.string.glyph_direction_title),
                 description = stringResource(R.string.glyph_direction_desc),
                 checked = reverseDirection,
@@ -1347,6 +1272,7 @@ private fun ExperimentalDetailsSystemTab(
         )
         add(
             ExperimentalDetailsToggleItem(
+                    key = "binary_mode_title",
                 title = stringResource(R.string.binary_mode_title),
                 description = stringResource(R.string.binary_mode_desc),
                 checked = binaryMode,
@@ -1356,6 +1282,7 @@ private fun ExperimentalDetailsSystemTab(
         if (isMatrixDevice) {
             add(
                 ExperimentalDetailsToggleItem(
+                    key = "matrix_smooth_motion_title",
                     title = stringResource(R.string.matrix_smooth_motion_title),
                     description = stringResource(R.string.matrix_smooth_motion_desc),
                     checked = matrixSmoothMotionEnabled,
@@ -1366,6 +1293,7 @@ private fun ExperimentalDetailsSystemTab(
         if (glyphRenderMode == GlyphPatternRenderMode.MATRIX_OSCILLOSCOPE) {
             add(
                 ExperimentalDetailsToggleItem(
+                    key = "oscilloscope_auto_time_axis_title_with_value",
                     title = if (oscilloscopeAutoTimeAxisEnabled) {
                         stringResource(
                             R.string.oscilloscope_auto_time_axis_title_with_value,
@@ -1383,6 +1311,7 @@ private fun ExperimentalDetailsSystemTab(
         when {
             GlyphPatternRegistry.isSpectrum(glyphMode) -> add(
                 ExperimentalDetailsToggleItem(
+                    key = "spectrum_auto_scale_title",
                     title = stringResource(R.string.spectrum_auto_scale_title),
                     description = stringResource(R.string.spectrum_auto_scale_desc),
                     checked = spectrumAutoScale,
@@ -1391,6 +1320,7 @@ private fun ExperimentalDetailsSystemTab(
             )
             GlyphPatternRegistry.isAllBrightness(glyphMode) -> add(
                 ExperimentalDetailsToggleItem(
+                    key = "all_brightness_auto_scale_title",
                     title = stringResource(R.string.all_brightness_auto_scale_title),
                     description = stringResource(R.string.all_brightness_auto_scale_desc),
                     checked = allBrightnessAutoScale,
@@ -1399,6 +1329,7 @@ private fun ExperimentalDetailsSystemTab(
             )
             else -> add(
                 ExperimentalDetailsToggleItem(
+                    key = "level_auto_scale_title",
                     title = stringResource(R.string.level_auto_scale_title),
                     description = stringResource(R.string.level_auto_scale_desc),
                     checked = levelAutoScale,
@@ -1408,6 +1339,7 @@ private fun ExperimentalDetailsSystemTab(
         }
         add(
             ExperimentalDetailsToggleItem(
+                    key = "legacy_auto_scale_title",
                 title = stringResource(R.string.legacy_auto_scale_title),
                 description = stringResource(R.string.legacy_auto_scale_desc),
                 checked = legacyAutoScaleEnabled,
@@ -1420,24 +1352,15 @@ private fun ExperimentalDetailsSystemTab(
         ExperimentalDetailsSectionTitle(
             text = stringResource(R.string.experimental_details_glyph_section)
         )
-        Column {
-            toggles.forEachIndexed { index, item ->
-                val position = when {
-                    toggles.size == 1 -> SettingsGroupPosition.Single
-                    index == 0 -> SettingsGroupPosition.Top
-                    index == toggles.lastIndex -> SettingsGroupPosition.Bottom
-                    else -> SettingsGroupPosition.Middle
-                }
-                SettingsToggleEntry(
-                    title = item.title,
-                    description = item.description,
-                    checked = item.checked,
-                    onCheckedChange = item.onCheckedChange,
-                    nothingStyle = nothingStyleEnabled,
-                    position = position
-                )
-                if (index != toggles.lastIndex) {
-                    SettingsDividerGap()
+        SettingsGroup {
+            toggles.forEach { toggle ->
+                item(toggle.key) {
+                    SettingsSwitchItem(
+                        title = toggle.title,
+                        summary = toggle.description,
+                        checked = toggle.checked,
+                        onCheckedChange = toggle.onCheckedChange
+                    )
                 }
             }
         }

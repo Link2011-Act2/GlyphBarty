@@ -4,33 +4,20 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,9 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -53,8 +38,6 @@ import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.BuildConfig
 import jp.linkserver.glyphvisualizer.R
-import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
-import jp.linkserver.glyphvisualizer.ui.theme.NothingDotFontFamily
 import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
 import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
@@ -63,6 +46,8 @@ import jp.linkserver.pyrite.about.AboutOverviewMosaic as PyriteAboutOverviewMosa
 import jp.linkserver.pyrite.about.AboutInfo
 import jp.linkserver.pyrite.about.AboutDetail
 import jp.linkserver.pyrite.about.AboutOverviewContent
+import jp.linkserver.pyrite.settings.SettingsContentCard
+import jp.linkserver.pyrite.settings.SettingsGroup
 import jp.linkserver.pyrite.about.AboutUpdateCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -144,8 +129,7 @@ fun AboutScreen(
         }
     }
 
-    GlyphScreenScaffold(stringResource(R.string.about_screen_title), onBack,
-        nothingStyleEnabled) { padding ->
+    GlyphScreenScaffold(stringResource(R.string.about_screen_title), onBack) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -154,7 +138,7 @@ fun AboutScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
-            if (nothingStyleEnabled) PyriteAboutOverviewMosaic(
+            PyriteAboutOverviewMosaic(
                 info = AboutInfo(stringResource(R.string.app_name),
                     "$channelLabel ${stringResource(R.string.about_overview_release_line, versionName, versionCode).replace(' ', '\u00A0')}"),
                 overview = AboutOverviewContent(
@@ -164,16 +148,6 @@ fun AboutScreen(
                         stringResource(R.string.about_overview_version_value, simpleVersion))
                 ),
                 icon = { Image(painterResource(R.drawable.app_icon_foreground), null, Modifier.fillMaxSize()) },
-                onVersionClick = { showVersionDetailsDialog = true },
-                onChannelClick = { showChannelDialog = true }
-            ) else MaterialAboutOverviewMosaic(
-                channelName = channelName,
-                channelLabel = channelLabel,
-                versionName = versionName,
-                simpleVersion = simpleVersion,
-                versionCode = versionCode,
-                buildNumber = BuildConfig.BUILD_NUMBER,
-                nothingStyleEnabled = nothingStyleEnabled,
                 onVersionClick = { showVersionDetailsDialog = true },
                 onChannelClick = { showChannelDialog = true }
             )
@@ -191,10 +165,7 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AboutSectionTitle(stringResource(R.string.about_known_issues_title))
-                SettingsItemSurface(
-                    nothingStyle = nothingStyleEnabled,
-                    position = SettingsGroupPosition.Single
-                ) {
+                SettingsContentCard() {
                     Text(
                         text = stringResource(R.string.about_known_issues_body),
                         modifier = Modifier.padding(
@@ -210,90 +181,87 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AboutSectionTitle(stringResource(R.string.settings_category_information))
-                Column {
-                    SettingsItemSurface(
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Top
-                    ) {
-                        AboutSettingsActionCardContent(
-                            title = stringResource(R.string.about_support_title),
-                            description = stringResource(R.string.about_support_help),
-                            actionLabel = stringResource(R.string.about_support_open_site),
-                            nothingStyleEnabled = nothingStyleEnabled,
-                            onAction = {
-                                openUrl(context, resources.getString(R.string.about_support_site_url))
-                            }
-                        )
+                SettingsGroup {
+                    item("about-action-0") {
+                        SettingsContentCard() {
+                            AboutSettingsActionCardContent(
+                                title = stringResource(R.string.about_support_title),
+                                description = stringResource(R.string.about_support_help),
+                                actionLabel = stringResource(R.string.about_support_open_site),
+                                nothingStyleEnabled = nothingStyleEnabled,
+                                onAction = {
+                                    openUrl(context, resources.getString(R.string.about_support_site_url))
+                                }
+                            )
+                        }
                     }
-                    SettingsDividerGap()
-                    SettingsItemSurface(
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Middle
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
+
+                    item("about-action-1") {
+                        SettingsContentCard() {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
                                     horizontal = 22.dp,
                                     vertical = 18.dp
                                 ),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = stringResource(R.string.about_debug_title),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (nothingStyleEnabled) {
-                                        FontWeight.Normal
-                                    } else {
-                                        FontWeight.Bold
-                                    }
-                                )
-                                Text(
-                                    text = stringResource(R.string.about_debug_help),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                Button(
-                                    onClick = { AppLogger.share(context) },
-                                    modifier = Modifier.weight(1f),
-                                    enabled = logExists
-                                ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
-                                        if (logExists) {
-                                            stringResource(R.string.about_debug_share)
+                                        text = stringResource(R.string.about_debug_title),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (nothingStyleEnabled) {
+                                            FontWeight.Normal
                                         } else {
-                                            stringResource(R.string.about_debug_empty)
+                                            FontWeight.Bold
                                         }
                                     )
+                                    Text(
+                                        text = stringResource(R.string.about_debug_help),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                                OutlinedButton(
-                                    onClick = { showClearLogConfirmation = true },
-                                    modifier = Modifier.weight(1f),
-                                    enabled = logExists
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(stringResource(R.string.about_debug_clear))
+                                    Button(
+                                        onClick = { AppLogger.share(context) },
+                                        modifier = Modifier.weight(1f),
+                                        enabled = logExists
+                                    ) {
+                                        Text(
+                                            if (logExists) {
+                                                stringResource(R.string.about_debug_share)
+                                            } else {
+                                                stringResource(R.string.about_debug_empty)
+                                            }
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showClearLogConfirmation = true },
+                                        modifier = Modifier.weight(1f),
+                                        enabled = logExists
+                                    ) {
+                                        Text(stringResource(R.string.about_debug_clear))
+                                    }
                                 }
                             }
                         }
                     }
-                    SettingsDividerGap()
-                    SettingsItemSurface(
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Bottom
-                    ) {
-                        AboutSettingsActionCardContent(
-                            title = stringResource(R.string.about_oss_title),
-                            description = stringResource(R.string.about_oss_help),
-                            actionLabel = stringResource(R.string.about_oss_open),
-                            nothingStyleEnabled = nothingStyleEnabled,
-                            onAction = onOssLicenses
-                        )
+
+                    item("about-action-2") {
+                        SettingsContentCard() {
+                            AboutSettingsActionCardContent(
+                                title = stringResource(R.string.about_oss_title),
+                                description = stringResource(R.string.about_oss_help),
+                                actionLabel = stringResource(R.string.about_oss_open),
+                                nothingStyleEnabled = nothingStyleEnabled,
+                                onAction = onOssLicenses
+                            )
+                        }
                     }
                 }
             }
@@ -411,245 +379,7 @@ private fun AboutSettingsActionCardContent(
     }
 }
 
-@Composable
-private fun MaterialAboutOverviewMosaic(
-    channelName: String,
-    channelLabel: String,
-    versionName: String,
-    simpleVersion: String,
-    versionCode: Int,
-    buildNumber: String,
-    nothingStyleEnabled: Boolean,
-    onVersionClick: () -> Unit,
-    onChannelClick: () -> Unit
-) {
-    val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    val cardBorder: BorderStroke? = null
-    val titleFontFamily = if (nothingStyleEnabled) NTypeFontFamily else null
-    val gap = 3.dp
-    val cardRadius = 20.dp
-    val heroHeight = 176.dp
-    val bridgeLength = 48.dp
-    val bridgeOverlap = 1.dp
-    val gutterColor = MaterialTheme.colorScheme.surface
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val squareSize = (maxWidth - gap) * 0.5f
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(gap)
-        ) {
-            Surface(
-                onClick = onVersionClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(heroHeight),
-                shape = RoundedCornerShape(cardRadius),
-                color = cardColor,
-                border = cardBorder
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp, vertical = 22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(22.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        modifier = Modifier.size(92.dp),
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Image(
-                        painter = painterResource(R.drawable.app_icon_foreground),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            fontFamily = titleFontFamily,
-                            fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
-                            fontSize = 27.sp,
-                            lineHeight = 32.sp
-                        )
-                        val releaseLine = stringResource(
-                            R.string.about_overview_release_line,
-                            versionName,
-                            versionCode
-                        ).replace(' ', '\u00A0')
-                        Text(
-                            text = "$channelLabel $releaseLine",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 21.sp
-                        )
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(squareSize)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(squareSize),
-                    horizontalArrangement = Arrangement.spacedBy(gap)
-                ) {
-                    Surface(
-                        onClick = onChannelClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(squareSize),
-                        shape = RoundedCornerShape(cardRadius),
-                        color = cardColor,
-                        border = cardBorder
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(22.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = stringResource(R.string.about_overview_channel_title),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = channelName,
-                                fontFamily = titleFontFamily,
-                                fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
-                                fontSize = 25.sp,
-                                lineHeight = 29.sp
-                            )
-                        }
-                    }
-
-                    Surface(
-                        onClick = onVersionClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(squareSize),
-                        shape = RoundedCornerShape(cardRadius),
-                        color = cardColor,
-                        border = cardBorder
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(22.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = stringResource(R.string.about_overview_build_title),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = buildNumber,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = stringResource(R.string.about_overview_version_title),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = stringResource(
-                                        R.string.about_overview_version_value,
-                                        simpleVersion
-                                    ),
-                                    fontFamily = if (nothingStyleEnabled) {
-                                        NothingDotFontFamily
-                                    } else {
-                                        null
-                                    },
-                                    fontWeight = if (nothingStyleEnabled) FontWeight.Normal else FontWeight.Bold,
-                                    fontSize = 25.sp,
-                                    lineHeight = 29.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
-                val horizontalBridgeStart = (squareSize - bridgeLength) * 0.5f
-                val verticalBridgeStart = (squareSize - bridgeLength) * 0.5f
-
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = horizontalBridgeStart,
-                            y = -gap - bridgeOverlap
-                        )
-                        .width(bridgeLength)
-                        .height(gap + bridgeOverlap * 2f)
-                        .background(cardColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = horizontalBridgeStart - gap * 0.5f,
-                            y = -gap
-                        )
-                        .size(gap)
-                        .background(gutterColor, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = horizontalBridgeStart + bridgeLength - gap * 0.5f,
-                            y = -gap
-                        )
-                        .size(gap)
-                        .background(gutterColor, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = squareSize - bridgeOverlap,
-                            y = verticalBridgeStart
-                        )
-                        .width(gap + bridgeOverlap * 2f)
-                        .height(bridgeLength)
-                        .background(cardColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = squareSize,
-                            y = verticalBridgeStart - gap * 0.5f
-                        )
-                        .size(gap)
-                        .background(gutterColor, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .offset(
-                            x = squareSize,
-                            y = verticalBridgeStart + bridgeLength - gap * 0.5f
-                        )
-                        .size(gap)
-                        .background(gutterColor, CircleShape)
-                )
-            }
-        }
-    }
-}
 
 private fun splitVersionAndChannel(versionName: String): Pair<String, String> {
     val hyphenPos = versionName.lastIndexOf('-')

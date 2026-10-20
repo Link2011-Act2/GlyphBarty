@@ -108,7 +108,7 @@ android {
 }
 
 dependencies {
-    implementation("com.github.Link2011-Act2:Pyrite:eeedbfe5005bf1ed781d0cf1ef2cbe2a0923e7dd")
+    implementation("com.github.Link2011-Act2:Pyrite:508b1cf5131679fee7581acbc7ea55a365b6ff2c")
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.animation)
     implementation(files("libs/glyph-matrix-sdk-2.0.aar"))

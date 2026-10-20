@@ -97,7 +97,7 @@
     <string name="settings_ui_mode_title">UI style</string>
     <string name="settings_ui_mode_desc">Choose the overall look of the app.</string>
     <string name="settings_ui_mode_nothing">Nothing-like</string>
-    <string name="settings_ui_mode_material">Material 3</string>
+    <string name="settings_ui_mode_material">Material 3 Expressive</string>
     <string name="settings_home_screen_title">Home screen</string>
     <string name="settings_home_screen_compact">Compact</string>
     <string name="settings_home_screen_detailed">Detailed</string>

@@ -1,0 +1,74 @@
+[
+  {
+    "name": "material-dark-live.png",
+    "changedPercent": 4.795,
+    "changedPixels": 39220,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "material-dark-system.png",
+    "changedPercent": 9.832,
+    "changedPixels": 80416,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "material-dark-tune.png",
+    "changedPercent": 5.569,
+    "changedPixels": 45554,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "material-light-live.png",
+    "changedPercent": 96.671,
+    "changedPixels": 790689,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "material-light-system.png",
+    "changedPercent": 98.003,
+    "changedPixels": 801583,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "material-light-tune.png",
+    "changedPercent": 94.771,
+    "changedPixels": 775153,
+    "fullRootPixelIdentical": false
+  },
+  {
+    "name": "nothing-dark-live.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  },
+  {
+    "name": "nothing-dark-system.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  },
+  {
+    "name": "nothing-dark-tune.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  },
+  {
+    "name": "nothing-light-live.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  },
+  {
+    "name": "nothing-light-system.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  },
+  {
+    "name": "nothing-light-tune.png",
+    "changedPercent": 0.0,
+    "changedPixels": 0,
+    "fullRootPixelIdentical": true
+  }
+]

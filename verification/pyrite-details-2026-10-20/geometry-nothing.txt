@@ -1,0 +1,5 @@
+before scroll=1497.0,max=1541.0,viewport=Rect.fromLTRB(40.0, 234.0, 680.0, 1196.0),content=720x1280@[0, 0],bars=Insets{left=0, top=70, right=0, bottom=48}
+recreate-0 scroll=1497.0,max=1541.0,viewport=Rect.fromLTRB(40.0, 234.0, 680.0, 1196.0),content=720x1280@[0, 0],bars=Insets{left=0, top=70, right=0, bottom=48}
+recreate-1 scroll=1497.0,max=1541.0,viewport=Rect.fromLTRB(40.0, 234.0, 680.0, 1196.0),content=720x1280@[0, 0],bars=Insets{left=0, top=70, right=0, bottom=48}
+return-from-settings scroll=1497.0,max=1541.0,viewport=Rect.fromLTRB(40.0, 234.0, 680.0, 1196.0),content=720x1280@[0, 0],bars=Insets{left=0, top=70, right=0, bottom=48}
+details-after-recreation=(2292.0, Rect.fromLTRB(0.0, 320.0, 720.0, 1280.0)) sensitivity=2.0

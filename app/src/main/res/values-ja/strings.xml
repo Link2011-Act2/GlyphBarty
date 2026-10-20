@@ -97,7 +97,7 @@
     <string name="settings_ui_mode_title">UIスタイル</string>
     <string name="settings_ui_mode_desc">アプリ全体の見た目を選択します。</string>
     <string name="settings_ui_mode_nothing">Nothingライク</string>
-    <string name="settings_ui_mode_material">Material 3</string>
+    <string name="settings_ui_mode_material">Material 3 Expressive</string>
     <string name="settings_home_screen_title">ホーム画面</string>
     <string name="settings_home_screen_compact">簡易</string>
     <string name="settings_home_screen_detailed">詳細</string>

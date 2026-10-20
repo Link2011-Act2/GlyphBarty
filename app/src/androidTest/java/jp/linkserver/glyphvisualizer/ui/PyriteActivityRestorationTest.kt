@@ -22,13 +22,16 @@ import java.io.File
 class PyriteActivityRestorationTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    @Test fun aboutScrollAndInsetsSurviveTwoActivityRecreations() {
+    @Test fun aboutScrollAndInsetsSurviveTwoActivityRecreations() = verify(true)
+    @Test fun m3eAboutAndDetailsRestoreScrollAndSettings() = verify(false)
+
+    private fun verify(nothing: Boolean) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        SettingsPreferences.save(context, CaptureUiState(nothingStyleEnabled = true, automaticUpdateCheckEnabled = false))
+        SettingsPreferences.save(context, CaptureUiState(nothingStyleEnabled = nothing, automaticUpdateCheckEnabled = false))
         SettingsPreferences.markInitialSetupCompleted(context)
         SettingsPreferences.markNotificationPermissionPromptShown(context)
         val phase = InstrumentationRegistry.getArguments().getString("migrationPhase", "after")
-        val log = File(context.getExternalFilesDir(null), "pyrite-migration/$phase/geometry.txt")
+        val log = File(context.getExternalFilesDir(null), "pyrite-migration/$phase/geometry-${if (nothing) "nothing" else "m3e"}.txt")
         log.parentFile?.mkdirs()
         log.writeText("")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -68,6 +71,35 @@ class PyriteActivityRestorationTest {
                     .assertIsDisplayed().performClick()
                 compose.onNodeWithText(context.getString(R.string.about_oss_open)).assertIsDisplayed()
                 assertEquals(before, geometry("return-from-settings"))
+                compose.onNodeWithContentDescription(context.getString(R.string.cd_back)).performClick()
+                compose.onNodeWithContentDescription(context.getString(R.string.cd_back)).performClick()
+                compose.onNodeWithText(context.getString(R.string.experimental_details_tab_tune)).performClick()
+                compose.onNodeWithText(context.getString(R.string.param_sensitivity_title)).performScrollTo()
+                compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).onFirst()
+                    .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(2f) }
+                // MainCoordinator.updateDeferred intentionally debounces service/persistence sync.
+                compose.waitUntil(timeoutMillis = 5_000) {
+                    kotlin.math.abs(SettingsPreferences.load(context).sensitivity - 2f) < .001f
+                }
+                assertEquals(2f, SettingsPreferences.load(context).sensitivity, .001f)
+                compose.onNode(hasText(context.getString(R.string.advanced_meter_title)) and hasClickAction())
+                    .performScrollTo().performClick()
+                compose.onNodeWithText(context.getString(R.string.param_auto_scale_offset_title))
+                    .performScrollTo().assertIsDisplayed()
+                fun detailsViewport(): Pair<Float, androidx.compose.ui.geometry.Rect> {
+                    val node = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
+                        and hasAnyDescendant(hasText(context.getString(R.string.param_auto_scale_offset_title)))).fetchSemanticsNode()
+                    return node.config[SemanticsProperties.VerticalScrollAxisRange].value() to node.boundsInRoot
+                }
+                val retainedDetails = detailsViewport()
+                compose.onNodeWithContentDescription(context.getString(R.string.cd_settings)).performClick()
+                compose.onNodeWithContentDescription(context.getString(R.string.cd_back)).performClick()
+                assertEquals(retainedDetails, detailsViewport())
+                scenario.recreate()
+                compose.onNodeWithText(context.getString(R.string.param_auto_scale_offset_title)).assertIsDisplayed()
+                assertEquals(retainedDetails, detailsViewport())
+                assertEquals(2f, SettingsPreferences.load(context).sensitivity, .001f)
+                log.appendText("details-after-recreation=$retainedDetails sensitivity=2.0\n")
             }
         }
     }

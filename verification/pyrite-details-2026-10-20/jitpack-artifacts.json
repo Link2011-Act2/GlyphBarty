@@ -1,0 +1,19 @@
+{
+  "sha": "508b1cf5131679fee7581acbc7ea55a365b6ff2c",
+  "files": {
+    "Pyrite-sources.jar": {
+      "bytes": 25094,
+      "sha256": "d07d70f54310e46b60729f6676ab41a55a7d44878ea707c59038049effe7f3da"
+    },
+    "Pyrite.aar": {
+      "bytes": 207801,
+      "sha256": "57493fdcf23a8f60a67f78ba402d8c714fc723ed72e0ba16f31b92aee72e376c"
+    },
+    "Pyrite.pom": {
+      "bytes": 2395,
+      "sha256": "95f4914878b86f79fe98ec4efa045b8296880b12a6d31f9b481fc9767d0da7a9"
+    }
+  },
+  "settingsControlsSource": true,
+  "fontFiles": []
+}

@@ -1,58 +1,22 @@
 package jp.linkserver.glyphvisualizer
 
-import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.media.projection.MediaProjectionManager
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,45 +28,22 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Equalizer
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 
+import jp.linkserver.pyrite.settings.SettingsSlider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -110,83 +51,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import jp.linkserver.glyphvisualizer.ui.AboutScreen
-import jp.linkserver.glyphvisualizer.ui.DirectNativeDetailedMeterCanvas
-import jp.linkserver.glyphvisualizer.ui.DirectNativeDetailedMeterBar
-import jp.linkserver.glyphvisualizer.ui.DirectNativeMeterCanvas
-import jp.linkserver.glyphvisualizer.ui.DirectNativeMeterBar
-import jp.linkserver.glyphvisualizer.ui.DirectNativeMeterStats
-import jp.linkserver.glyphvisualizer.ui.DirectNativeSpectrumMeterCanvas
-import jp.linkserver.glyphvisualizer.ui.DirectNativeSpectrumMeterBar
-import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsScreenContent
-import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsSummary
-import jp.linkserver.glyphvisualizer.ui.ExperimentalDetailsTab
-import jp.linkserver.glyphvisualizer.ui.ExperimentalMainScreenContent
-import jp.linkserver.glyphvisualizer.ui.GlyphInterfaceInspectorScreen
-import jp.linkserver.glyphvisualizer.ui.LightweightMeterCanvas
-import jp.linkserver.glyphvisualizer.ui.LightweightMeterBar
-import jp.linkserver.glyphvisualizer.ui.MeterCanvas
-import jp.linkserver.glyphvisualizer.ui.MeterStat
-import jp.linkserver.glyphvisualizer.ui.OssLicensesScreen
 import jp.linkserver.glyphvisualizer.ui.Phone1GlyphDebugControls
-import jp.linkserver.glyphvisualizer.ui.SettingsScreen
-import jp.linkserver.glyphvisualizer.ui.SettingsEntry
-import jp.linkserver.glyphvisualizer.ui.SettingsGroupPosition
-import jp.linkserver.glyphvisualizer.ui.SpectrumMeterCanvas
-import jp.linkserver.glyphvisualizer.ui.SpectrumMeterBar
-import jp.linkserver.glyphvisualizer.ui.UiMeterModel
-import jp.linkserver.glyphvisualizer.ui.UpdateOverviewScreen
-import jp.linkserver.glyphvisualizer.ui.buildUiMeterModel
-import jp.linkserver.glyphvisualizer.ui.normalizedSpectrumMeterBands
-import jp.linkserver.glyphvisualizer.ui.symmetricPeakDistanceSteps
-import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
-import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRegistry
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternKind
 import jp.linkserver.glyphvisualizer.glyph.GlyphPatternRenderMode
 import jp.linkserver.glyphvisualizer.glyph.supportsGlyphVisualDynamics
-import jp.linkserver.glyphvisualizer.glyph.GlyphVisualTuningKey
-import jp.linkserver.glyphvisualizer.glyph.resolveGlyphVisualTuning
-import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.glyph.supportsFillOtherGlyphLights
-import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
-import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
-import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
-import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
-import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.isIntDevBuild
-import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
-import rikka.shizuku.Shizuku
 
 @OptIn(ExperimentalMaterial3Api::class)
 
@@ -201,47 +81,9 @@ internal fun ParameterSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     nothingStyleEnabled: Boolean
 ) {
-    val inactiveTrackColor = when {
-        nothingStyleEnabled && isSystemInDarkTheme() -> Color(0xFF2A2A2A)
-        nothingStyleEnabled -> Color(0xFFF2F2F2)
-        isSystemInDarkTheme() -> MaterialTheme.colorScheme.surfaceContainerHighest
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = valueText,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            onValueChangeFinished = onValueChangeFinished,
-            valueRange = valueRange,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = inactiveTrackColor,
-                activeTickColor = MaterialTheme.colorScheme.onPrimary,
-                inactiveTickColor = MaterialTheme.colorScheme.surfaceContainerHighest
-            )
-        )
-    }
+    // Style comes from the app's PyriteTheme; this adapter preserves existing app call sites.
+    SettingsSlider(title, valueText, value, onValueChange, valueRange,
+        summary = description, onValueChangeFinished = onValueChangeFinished)
 }
 
 @Composable

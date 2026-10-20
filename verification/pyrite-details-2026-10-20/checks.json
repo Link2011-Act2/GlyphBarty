@@ -1,0 +1,32 @@
+{
+  "pyriteSha": "508b1cf5131679fee7581acbc7ea55a365b6ff2c",
+  "pyriteUiCases": 35,
+  "glyphUiCases": 14,
+  "glyphInitialUiPassed": 12,
+  "glyphRestorationRetriedPassed": 2,
+  "glyphUnitTests": 220,
+  "glyphUnitFailures": 0,
+  "glyphLint": {
+    "Warning": 200,
+    "Hint": 8
+  },
+  "glyphStandaloneFiles": 190,
+  "glyphStandaloneBuildSeconds": 113,
+  "sharedGlobalDependencyCache": true,
+  "pyriteSourcesIncluded": false,
+  "shutupIsolatedLint": {
+    "Warning": 48
+  },
+  "shutupUiCasesPassed": 9,
+  "shutupActualDependencyUnchanged": "43557c8",
+  "glyphApk": {
+    "bytes": 108483162,
+    "sha256": "6257fd08df791170a2d43012feb7504786cc0e7fb89bd7d433b2ac22c3f459d8"
+  },
+  "glyphStandaloneApk": {
+    "bytes": 66505631,
+    "sha256": "01c429fd8d95679718d06a657433bed2002324aa1fee19eaf8190897896414b8"
+  },
+  "finalSourceMainCallbackBodyUnchanged": true,
+  "nothingDetailsFullRootIdenticalImages": 6
+}

@@ -52,21 +52,26 @@ class PyriteFontsIntegrationTest {
         assertEquals(FontFamily.SansSerif, family(text(R.string.about_version_details_title)))
     }
 
-    @Test fun nothingPaletteMatchesPublishedPyriteInBothModes() {
+    @Test fun palettesMatchPublishedPyriteInBothStylesAndModes() {
         var dark by mutableStateOf(false)
+        var nothing by mutableStateOf(true)
+        var dynamic by mutableStateOf(false)
         var expected = ""
         var actual = ""
         compose.setContent {
-            PyriteTheme(style = PyriteStyle.Nothing, darkTheme = dark) {
+            PyriteTheme(style = if (nothing) PyriteStyle.Nothing else PyriteStyle.Material3Expressive,
+                darkTheme = dark, dynamicColor = dynamic) {
                 val colors = MaterialTheme.colorScheme
                 SideEffect { expected = colors.toString() }
             }
-            GlyphBartyTheme(nothingStyle = true, darkTheme = dark) {
+            GlyphBartyTheme(nothingStyle = nothing, darkTheme = dark, dynamicColor = dynamic) {
                 val colors = MaterialTheme.colorScheme
                 SideEffect { actual = colors.toString() }
             }
         }
-        compose.runOnIdle { assertEquals(expected, actual); dark = true }
-        compose.runOnIdle { assertEquals(expected, actual) }
+        for (sourceStyle in listOf(true, false)) for (night in listOf(false, true)) for (wallpaper in listOf(false, true)) {
+            compose.runOnIdle { nothing = sourceStyle; dark = night; dynamic = wallpaper }
+            compose.runOnIdle { assertEquals("nothing=$nothing dark=$dark dynamic=$dynamic", expected, actual) }
+        }
     }
 }

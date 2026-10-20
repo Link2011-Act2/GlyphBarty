@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -203,8 +202,7 @@ fun SettingsScreen(
         )
     }
 
-    GlyphScreenScaffold(stringResource(R.string.settings_screen_title), onBack,
-        nothingStyleEnabled, settingsHeader = true) { padding ->
+    GlyphScreenScaffold(stringResource(R.string.settings_screen_title), onBack) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -217,23 +215,21 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_category_general)
             ) {
                 item("settings_language_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_language_title),
-                        description = stringResource(R.string.settings_language_desc),
+                        summary = stringResource(R.string.settings_language_desc),
                         onClick = {
                             val opened = openAppLanguageSettings(context)
                             if (!opened) {
                                 Toast.makeText(context, openFailedText, Toast.LENGTH_SHORT).show()
                             }
-                        },
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Top
+                        }
                     )
                 }
                 item("settings_notifications_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_notifications_title),
-                        description = stringResource(
+                        summary = stringResource(
                             if (appNotificationsEnabled) {
                                 R.string.settings_notifications_desc_enabled
                             } else {
@@ -248,24 +244,16 @@ fun SettingsScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
-                        },
-                        nothingStyle = nothingStyleEnabled,
-                        position = if (showAutoEnablePhone1GlyphDebugOnStart) {
-                            SettingsGroupPosition.Middle
-                        } else {
-                            SettingsGroupPosition.Bottom
                         }
                     )
                 }
                 if (showAutoEnablePhone1GlyphDebugOnStart) {
                     item("settings_phone1_debug_auto_enable_title") {
-                        SettingsSwitchRow(
+                        SettingsSwitchItem(
                             title = stringResource(R.string.settings_phone1_debug_auto_enable_title),
-                            description = stringResource(R.string.settings_phone1_debug_auto_enable_desc),
+                            summary = stringResource(R.string.settings_phone1_debug_auto_enable_desc),
                             checked = autoEnablePhone1GlyphDebugOnStart,
-                            onCheckedChange = onAutoEnablePhone1GlyphDebugOnStartChanged,
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Bottom
+                            onCheckedChange = onAutoEnablePhone1GlyphDebugOnStartChanged
                         )
                     }
                 }
@@ -275,60 +263,46 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_category_display)
             ) {
                 item("settings_ui_mode_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_ui_mode_title),
-                        description = if (nothingStyleEnabled) nothingLabel else materialLabel,
-                        onClick = { showUiModeDialog = true },
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Top
+                        summary = if (nothingStyleEnabled) nothingLabel else materialLabel,
+                        onClick = { showUiModeDialog = true }
                     )
                 }
                 item("settings_home_screen_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_home_screen_title),
-                        description = if (detailedHomeEnabled) {
+                        summary = if (detailedHomeEnabled) {
                             detailedHomeLabel
                         } else {
                             compactHomeLabel
                         },
                         onClick = { showHomeScreenDialog = true },
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Middle,
                         enabled = experimentalMainUiEnabled
                     )
                 }
                 item("settings_experimental_main_ui_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.settings_experimental_main_ui_title),
-                        description = stringResource(R.string.settings_experimental_main_ui_desc),
+                        summary = stringResource(R.string.settings_experimental_main_ui_desc),
                         checked = !experimentalMainUiEnabled,
-                        onCheckedChange = { checked -> onExperimentalMainUiEnabledChanged(!checked) },
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Middle
+                        onCheckedChange = { checked -> onExperimentalMainUiEnabledChanged(!checked) }
                     )
                 }
                 item("settings_meter_style_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_meter_style_title),
-                        description = meterStyleSummary,
-                        onClick = { showMeterStyleDialog = true },
-                        nothingStyle = nothingStyleEnabled,
-                        position = if (NATIVE_METER_VIEW_SETTING_VISIBLE) {
-                            SettingsGroupPosition.Middle
-                        } else {
-                            SettingsGroupPosition.Bottom
-                        }
+                        summary = meterStyleSummary,
+                        onClick = { showMeterStyleDialog = true }
                     )
                 }
                 if (NATIVE_METER_VIEW_SETTING_VISIBLE) {
                     item("settings_native_meter_view_title") {
-                        SettingsSwitchRow(
+                        SettingsSwitchItem(
                             title = stringResource(R.string.settings_native_meter_view_title),
-                            description = stringResource(R.string.settings_native_meter_view_desc),
+                            summary = stringResource(R.string.settings_native_meter_view_desc),
                             checked = nativeMeterViewEnabled,
-                            onCheckedChange = onNativeMeterViewEnabledChanged,
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Bottom
+                            onCheckedChange = onNativeMeterViewEnabledChanged
                         )
                     }
                 }
@@ -338,55 +312,45 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_category_playback)
             ) {
                 item("extras_sync_nothing_os_glyph_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.extras_sync_nothing_os_glyph_title),
-                        description = stringResource(R.string.extras_sync_nothing_os_glyph_description),
+                        summary = stringResource(R.string.extras_sync_nothing_os_glyph_description),
                         checked = syncWithNothingOsGlyphSettingEnabled,
-                        onCheckedChange = onSyncWithNothingOsGlyphSettingEnabledChanged,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Top
+                        onCheckedChange = onSyncWithNothingOsGlyphSettingEnabledChanged
                     )
                 }
                 item("settings_media_playback_only_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.settings_media_playback_only_title),
-                        description = mediaPlaybackOnlyDescription,
+                        summary = mediaPlaybackOnlyDescription,
                         checked = mediaPlaybackOnlyEnabled,
-                        onCheckedChange = onMediaPlaybackOnlyEnabledChanged,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Middle
+                        onCheckedChange = onMediaPlaybackOnlyEnabledChanged
                     )
                 }
                 if (BLUETOOTH_STARTUP_STABILIZATION_ENABLED) {
                     item("settings_visualizer_stabilization_title") {
-                        SettingsSwitchRow(
+                        SettingsSwitchItem(
                             title = stringResource(R.string.settings_visualizer_stabilization_title),
-                            description = stringResource(R.string.settings_visualizer_stabilization_desc),
+                            summary = stringResource(R.string.settings_visualizer_stabilization_desc),
                             checked = experimentalVisualizerStabilizationEnabled,
-                            onCheckedChange = onExperimentalVisualizerStabilizationEnabledChanged,
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Middle
+                            onCheckedChange = onExperimentalVisualizerStabilizationEnabledChanged
                         )
                     }
                 }
                 item("settings_visualizer_signal_watchdog_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.settings_visualizer_signal_watchdog_title),
-                        description = stringResource(R.string.settings_visualizer_signal_watchdog_desc),
+                        summary = stringResource(R.string.settings_visualizer_signal_watchdog_desc),
                         checked = experimentalVisualizerSignalWatchdogEnabled,
-                        onCheckedChange = onExperimentalVisualizerSignalWatchdogEnabledChanged,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Middle
+                        onCheckedChange = onExperimentalVisualizerSignalWatchdogEnabledChanged
                     )
                 }
                 item("settings_media_projection_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.settings_media_projection_title),
-                        description = stringResource(R.string.settings_media_projection_desc),
+                        summary = stringResource(R.string.settings_media_projection_desc),
                         checked = mediaProjectionEnabled,
-                        onCheckedChange = onMediaProjectionEnabledChanged,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Bottom
+                        onCheckedChange = onMediaProjectionEnabledChanged
                     )
                 }
             }
@@ -395,13 +359,11 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_category_updates)
             ) {
                 item("settings_automatic_update_check_title") {
-                    SettingsSwitchRow(
+                    SettingsSwitchItem(
                         title = stringResource(R.string.settings_automatic_update_check_title),
-                        description = stringResource(R.string.settings_automatic_update_check_desc),
+                        summary = stringResource(R.string.settings_automatic_update_check_desc),
                         checked = automaticUpdateCheckEnabled,
-                        onCheckedChange = onAutomaticUpdateCheckEnabledChanged,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Single
+                        onCheckedChange = onAutomaticUpdateCheckEnabledChanged
                     )
                 }
             }
@@ -411,38 +373,32 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_category_developer)
                 ) {
                     item("settings_experimental_features_title") {
-                        SettingsNavigationRow(
+                        SettingsNavigationItem(
                             title = stringResource(R.string.settings_experimental_features_title),
-                            description = stringResource(R.string.settings_experimental_features_desc),
-                            onClick = onExperimentalFeatures,
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Top
+                            summary = stringResource(R.string.settings_experimental_features_desc),
+                            onClick = onExperimentalFeatures
                         )
                     }
                     item("about_update_test_mode_title") {
-                        SettingsSwitchRow(
+                        SettingsSwitchItem(
                             title = stringResource(R.string.about_update_test_mode_title),
-                            description = stringResource(R.string.about_update_test_mode_desc),
+                            summary = stringResource(R.string.about_update_test_mode_desc),
                             checked = localShowLatestForTesting,
                             onCheckedChange = { enabled ->
                                 localShowLatestForTesting = enabled
                                 setShowLatestReleaseForTestingEnabled(context, enabled)
-                            },
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Middle
+                            }
                         )
                     }
                     item("about_update_ignore_interval_test_title") {
-                        SettingsSwitchRow(
+                        SettingsSwitchItem(
                             title = stringResource(R.string.about_update_ignore_interval_test_title),
-                            description = stringResource(R.string.about_update_ignore_interval_test_desc),
+                            summary = stringResource(R.string.about_update_ignore_interval_test_desc),
                             checked = localIgnoreCheckIntervalForTesting,
                             onCheckedChange = { enabled ->
                                 localIgnoreCheckIntervalForTesting = enabled
                                 setUpdateCheckIntervalIgnoredForTesting(context, enabled)
-                            },
-                            nothingStyle = nothingStyleEnabled,
-                            position = SettingsGroupPosition.Bottom
+                            }
                         )
                     }
                 }
@@ -452,12 +408,10 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_category_information)
             ) {
                 item("settings_about_title") {
-                    SettingsNavigationRow(
+                    SettingsNavigationItem(
                         title = stringResource(R.string.settings_about_title),
-                        description = stringResource(R.string.settings_about_desc),
-                        onClick = onAbout,
-                        nothingStyle = nothingStyleEnabled,
-                        position = SettingsGroupPosition.Single
+                        summary = stringResource(R.string.settings_about_desc),
+                        onClick = onAbout
                     )
                 }
             }
@@ -678,19 +632,4 @@ private fun UiModeOption(
             style = MaterialTheme.typography.bodyLarge
         )
     }
-}
-
-// Keep the existing Material option; only the Nothing rows use Pyrite's source-style UI.
-@Composable
-private fun SettingsNavigationRow(title: String, description: String, onClick: () -> Unit,
-    nothingStyle: Boolean, position: SettingsGroupPosition, enabled: Boolean = true) {
-    if (nothingStyle) SettingsNavigationItem(title, onClick, summary = description, enabled = enabled)
-    else SettingsEntry(title, description, onClick, false, position, enabled = enabled)
-}
-
-@Composable
-private fun SettingsSwitchRow(title: String, description: String, checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit, nothingStyle: Boolean, position: SettingsGroupPosition) {
-    if (nothingStyle) SettingsSwitchItem(title, checked, onCheckedChange, summary = description)
-    else SettingsToggleEntry(title, description, checked, onCheckedChange, false, position)
 }
