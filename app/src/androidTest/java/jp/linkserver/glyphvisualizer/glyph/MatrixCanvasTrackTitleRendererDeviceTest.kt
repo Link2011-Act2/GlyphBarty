@@ -15,6 +15,45 @@ import java.util.Locale
 class MatrixCanvasTrackTitleRendererDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun proGrayCorrectionBrightensThinTextWhilePhone3AndRawCoverageStayUnchanged() {
+        for (length in listOf(25, 13)) {
+            val renderer = MatrixCanvasTrackTitleRenderer(context, length)
+            var beforeSum = 0L
+            var afterSum = 0L
+            var beforeVisible = 0
+            var afterVisible = 0
+            try {
+                for (text in listOf("Ilij! 123", "Glyph Barty", "日本語の曲名")) {
+                    renderer.prepare(text, null, length)
+                    val bitmap = requireNotNull(renderer.cachedBitmap)
+                    for (left in 0 until bitmap.width step length) {
+                        val frame = renderer.render(-left)
+                        for (y in 0 until length) for (x in 0 until minOf(length, bitmap.width - left)) {
+                            val raw = bitmap.getPixel(left + x, y)
+                            val legacy = MatrixCanvasTrackTitleRenderer.quantizePixel(raw)
+                            val actual = frame[y * length + x]
+                            assertEquals(MatrixCanvasTrackTitleRenderer.quantizePixel(raw, length), actual)
+                            if (length == 25) assertEquals(legacy, actual)
+                            else assertTrue(actual >= legacy)
+                            if (MatrixCanvasTrackTitleRenderer.toGray(raw) <= 87) assertEquals(0, actual)
+                            assertTrue(actual in listOf(0, 42, 85, 127))
+                            beforeSum += legacy
+                            afterSum += actual
+                            if (legacy > 0) beforeVisible++
+                            if (actual > 0) afterVisible++
+                        }
+                    }
+                }
+                if (length == 25) { assertEquals(beforeSum, afterSum); assertEquals(beforeVisible, afterVisible) }
+                else {
+                    assertTrue(afterSum > beforeSum)
+                    assertTrue(afterVisible > beforeVisible)
+                    assertTrue("Excessive support growth", afterVisible <= beforeVisible * 1.2)
+                }
+            } finally { renderer.clear() }
+        }
+    }
+
     @Test fun proDescendersCapsDigitsJapaneseAndAccentsFitAndroidCanvasBeforeLedMask() {
         val renderer = MatrixCanvasTrackTitleRenderer(context, 13)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

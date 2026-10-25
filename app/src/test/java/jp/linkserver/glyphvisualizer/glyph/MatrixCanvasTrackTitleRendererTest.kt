@@ -201,7 +201,7 @@ class MatrixCanvasTrackTitleRendererTest {
                             canvas.drawText(text, x.toFloat(), baseline, paint)
                             val expected = IntArray(length * length)
                             viewport.getPixels(expected, 0, length, 0, 0, length, length)
-                            for (i in expected.indices) expected[i] = MatrixCanvasTrackTitleRenderer.quantizePixel(expected[i])
+                            for (i in expected.indices) expected[i] = MatrixCanvasTrackTitleRenderer.quantizePixel(expected[i], length)
                             assertArrayEquals("length=$length x=$x text=$text", expected, renderer.render(x))
                             assertSame(cached, renderer.cachedBitmap)
                         }

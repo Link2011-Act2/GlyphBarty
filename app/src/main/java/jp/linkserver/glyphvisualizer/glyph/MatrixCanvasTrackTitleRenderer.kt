@@ -18,6 +18,7 @@ import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import java.util.Locale
 
 /** Independent Canvas implementation, owned by the same thread as the Matrix controller. */
@@ -28,6 +29,7 @@ internal class MatrixCanvasTrackTitleRenderer(context: Context, val matrixLength
         const val SCROLL_PIXELS_PER_SECOND = 40
         const val PRO_SCROLL_PIXELS_PER_SECOND = 21
         const val TRAILING_SPACE_PX = 12
+        const val PRO_TEXT_GRAY_GAIN = 1.25f
         private const val MAX_INPUT_CODE_POINTS = 512
 
         internal fun toGray(argb: Int): Int =
@@ -38,11 +40,15 @@ internal class MatrixCanvasTrackTitleRenderer(context: Context, val matrixLength
             return (Math.rint(normalized / 85.0) * 85).toInt()
         }
 
-        internal fun quantizePixel(argb: Int): Int {
+        internal fun quantizePixel(argb: Int, matrixLength: Int = 25): Int {
+            val gray = toGray(argb)
+            // Smaller Pro glyphs consist mostly of antialiased pixels. Lift their
+            // coverage before quantization, without changing geometry or peak level.
+            val correctedGray = if (matrixLength == 13) (gray * PRO_TEXT_GRAY_GAIN).roundToInt().coerceAtMost(255) else gray
             // Toy's text layer is 0/680/1360/2040, not the SDK's full 4095 range.
             // Approximate it in the existing 8-bit pipeline: 0/42/85/127. Only the
             // shared send boundary converts back to 12-bit (0/674/1365/2039).
-            val toyLevel = quantizeGray(toGray(argb)) * 8
+            val toyLevel = quantizeGray(correctedGray) * 8
             return (toyLevel * 255 + 2047) / MatrixFrameBrightness.SDK_MAX_BRIGHTNESS
         }
 
@@ -132,7 +138,7 @@ internal class MatrixCanvasTrackTitleRenderer(context: Context, val matrixLength
             }
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            for (index in pixels.indices) pixels[index] = quantizePixel(pixels[index])
+            for (index in pixels.indices) pixels[index] = quantizePixel(pixels[index], matrixLength)
             stripPixels = pixels
             cachedBitmap = bitmap
             cachedText = text

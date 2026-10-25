@@ -284,24 +284,10 @@ fun AboutScreen(
     }
 
     if (showVersionDetailsDialog) {
-        AlertDialog(
+        VersionDetailsDialog(
             onDismissRequest = { showVersionDetailsDialog = false },
-            title = { Text(stringResource(R.string.about_version_details_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.about_version_details_message,
-                        versionName,
-                        versionCode,
-                        BuildConfig.BUILD_NUMBER
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showVersionDetailsDialog = false }) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            }
+            versionName = versionName,
+            versionCode = versionCode,
         )
     }
 
