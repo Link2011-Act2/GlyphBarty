@@ -114,6 +114,12 @@ class GlyphMatrixController(
     private var matrixSmoothMotionEnabled = false
     private var matrixTrackTitleEnabled = false
     private var matrixTrackArtistEnabled = false
+    private val normalPlaybackPolicy = MatrixPlaybackSessionPolicy()
+    private var normalMediaPlaybackOnly = false
+    private var normalPlaybackSnapshot: MediaSessionPlaybackGate.PlaybackSnapshot? = null
+    private var lastNormalPlaybackDecision: MatrixPlaybackSessionPolicy.Decision? = null
+    private val spectrumSignalGate = MatrixSpectrumSignalGate()
+    private var hasSpectrumAnalysis = false
     private val trackTitleDetector = MediaTrackTitleChangeDetector()
     private val trackTitleAnimation = MatrixTrackTitleAnimation()
     private var trackTitleRenderer: MatrixTrackTitleRenderer? = null
@@ -393,6 +399,8 @@ class GlyphMatrixController(
 
     override fun setGlyphMode(mode: String) {
         if (glyphMode != mode) {
+            normalPlaybackPolicy.reset()
+            lastNormalPlaybackDecision = null
             glyphMode = mode
             lastLitRows = -1
             lastMatrixBrightness = -1
@@ -447,10 +455,12 @@ class GlyphMatrixController(
         // Keep lastFrameHadTrackTitle until the next frame replaces the composite.
     }
 
-    private fun updateTrackTitle(snapshot: MediaSessionPlaybackGate.PlaybackSnapshot, nowMs: Long) {
+    private fun updateTrackTitle(snapshot: MediaSessionPlaybackGate.PlaybackSnapshot, nowMs: Long, keepMissingSession: Boolean = false) {
         val wasActive = trackTitleAnimation.active
-        val changed = trackTitleDetector.observe(snapshot)
-        if (!snapshot.activeForOpenReel) {
+        val holdMissingSession = !snapshot.activeForOpenReel && keepMissingSession
+        // A missing/NONE snapshot must not erase the identity used to deduplicate the returning song.
+        val changed = if (holdMissingSession) false else trackTitleDetector.observe(snapshot)
+        if (!snapshot.activeForOpenReel && !holdMissingSession) {
             trackTitleAnimation.cancel()
             trackTitleRenderer?.clear()
         } else if (changed) {
@@ -481,6 +491,25 @@ class GlyphMatrixController(
         if (wasActive && !trackTitleAnimation.active) {
             AppLogger.i(TAG, "Track title ended: status=${snapshot.status} changed=$changed")
         }
+    }
+
+    /** Matrix owner thread only. The service and renderer share this normal-mode decision. */
+    internal fun isNormalMatrixPlaybackOutputAllowed(mediaPlaybackOnly: Boolean, activity: Float): Boolean {
+        normalMediaPlaybackOnly = mediaPlaybackOnly
+        if (sessionStopped) return false
+        return evaluateNormalPlayback(SystemClock.elapsedRealtime(), activity).allowOutput
+    }
+
+    private fun evaluateNormalPlayback(nowMs: Long, activity: Float): MatrixPlaybackSessionPolicy.Decision {
+        val snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
+        normalPlaybackSnapshot = snapshot
+        val decision = normalPlaybackPolicy.evaluate(snapshot, nowMs,
+            activity >= SILENCE_ACTIVITY_THRESHOLD, normalMediaPlaybackOnly)
+        if (decision != lastNormalPlaybackDecision) {
+            AppLogger.i(TAG, "Normal Matrix playback: status=${snapshot.status} raw=${snapshot.rawState} access=${snapshot.sessionAccessAvailable} decision=$decision musicOnly=$normalMediaPlaybackOnly")
+            lastNormalPlaybackDecision = decision
+        }
+        return decision
     }
 
     private fun submitTrackTitleFrame() {
@@ -592,11 +621,37 @@ class GlyphMatrixController(
         } else {
             raw
         }
-        rawSpectrumPeak = resampled.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
-        this.spectrumBands = normalizeSpectrumBands(
-            input = applySpectrumSmoothing(resampled),
-            spectrumRawPeak = spectrumRawPeak
-        )
+        val openReel = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
+        // SpectrumAnalyzer.bands is normalized to its own maximum even for tiny noise. Its
+        // maximum is not an absolute signal level. Keep Open Reel's established analysis path.
+        rawSpectrumPeak = if (openReel) resampled.maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+            else spectrumRawPeak.coerceIn(0f, 1f)
+        if (!openReel) {
+            hasSpectrumAnalysis = true
+            val wasQuiet = spectrumSignalGate.quiet
+            spectrumSignalGate.update(rawSpectrumPeak, waveformSamples, SystemClock.elapsedRealtime())
+            if (spectrumSignalGate.quiet) {
+                if (!wasQuiet) {
+                    legacySpectrumAutoScale.reset()
+                    spectrumAutoGain.reset()
+                    spectrumOverallLevelEnvelope.reset()
+                    spectrumVisualDynamicsState.reset()
+                    if (GlyphPatternRegistry.kindOf(glyphMode) == GlyphPatternKind.SPECTRUM) resetLevelScaleTracking()
+                }
+                if (smoothedSpectrumBands.size != resampled.size) smoothedSpectrumBands = FloatArray(resampled.size)
+                smoothedSpectrumBands.fill(0f)
+                this.spectrumBands = smoothedSpectrumBands
+            } else {
+                // Start releasing the old shape immediately, before AGC can magnify noise.
+                val input = if (spectrumSignalGate.holdGainIncrease) {
+                    if (normalizedSpectrumBands.size != resampled.size) normalizedSpectrumBands = FloatArray(resampled.size)
+                    normalizedSpectrumBands.also { it.fill(0f) }
+                } else resampled
+                this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(input), rawSpectrumPeak)
+            }
+        } else {
+            this.spectrumBands = normalizeSpectrumBands(applySpectrumSmoothing(resampled), rawSpectrumPeak)
+        }
         this.waveformSamples = waveformSamples?.copyOf() ?: FloatArray(0)
         this.leftWaveformSamples = leftWaveformSamples?.copyOf() ?: FloatArray(0)
         this.rightWaveformSamples = rightWaveformSamples?.copyOf() ?: FloatArray(0)
@@ -645,6 +700,8 @@ class GlyphMatrixController(
 
         val now = SystemClock.elapsedRealtime()
         if (autoScaleStrategy == GlyphAutoScaleStrategy.LEGACY) {
+            if (GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
+                spectrumSignalGate.holdGainIncrease) return input
             return legacySpectrumAutoScale.update(
                 input = input,
                 nowMs = now,
@@ -659,7 +716,8 @@ class GlyphMatrixController(
             nowMs = now,
             targetLevel = effectiveAutoScaleTargetLevel(autoScaleOffset),
             gainUpTauSeconds = SPECTRUM_AUTO_GAIN_UP_TAU_SECONDS,
-            holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD
+            holdGainIncrease = rawPeak < SILENCE_ACTIVITY_THRESHOLD ||
+                (GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL && spectrumSignalGate.holdGainIncrease)
         )
         if (normalizedSpectrumBands.size != input.size) {
             normalizedSpectrumBands = FloatArray(input.size)
@@ -690,6 +748,8 @@ class GlyphMatrixController(
     }
 
     private fun resetSpectrumScaleTracking() {
+        spectrumSignalGate.reset()
+        hasSpectrumAnalysis = false
         legacySpectrumAutoScale.reset()
         spectrumAutoGain.reset()
         spectrumOverallLevelEnvelope.reset()
@@ -792,21 +852,36 @@ class GlyphMatrixController(
     override fun updateLevel(level: Float) {
         val now = SystemClock.elapsedRealtime()
         val activity = max(max(level.coerceIn(0f, 1f), max(leftLevel, rightLevel)), rawSpectrumPeak)
-        if (matrixLength <= 0 || sessionStopped ||
-            (!isSessionOpen && !sessionRecovery.pending && !matrixReleasedForSilence)) {
+        if (matrixLength <= 0 || sessionStopped) {
+            pendingLevel = level
+            return
+        }
+        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode ?: GlyphPatternRenderMode.MATRIX_BAR
+        // Smoothed UI/RMS envelopes can outlive the signal. Do not mistake their tails for a
+        // different audio source when deciding whether a stopped MediaSession may fall back.
+        val mediaActivity = if (hasSpectrumAnalysis) max(rawSpectrumPeak, max(lowEnergy, highEnergy)) else activity
+        val normalPlayback = if (renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL) evaluateNormalPlayback(now, mediaActivity) else null
+        val retainSession = normalPlayback?.retainSession == true
+        if (normalPlayback?.cancelTitle == true && trackTitleAnimation.active) resetTrackTitle()
+        if (normalPlayback?.allowOutput == false) {
+            if (previewDeviceProfile != null) turnOff()
+            else if (!matrixReleasedForSilence) releaseMatrixForSilence()
+            return
+        }
+        if (!isSessionOpen && !sessionRecovery.pending && !matrixReleasedForSilence) {
             pendingLevel = level
             return
         }
         if (!isSessionOpen && !matrixReleasedForSilence) {
             pendingLevel = level
-            if (activity < SILENCE_ACTIVITY_THRESHOLD || !tryRegisterMatrixSession(now, "output recovery")) return
+            if ((!retainSession && activity < SILENCE_ACTIVITY_THRESHOLD) || !tryRegisterMatrixSession(now, "output recovery")) return
         }
         pendingLevel = -1f
 
         val clamped = level.coerceIn(0f, 1f)
-        val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
-            ?: GlyphPatternRenderMode.MATRIX_BAR
-        var renderLevel = if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
+        val spectrumQuiet = normalPlayback != null && hasSpectrumAnalysis && spectrumSignalGate.quiet &&
+            GlyphPatternRegistry.kindOf(glyphMode) == GlyphPatternKind.SPECTRUM
+        var renderLevel = if (spectrumQuiet) 0f else if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
             if (isAllBrightnessOff(clamped, allBrightnessAutoScaleEnabled, autoScaleStrategy)) {
                 0f
             } else {
@@ -815,24 +890,25 @@ class GlyphMatrixController(
         } else {
             normalizeLevelForMode(clamped, now)
         }
-        val openReelPlayback = if (matrixTrackTitleEnabled || renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
-            MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
-        } else {
-            null
-        }
-        if (matrixTrackTitleEnabled && openReelPlayback != null) updateTrackTitle(openReelPlayback, now)
+        // Legacy offsets/dynamics may lift a zero input. In normal Matrix modes, a zero
+        // audio envelope must still be zero; Open Reel keeps its existing motion/display path.
+        if (normalPlayback != null && clamped <= 0f) renderLevel = 0f
+        val openReelPlayback = if (normalPlayback != null) normalPlaybackSnapshot
+            else MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
+        if (matrixTrackTitleEnabled && openReelPlayback != null) updateTrackTitle(openReelPlayback, now, retainSession)
+        val visualActivity = if (spectrumQuiet) 0f else activity
         val holdOpenReelFrameForPause =
             openReelPlayback?.motionPaused == true
         var silenceDecision = MatrixAudioSilencePolicy.evaluate(
             renderMode = renderMode,
-            activity = activity,
+            activity = visualActivity,
             silenceElapsedMs = 0L,
             holdOpenReelFrameForPause = holdOpenReelFrameForPause,
         )
         if (
             previewDeviceProfile != null &&
             renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
-            silenceDecision.isSilent
+            silenceDecision.isSilent && !retainSession
         ) {
             spectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
@@ -841,7 +917,7 @@ class GlyphMatrixController(
             return
         }
         val isSilent = silenceDecision.isSilent
-        if (isSilent) {
+        if (isSilent && !retainSession) {
             spectrumOverallLevelEnvelope.reset()
             spectrumVisualDynamicsState.reset()
         }
@@ -853,7 +929,7 @@ class GlyphMatrixController(
         }
         silenceDecision = MatrixAudioSilencePolicy.evaluate(
             renderMode = renderMode,
-            activity = activity,
+            activity = visualActivity,
             silenceElapsedMs = silenceElapsedMs,
             holdOpenReelFrameForPause = holdOpenReelFrameForPause,
         )
@@ -864,7 +940,7 @@ class GlyphMatrixController(
         } else {
             0f
         }
-        if (isSilent && !silenceDrainsBeforeRelease) {
+        if (isSilent && !silenceDrainsBeforeRelease && !retainSession) {
             if (!matrixTurnedOffForSilence && silenceDecision.blackoutDue) {
                 blackoutMatrixForSilence()
             }
@@ -875,13 +951,14 @@ class GlyphMatrixController(
                 return
             }
         }
-        if (isSilent && matrixReleasedForSilence) {
+        if (isSilent && matrixReleasedForSilence && !retainSession) {
             return
         }
         if (!isSilent) {
             silenceStartedAt = 0L
         }
         if (renderingSilenceDrain) {
+            lastPreviewLevel = 0f // Audio is zero even while the pattern's history finishes fading.
             renderLevel = when (renderMode) {
                 GlyphPatternRenderMode.MATRIX_RIPPLE -> (1f - (rippleDrainProgress * 0.15f)).coerceIn(0f, 1f)
                 else -> 0f
@@ -889,14 +966,14 @@ class GlyphMatrixController(
         } else {
             lastPreviewLevel = renderLevel
         }
-        if (matrixTurnedOffForSilence && !isSilent) {
-            AppLogger.i(TAG, "Audio returned: silenceReleased=$matrixReleasedForSilence")
+        if (matrixTurnedOffForSilence && (!isSilent || retainSession)) {
+            AppLogger.i(TAG, "Matrix output resumed: mediaRetained=$retainSession silenceReleased=$matrixReleasedForSilence")
             matrixTurnedOffForSilence = false
             lastRenderSignature = Long.MIN_VALUE
             lastRenderedMode = null
         }
 
-        if (matrixReleasedForSilence && !isSilent) {
+        if (matrixReleasedForSilence && (!isSilent || retainSession)) {
             sessionRecovery.request(now, immediate = true)
             if (!tryRegisterMatrixSession(now, "audio/media resume")) return
         }
@@ -908,6 +985,16 @@ class GlyphMatrixController(
         }
         if (now - lastRenderAt < frameIntervalMs) return
         lastRenderAt = now
+
+        if (spectrumQuiet && !renderingSilenceDrain) {
+            frameBuffer.fill(COLOR_OFF)
+            lastRenderSignature = Long.MIN_VALUE
+            lastRenderedMode = null
+            lastPreviewLevel = 0f
+            if (trackTitleAnimation.active || lastFrameHadTrackTitle) submitTrackTitleFrame()
+            else submitMatrixFrame(frameForPhysicalDevice())
+            return
+        }
 
         when (
             val result = renderEngine.render(
@@ -931,6 +1018,7 @@ class GlyphMatrixController(
                 else submitMatrixFrame(result.deviceFrame)
                 if (
                     renderingSilenceDrain &&
+                    !retainSession &&
                     result.silenceDrainComplete &&
                     isSessionOpen &&
                     !matrixReleasedForSilence
@@ -1177,7 +1265,7 @@ class GlyphMatrixController(
                     val fullHalf = oddFullPx / 2
 
                     // 中央を軸に、まず full の明るさで埋める
-                    for (dy in 0..fullHalf) {
+                    for (dy in 0 until if (oddFullPx > 0) fullHalf + 1 else 0) {
                         val yTop = (centerY - dy).coerceIn(0, matrixLength - 1)
                         val yBottom = (centerY + dy).coerceIn(0, matrixLength - 1)
                         frameBuffer[yTop * matrixLength + x] = COLOR_ON
@@ -1186,7 +1274,7 @@ class GlyphMatrixController(
 
                     // 端の1段だけ partial 明るさにして、Matrix Bar に近い見た目へ寄せる
                     if (edgeBrightness > 0 && oddFullPx < maxPx) {
-                        val edgeOffset = fullHalf + 1
+                        val edgeOffset = if (oddFullPx == 0) 0 else fullHalf + 1
                         val yTop = (centerY - edgeOffset).coerceIn(0, matrixLength - 1)
                         val yBottom = (centerY + edgeOffset).coerceIn(0, matrixLength - 1)
                         frameBuffer[yTop * matrixLength + x] = edgeBrightness
@@ -1247,7 +1335,7 @@ class GlyphMatrixController(
                     val normX = if (matrixLength <= 1) 0f else x / (matrixLength - 1f)
                     val normY = if (columnHeight <= 1) 0f else localY / (columnHeight - 1f)
                     val wave = ((sin(wavePhase + (normX * 6.5f) - (normY * 5.5f) + band * 2.5f) + 1f) * 0.5f)
-                    val envelope = ((0.08f + renderLevel * 0.92f) * (0.10f + band * 0.90f)).coerceIn(0f, 1f)
+                    val envelope = (renderLevel * (0.10f + band * 0.90f)).coerceIn(0f, 1f)
                     val brightness = (wave * envelope * MATRIX_WAVE_FIELD_BRIGHTNESS_BOOST).coerceIn(0f, 1f)
                     if (brightness <= 0.02f) continue
                     frameBuffer[y * matrixLength + x] = brightnessToMatrixColor(brightness)
@@ -1287,7 +1375,7 @@ class GlyphMatrixController(
                     val band = sampleBandForRatio(bandRatio)
                     (
                         (0.03f + band * 0.97f) *
-                            (0.08f + renderLevel * 0.92f) *
+                            renderLevel *
                             MATRIX_SPECTROGRAM_BRIGHTNESS_BOOST
                         ).coerceIn(0f, 1f)
                 }
@@ -1308,6 +1396,7 @@ class GlyphMatrixController(
         }
 
         fun drawSpectrumAnalyzer() {
+            if (renderLevel <= 0f) return
             val maxPixelsByColumn = buildColumnMaxPixels(matrixLength, matrixProfile)
             var previousY = -1f
             var previousBrightness = 0f
@@ -1355,7 +1444,7 @@ class GlyphMatrixController(
                 val brightness = if (binaryMode) {
                     1f
                 } else {
-                    ((0.22f + smoothedBand * 0.78f) * MATRIX_SPECTRUM_ANALYZER_BRIGHTNESS_BOOST)
+                    (renderLevel * (0.22f + smoothedBand * 0.78f) * MATRIX_SPECTRUM_ANALYZER_BRIGHTNESS_BOOST)
                         .coerceIn(0f, 1f)
                 }
 
@@ -1484,8 +1573,8 @@ class GlyphMatrixController(
                     val brightness = when {
                         radialPosition < virtualLength.toInt() -> COLOR_ON
                         binaryMode -> COLOR_OFF
-                        distanceFromTip in -1f..0f ->
-                            ((distanceFromTip + 1f) * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
+                        distanceFromTip > 0f ->
+                            (distanceFromTip * COLOR_ON).roundToInt().coerceIn(COLOR_OFF, COLOR_ON)
                         else -> COLOR_OFF
                     }
                     if (brightness > COLOR_OFF) {
@@ -1659,7 +1748,7 @@ class GlyphMatrixController(
                     val pixelBand = sampleBandForRatio(bandRatio)
                     val brightness = (
                         (0.05f + pixelBand * 0.95f) *
-                            (0.10f + renderLevel * 0.90f) *
+                            renderLevel *
                             MATRIX_PULSE_GRID_BRIGHTNESS_BOOST
                         ).coerceIn(0f, 1f)
                     if (brightness > 0.015f) {
@@ -2020,6 +2109,8 @@ class GlyphMatrixController(
     }
 
     override fun releaseSession() {
+        normalPlaybackPolicy.reset()
+        lastNormalPlaybackDecision = null
         sessionStopped = true
         sessionRecovery.cancel()
         closeMatrixSession("intentional release")

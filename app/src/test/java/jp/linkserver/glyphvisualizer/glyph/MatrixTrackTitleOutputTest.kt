@@ -16,10 +16,52 @@ import java.time.Duration
 import android.os.SystemClock
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
+import android.content.ComponentName
+import android.media.MediaMetadata
+import android.media.session.MediaSession
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
+import android.provider.Settings
+import jp.linkserver.glyphvisualizer.MediaSessionNotificationListenerService
+import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class MatrixTrackTitleOutputTest {
+    private class PlaybackFixture(private val output: OutputFixture) : AutoCloseable {
+        val session = MediaSession(output.context, "normal-matrix-test")
+        var musicOnly: Boolean? = null
+        private var suppressed = false
+        init {
+            Settings.Secure.putString(output.context.contentResolver, "enabled_notification_listeners",
+                ComponentName(output.context, MediaSessionNotificationListenerService::class.java).flattenToString())
+            shadowOf(session.controller).setPackageName("music")
+            shadowOf(session.controller).setMetadata(MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "same-song")
+                .putString(MediaMetadata.METADATA_KEY_TITLE, "Same song").build())
+            state(PlaybackState.STATE_PLAYING)
+            shadowOf(output.context.getSystemService(MediaSessionManager::class.java)).addController(session.controller)
+        }
+        fun state(state: Int) {
+            shadowOf(session.controller).setPlaybackState(PlaybackState.Builder().setState(state, 0, 1f).build())
+        }
+        fun tick(ms: Long, level: Float = 0f) {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
+            MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+            val allowed = musicOnly?.let { output.controller.isNormalMatrixPlaybackOutputAllowed(it, level) } ?: true
+            if (!allowed) {
+                if (!suppressed) output.controller.suspendSession()
+            } else output.controller.updateLevel(level)
+            suppressed = !allowed
+        }
+        fun analysis(rawPeak: Float, pcmAmplitude: Float, level: Float) {
+            output.controller.updateAnalysis(pcmAmplitude, pcmAmplitude, level, level,
+                FloatArray(25) { if (rawPeak > 0f) 1f else 0f }, rawPeak, 0f,
+                FloatArray(64) { if (it % 2 == 0) pcmAmplitude else -pcmAmplitude }, null, null)
+        }
+        override fun close() { session.release() }
+    }
     private class OutputFixture(val profile: GlyphDeviceProfile, val emulate: Boolean = false) : AutoCloseable {
         val context = RuntimeEnvironment.getApplication()
         val length = if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 25 else 13
@@ -44,6 +86,10 @@ class MatrixTrackTitleOutputTest {
 
         init {
             ShadowBuild.setModel(if (length == 25) Glyph.DEVICE_23112 else Glyph.DEVICE_25111p)
+            // Default fixture explicitly exercises audio fallback. Media tests opt into a session
+            // below; do not inherit the singleton snapshot left by a different Robolectric test.
+            Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", "")
+            MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = true)
             manager = GlyphMatrixManager.getInstance(context)
             original = field.get(manager)
             originalExecutor = executorField.get(manager)
@@ -142,6 +188,165 @@ class MatrixTrackTitleOutputTest {
             val monitor = GlyphMatrixController::class.java.getDeclaredField("nothingOsGlyphSettingsMonitor")
                 .apply { isAccessible = true }.get(controller) as NothingOsGlyphSettingsMonitor
             monitor.stop()
+        }
+    }
+
+    @Test fun playingSilenceKeepsEveryNormalMatrixModeRegisteredAndConvergesToZero() {
+        for ((profile, emulate) in listOf(GlyphDeviceProfile.PHONE3_MATRIX to false,
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX to false, GlyphDeviceProfile.PHONE3_MATRIX to true)) {
+            OutputFixture(profile, emulate).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    output.controller.setExperimentalPerformanceOptimizationsEnabled(true)
+                    for (pattern in GlyphPatternRegistry.patternsFor(output.logicalProfile)
+                        .filter { it.recipe.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL }) {
+                        output.controller.setGlyphMode(pattern.id)
+                        repeat(4) { playback.analysis(0.2f, 0.1f, 0.5f); playback.tick(100, 0.5f) }
+                        repeat(100) { playback.analysis(0f, 0f, 0f); playback.tick(50) }
+                        assertEquals("Unexpected release in ${pattern.id}", 0, output.closeCount)
+                        assertTrue("Residual light in ${pattern.id} $profile emulate=$emulate", output.sent.last().all { it == 0 })
+                        assertEquals("Stale meter in ${pattern.id}", 0f, output.controller.previewLevel(), 0f)
+                        output.assertEncoding()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun spectrumNoiseCannotBecomeFullScaleOrKeepAgcAliveAndAudioReturnsPromptly() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            for (strategy in GlyphAutoScaleStrategy.entries) {
+                OutputFixture(profile).use { output ->
+                    PlaybackFixture(output).use { playback ->
+                        output.controller.setSpectrumAutoScaleEnabled(true)
+                        output.controller.setLevelAutoScaleEnabled(true)
+                        output.controller.setAutoScaleStrategy(strategy)
+                        output.controller.setAutoScaleOffset(0.2f)
+                        for (pattern in GlyphPatternRegistry.patternsFor(profile).filter { it.kind == GlyphPatternKind.SPECTRUM }) {
+                            output.controller.setGlyphMode(pattern.id)
+                            repeat(4) { playback.analysis(0.2f, 0.1f, 0.5f); playback.tick(100, 0.5f) }
+                            // A normalized shape can still have a peak of one at this noise floor.
+                            repeat(80) { playback.analysis(0.0002f, 0.00002f, 0.01f); playback.tick(50, 0.01f) }
+                            assertTrue("Noise remained in ${pattern.id} $profile $strategy", output.sent.last().all { it == 0 })
+                            val gain = GlyphMatrixController::class.java.getDeclaredField("spectrumAutoGain")
+                                .apply { isAccessible = true }.get(output.controller)
+                            assertEquals(1f, gain.javaClass.getDeclaredField("gain").apply { isAccessible = true }.getFloat(gain), 0f)
+                            val levelGain = GlyphMatrixController::class.java.getDeclaredField("levelAutoGain")
+                                .apply { isAccessible = true }.get(output.controller)
+                            assertEquals(1f, levelGain.javaClass.getDeclaredField("gain").apply { isAccessible = true }.getFloat(levelGain), 0f)
+                            playback.analysis(0.2f, 0.1f, 0.5f)
+                            playback.tick(50, 0.5f)
+                            // Spectrogram shifts once per interval; all modes must resume without registration.
+                            assertTrue("Audio did not return in ${pattern.id}", output.sent.last().any { it > 0 })
+                            assertEquals(0, output.closeCount)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun verySoftMusicSurvivesTheRawSignalGateOnBothDevices() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            OutputFixture(profile).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_SPECTRUM_BOTTOM)
+                    output.controller.setSpectrumAutoScaleEnabled(true)
+                    output.controller.setLevelAutoScaleEnabled(true)
+                    repeat(10) { playback.analysis(0.004f, 0.0001f, 0.04f); playback.tick(50, 0.04f) }
+                    assertTrue(output.sent.last().any { it > 0 })
+                    assertEquals(0, output.closeCount)
+                }
+            }
+        }
+    }
+
+    @Test fun normalizedCaptureNoiseCannotLightSpectrumWhenTheSourceEnvelopeIsZero() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            for (strategy in GlyphAutoScaleStrategy.entries) {
+                OutputFixture(profile).use { output ->
+                    PlaybackFixture(output).use { playback ->
+                        output.controller.setSpectrumAutoScaleEnabled(true)
+                        output.controller.setLevelAutoScaleEnabled(true)
+                        output.controller.setAutoScaleStrategy(strategy)
+                        output.controller.setAutoScaleOffset(0.2f)
+                        for (pattern in GlyphPatternRegistry.patternsFor(profile).filter { it.kind == GlyphPatternKind.SPECTRUM }) {
+                            output.controller.setGlyphMode(pattern.id)
+                            repeat(4) { playback.analysis(0.2f, 0.1f, 0.5f); playback.tick(100, 0.5f) }
+                            // OutputMix uses normalized 8-bit waveforms. One LSB is ~0.0078,
+                            // so this case must also respect the zero capture envelope.
+                            repeat(80) { playback.analysis(0.02f, 1f / 128f, 0f); playback.tick(50) }
+                            assertTrue("Floor remained in ${pattern.id} $profile $strategy", output.sent.last().all { it == 0 })
+                            assertEquals(0, output.closeCount)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun confirmedPauseReturnsControlAndPlayingSilenceReregistersWithoutAudio() {
+        for (musicOnly in listOf(false, true)) {
+            OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = musicOnly
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                    playback.tick(1000, 0.5f)
+                    playback.tick(1000, 0.5f) // Music-only initial confirmation.
+                    val closes = output.closeCount
+                    playback.state(PlaybackState.STATE_PAUSED)
+                    playback.tick(100)
+                    playback.tick(399)
+                    assertEquals(closes, output.closeCount)
+                    playback.tick(1)
+                    assertEquals(closes + 1, output.closeCount)
+                    playback.state(PlaybackState.STATE_PLAYING)
+                    playback.tick(100)
+                    playback.tick(1000)
+                    assertEquals(closes + 1, output.closeCount)
+                    assertTrue(output.registrationTimes.isNotEmpty())
+                    playback.state(PlaybackState.STATE_STOPPED)
+                    playback.tick(50)
+                    assertEquals(closes + 2, output.closeCount)
+                }
+            }
+        }
+    }
+
+    @Test fun openReelStillUsesTwoSecondBlackoutThreeSecondReleaseAndPausedHold() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_OPEN_REEL)
+                playback.tick(1000, 0.5f)
+                playback.tick(1)
+                playback.tick(1999)
+                assertEquals(0, output.blackoutCount)
+                playback.tick(1)
+                assertEquals(1, output.blackoutCount)
+                playback.tick(999)
+                assertEquals(0, output.closeCount)
+                playback.tick(1)
+                assertEquals(1, output.closeCount)
+                playback.state(PlaybackState.STATE_PAUSED)
+                playback.tick(100)
+                playback.tick(29_999)
+                assertEquals(1, output.closeCount) // The service watchdog, not the new policy, owns 30s expiry.
+                assertTrue(output.visible)
+            }
+        }
+    }
+
+    @Test fun smoothedLevelTailDoesNotPreventPauseReleaseWhenTheRawSignalHasStopped() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_SPECTRUM)
+                playback.analysis(0.2f, 0.1f, 0.5f)
+                playback.tick(1000, 0.5f)
+                playback.state(PlaybackState.STATE_PAUSED)
+                playback.analysis(0f, 0f, 0.5f) // Envelope still high, absolute audio has stopped.
+                playback.tick(100, 0.5f)
+                playback.tick(400, 0.5f)
+                assertEquals(1, output.closeCount)
+            }
         }
     }
 

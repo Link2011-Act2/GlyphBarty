@@ -1309,7 +1309,14 @@ class GlyphVisualizerService : Service() {
         if (shouldDropOpenReelPausedTimeoutFrame()) return null
         val allowPausedMediaSession =
             GlyphPatternRegistry.recipeFor(frame.mode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
-        val mediaPlaybackActive = isMediaPlaybackAllowed(allowPaused = allowPausedMediaSession)
+        val mediaPlaybackActive = if (allowPausedMediaSession) {
+            isMediaPlaybackAllowed(allowPaused = true) // Open Reel's existing watchdog/30s hold.
+        } else {
+            (glyphController as? GlyphMatrixController)?.isNormalMatrixPlaybackOutputAllowed(
+                mediaPlaybackOnlyEnabled,
+                maxOf(frame.lowEnergy, frame.highEnergy, frame.spectrumRawPeak)
+            ) ?: isMediaPlaybackAllowed()
+        }
         if (!mediaPlaybackActive) {
             val enteringMediaPlaybackSuppression = !mediaPlaybackSuppressed
             mediaPlaybackSuppressed = true

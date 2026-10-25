@@ -11,6 +11,33 @@ import java.io.File
 class Phone3TrackTitleRendererDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun playingSilenceKeepsLargeMultitoneTitleBeyondTheFormerStartupGrace() {
+        val renderer = Phone3TrackTitleRenderer(context)
+        val animation = MatrixTrackTitleAnimation()
+        val policy = MatrixPlaybackSessionPolicy()
+        val snapshot = jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate.PlaybackSnapshot(
+            jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate.PlaybackStatus.PLAYING, null)
+        val background = IntArray(625)
+        val composite = IntArray(625)
+        val heights = GlyphMatrixPreviewGeometry.columnHeights(GlyphDeviceProfile.PHONE3_MATRIX, 25)
+        try {
+            val width = renderer.prepare("日本語の長い曲名 Artist ABC 123", null, 25)
+            animation.start(1000, 25, width, renderer.pixelsPerSecond)
+            for (elapsed in listOf(100L, 300L, 500L, 1000L, 2500L)) {
+                assertTrue(policy.evaluate(snapshot, 1000 + elapsed, false, false).retainSession)
+                animation.advance(1000 + elapsed)
+                assertTrue(animation.active)
+                assertEquals(if (elapsed < 200) 0.55f else 0.1f, animation.backgroundBrightness, 0.001f)
+                MatrixTrackTitleCompositor.compose(background, animation.textX?.let { renderer.render(it) },
+                    animation.backgroundBrightness, 25, heights, composite, true)
+                if (elapsed >= 500) {
+                    assertTrue(composite.any { it > 0 })
+                    assertTrue(composite.any { it in 1..254 })
+                }
+            }
+        } finally { renderer.clear() }
+    }
+
     @Test fun bundledNTypeAndAndroidJapaneseFallbackRenderLargeSingleLineText() {
         val font = Phone3TrackTitleRenderer.loadTypeface(context)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = font; textSize = 24f }

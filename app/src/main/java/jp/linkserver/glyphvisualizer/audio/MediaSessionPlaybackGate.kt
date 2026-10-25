@@ -42,6 +42,10 @@ internal object MediaSessionPlaybackGate {
         val motionPaused: Boolean = false,
         val title: String? = null,
         val artist: String? = null,
+        // Preserve the SDK state so Matrix can distinguish transient STATE_NONE from STOPPED
+        // without changing the existing playback-gate semantics for other visualizers.
+        val rawState: Int? = null,
+        val sessionAccessAvailable: Boolean = true,
     ) {
         val activeForOpenReel: Boolean
             get() = status == PlaybackStatus.PLAYING ||
@@ -108,7 +112,7 @@ internal object MediaSessionPlaybackGate {
         }
         cachedSnapshotAtMs = now
         cachedSnapshot = runCatching { readPlaybackSnapshot(context, now) }
-            .getOrElse { emptyPlaybackSnapshot() }
+            .getOrElse { emptyPlaybackSnapshot(sessionAccessAvailable = false) }
         return cachedSnapshot
     }
 
@@ -117,12 +121,12 @@ internal object MediaSessionPlaybackGate {
     }
 
     private fun readPlaybackSnapshot(context: Context, now: Long): PlaybackSnapshot {
-        if (!hasNotificationAccess(context)) return emptyPlaybackSnapshot()
+        if (!hasNotificationAccess(context)) return emptyPlaybackSnapshot(sessionAccessAvailable = false)
         val manager = context.getSystemService(MediaSessionManager::class.java)
-            ?: return emptyPlaybackSnapshot()
+            ?: return emptyPlaybackSnapshot(sessionAccessAvailable = false)
         val listener = ComponentName(context, MediaSessionNotificationListenerService::class.java)
         val sessions = runCatching { manager.getActiveSessions(listener) }.getOrNull()
-            ?: return emptyPlaybackSnapshot()
+            ?: return emptyPlaybackSnapshot(sessionAccessAvailable = false)
         val controller = sessions.firstOrNull(::isSessionPlaying)
             ?: sessions.firstOrNull {
                 playbackStateSemantics(it.playbackState?.state).activeForOpenReel
@@ -166,6 +170,7 @@ internal object MediaSessionPlaybackGate {
         }
         return PlaybackSnapshot(
             status = status,
+            rawState = state.state,
             progress = duration?.let {
                 (projectedPosition / it.toFloat()).coerceIn(0f, 1f)
             },
@@ -301,11 +306,12 @@ internal object MediaSessionPlaybackGate {
         return playbackStateSemantics(state).status
     }
 
-    private fun emptyPlaybackSnapshot(packageName: String? = null): PlaybackSnapshot {
+    private fun emptyPlaybackSnapshot(packageName: String? = null, sessionAccessAvailable: Boolean = true): PlaybackSnapshot {
         return PlaybackSnapshot(
             status = PlaybackStatus.NONE,
             progress = null,
             packageName = packageName,
+            sessionAccessAvailable = sessionAccessAvailable,
         ).also { snapshot ->
             logPlaybackState(null, snapshot)
         }

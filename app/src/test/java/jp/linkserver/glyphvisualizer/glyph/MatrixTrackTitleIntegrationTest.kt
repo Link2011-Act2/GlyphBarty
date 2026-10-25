@@ -62,11 +62,85 @@ class MatrixTrackTitleIntegrationTest {
             .putString(MediaMetadata.METADATA_KEY_ARTIST, "Artist").build())
     }
 
-    private fun renderAfter(ms: Long): GlyphPreviewFrame.Matrix {
+    private fun renderAfter(ms: Long, level: Float = 0.5f): GlyphPreviewFrame.Matrix {
         ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
         MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = true)
-        controller.updateLevel(0.5f)
+        controller.updateLevel(level)
         return frames.last()
+    }
+
+    private fun playback(state: Int?) {
+        shadowOf(session.controller).setPlaybackState(state?.let { PlaybackState.Builder().setState(it, 0, 1f).build() })
+    }
+
+    private fun animation() = GlyphMatrixController::class.java.getDeclaredField("trackTitleAnimation")
+        .apply { isAccessible = true }.get(controller) as MatrixTrackTitleAnimation
+
+    @Test fun playingSilenceDoesNotInterruptTitleAt1003005001000OrOverTwoSeconds() {
+        for (duration in listOf(100L, 300L, 500L, 1000L, 2500L)) {
+            controller.turnOff()
+            track("initial-$duration", "Initial")
+            renderAfter(1000)
+            track("next-$duration", "日本語の長い曲名と Artist ABC")
+            renderAfter(100)
+            val initial = frames.size
+            repeat((duration / 50).toInt()) { renderAfter(50, 0f) }
+            assertTrue("Title cancelled during ${duration}ms of PLAYING silence", animation().active)
+            assertEquals(if (duration < 200) 0.55f else 0.1f, animation().backgroundBrightness, 0.001f)
+            assertTrue(frames.size > initial)
+            val x = animation().textX
+            renderAfter(50)
+            assertTrue(animation().active)
+            if (x != null) assertTrue(requireNotNull(animation().textX) <= x)
+            assertArrayEquals(renderAfter(21_000).pixels, renderAfter(1000).pixels)
+        }
+    }
+
+    @Test fun temporaryPausedBufferingNoneAndMissingSessionKeepAnimationAndIdentity() {
+        track("a", "Initial")
+        renderAfter(1000)
+        track("b", "日本語の長い曲名 ABC")
+        renderAfter(100)
+        for (state in listOf(PlaybackState.STATE_PAUSED, PlaybackState.STATE_BUFFERING, PlaybackState.STATE_NONE, null)) {
+            playback(state)
+            renderAfter(100, 0f)
+            assertTrue("Title cancelled by transient state $state", animation().active)
+        }
+        val x = requireNotNull(animation().textX)
+        playback(PlaybackState.STATE_PLAYING)
+        renderAfter(100, 0f)
+        assertTrue(requireNotNull(animation().textX) < x) // No new Phase A or duplicate track event.
+        assertEquals(0.1f, animation().backgroundBrightness, 0.001f)
+    }
+
+    @Test fun sustainedPauseExplicitStopAndIntentionalSessionEndCancelTitle() {
+        for (end in listOf("pause", "stop", "release", "suspend", "off")) {
+            if (end != "pause") {
+                controller = GlyphMatrixController(context, {}, previewDeviceProfile = GlyphDeviceProfile.PHONE3_MATRIX,
+                    previewFrameListener = { frames += it })
+                controller.setMatrixTrackTitleSettings(true, false)
+            }
+            playback(PlaybackState.STATE_PLAYING)
+            track("a-$end", "Initial")
+            renderAfter(1000)
+            track("b-$end", "A long title for pause and stop")
+            renderAfter(100)
+            assertTrue(animation().active)
+            when (end) {
+                "pause" -> {
+                    playback(PlaybackState.STATE_PAUSED)
+                    renderAfter(100, 0f)
+                    assertTrue(animation().active)
+                    renderAfter(1500, 0f)
+                }
+                "stop" -> { playback(PlaybackState.STATE_STOPPED); renderAfter(50, 0f) }
+                "release" -> controller.releaseSession()
+                "suspend" -> controller.suspendSession()
+                "off" -> controller.turnOff()
+            }
+            assertFalse("Title survived $end", animation().active)
+            assertEquals(1f, animation().backgroundBrightness, 0f)
+        }
     }
 
     @Test fun mediaSessionToExistingPipelineProducesDimTextAndOriginalFrameAgain() {
