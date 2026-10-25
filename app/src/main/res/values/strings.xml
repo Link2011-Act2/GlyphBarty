@@ -608,4 +608,10 @@
     <string name="settings_matrix_track_title_enabled_description">Scroll the new track title on Glyph Matrix. Requires notification access.</string>
     <string name="settings_matrix_track_artist_enabled">Also show artist name</string>
     <string name="settings_matrix_track_artist_enabled_description">Include the artist after the track title.</string>
+    <string name="glyph_inspector_track_title_enabled">Show track titles in this preview</string>
+    <string name="glyph_inspector_track_title_live_note">Scrolls the MediaSession title and artist when the track changes. Main visualizer settings stay unchanged.</string>
+    <string name="glyph_inspector_track_title_test_note">Test text is used only in this inspector.</string>
+    <string name="glyph_inspector_test_title">Test track title</string>
+    <string name="glyph_inspector_test_artist">Artist (optional)</string>
+    <string name="glyph_inspector_test_title_play">Play / replay title</string>
 </resources>

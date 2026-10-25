@@ -11,15 +11,18 @@ internal class MatrixTrackTitleAnimation {
         const val RESTORE_MS = 300L
         const val PIXELS_PER_SECOND = 12
         const val MAX_SCROLL_MS = 20_000L
-        const val BACKGROUND_LEVEL = 0.1f
-        fun maxTextWidth(matrixLength: Int, pixelsPerSecond: Int = PIXELS_PER_SECOND): Int =
-            (MAX_SCROLL_MS * pixelsPerSecond / 1000).toInt() - matrixLength
+        const val BACKGROUND_LEVEL = 0.07f
+        fun maxTextWidth(matrixLength: Int, pixelsPerSecond: Int = PIXELS_PER_SECOND, leadingMargin: Int = 0): Int =
+            (MAX_SCROLL_MS * pixelsPerSecond / 1000).toInt() - matrixLength - leadingMargin
     }
 
     private var startedAtMs: Long? = null
     private var length = 0
     private var width = 0
     private var scrollPixelsPerSecond = PIXELS_PER_SECOND
+    private var leadingMargin = 0
+    private var trailingMargin = 0
+    private var rightToLeft = false
     private var initialBrightness = 1f
     var backgroundBrightness = 1f
         private set
@@ -27,15 +30,20 @@ internal class MatrixTrackTitleAnimation {
         private set
     val active: Boolean get() = startedAtMs != null
     val scrollDurationMs: Long get() =
-        ((length + width) * 1000L + scrollPixelsPerSecond - 1) / scrollPixelsPerSecond
+        ((length + leadingMargin + width) * 1000L + scrollPixelsPerSecond - 1) / scrollPixelsPerSecond
 
-    fun start(nowMs: Long, matrixLength: Int, textWidth: Int, pixelsPerSecond: Int = PIXELS_PER_SECOND) {
+    fun start(nowMs: Long, matrixLength: Int, textWidth: Int, pixelsPerSecond: Int = PIXELS_PER_SECOND,
+              leadingMargin: Int = 0, trailingMargin: Int = 0, rightToLeft: Boolean = false) {
         require(pixelsPerSecond > 0)
+        require(leadingMargin in (1 - matrixLength)..0 && trailingMargin >= 0)
         initialBrightness = backgroundBrightness
         startedAtMs = nowMs
         length = matrixLength
         scrollPixelsPerSecond = pixelsPerSecond
-        width = textWidth.coerceIn(1, maxTextWidth(matrixLength, pixelsPerSecond))
+        this.leadingMargin = leadingMargin
+        this.trailingMargin = trailingMargin
+        this.rightToLeft = rightToLeft
+        width = textWidth.coerceIn(1, maxTextWidth(matrixLength, pixelsPerSecond, leadingMargin))
         advance(nowMs)
     }
 
@@ -54,7 +62,10 @@ internal class MatrixTrackTitleAnimation {
                 initialBrightness + (BACKGROUND_LEVEL - initialBrightness) * ease(elapsed, DIM_MS)
             elapsed < DIM_MS + scrollDurationMs -> {
                 backgroundBrightness = BACKGROUND_LEVEL
-                textX = length - floor((elapsed - DIM_MS) * scrollPixelsPerSecond / 1000.0).toInt()
+                val travel = floor((elapsed - DIM_MS) * scrollPixelsPerSecond / 1000.0).toInt()
+                // Mirror the ink travel for RTL, preserving the blank trailing interval.
+                textX = if (rightToLeft) trailingMargin - width - leadingMargin + travel
+                    else length + leadingMargin - travel
             }
             elapsed < DIM_MS + scrollDurationMs + RESTORE_MS -> backgroundBrightness =
                 BACKGROUND_LEVEL + (1f - BACKGROUND_LEVEL) *
@@ -88,7 +99,7 @@ internal object MatrixTrackTitleCompositor {
             destination[index] = when {
                 !physicalLed -> 0
                 preserveTextBrightness -> max(dimmed, textLevel)
-                textLevel > 0 -> 255 // Preserve the legacy SDK renderer on Phone (4a) Pro.
+                textLevel > 0 -> 255 // Preserve the official SDK fallback's legacy behavior.
                 else -> dimmed
             }
         }

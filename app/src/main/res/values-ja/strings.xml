@@ -608,4 +608,10 @@
     <string name="settings_matrix_track_title_enabled_description">曲の切り替え時にGlyph Matrixで曲名をスクロールします。通知へのアクセス権限が必要です。</string>
     <string name="settings_matrix_track_artist_enabled">アーティスト名も表示する</string>
     <string name="settings_matrix_track_artist_enabled_description">曲名に続けてアーティスト名を表示します。</string>
+    <string name="glyph_inspector_track_title_enabled">このプレビューで曲名を表示</string>
+    <string name="glyph_inspector_track_title_live_note">曲変更時にMediaSessionの曲名とアーティスト名を表示します。メインのVisualizer設定は変更しません。</string>
+    <string name="glyph_inspector_track_title_test_note">入力したテキストは、このインスペクター内だけで使用します。</string>
+    <string name="glyph_inspector_test_title">テスト用曲名</string>
+    <string name="glyph_inspector_test_artist">アーティスト名（任意）</string>
+    <string name="glyph_inspector_test_title_play">曲名スクロールを再生・再実行</string>
 </resources>

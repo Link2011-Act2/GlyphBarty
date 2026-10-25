@@ -4,6 +4,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MatrixTrackTitleAnimationTest {
+    @Test fun canvasLeadingMarginFortyPixelTravelAndMirroredRtlFinishOnceOnBothSizes() {
+        for (length in listOf(13, 25)) for (rtl in listOf(false, true)) {
+            val animation = MatrixTrackTitleAnimation()
+            animation.start(1000, length, 112, 40, -1, 12, rtl)
+            animation.advance(1200)
+            assertEquals(if (rtl) -99 else length - 1, animation.textX)
+            animation.advance(1224)
+            assertEquals(if (rtl) -99 else length - 1, animation.textX)
+            animation.advance(1225)
+            assertEquals(if (rtl) -98 else length - 2, animation.textX)
+            val duration = (length - 1 + 112) * 25L
+            assertEquals(duration, animation.scrollDurationMs)
+            animation.advance(1200 + duration - 1)
+            assertEquals(if (rtl) length + 11 else -111, animation.textX)
+            animation.advance(1200 + duration)
+            assertNull(animation.textX)
+            assertEquals(0.07f, animation.backgroundBrightness, 0f)
+            animation.advance(1200 + duration + 300)
+            assertFalse(animation.active)
+            assertEquals(1f, animation.backgroundBrightness, 0f)
+            animation.start(30_000, length, Int.MAX_VALUE, 40, -1, 12, rtl)
+            assertEquals(20_000L, animation.scrollDurationMs)
+        }
+    }
+
     @Test fun nativeTextCoverageSurvivesPreviewSdkConversionAndPhysicalMask() {
         val levels = listOf(0, 1, 32, 64, 128, 192, 254, 255)
         val text = IntArray(625)
@@ -25,10 +50,10 @@ class MatrixTrackTitleAnimationTest {
         MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, 25, heights, preview, true)
         MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
         for ((x, level) in levels.withIndex()) {
-            assertEquals(maxOf(20, level), preview[12 * 25 + x])
-            assertEquals((maxOf(20, level) * 4095 + 127) / 255, sdk[12 * 25 + x])
+            assertEquals(maxOf(14, level), preview[12 * 25 + x])
+            assertEquals((maxOf(14, level) * 4095 + 127) / 255, sdk[12 * 25 + x])
         }
-        assertEquals(321, sdk[12 * 25 + 12]) // The 10% background shares the text's scale.
+        assertEquals(225, sdk[12 * 25 + 12]) // The 7% background shares the text's scale.
         assertTrue(background.all { it == 200 })
     }
 
@@ -36,7 +61,7 @@ class MatrixTrackTitleAnimationTest {
         val animation = MatrixTrackTitleAnimation()
         animation.start(1000, 25, 112, 40) // 100px text plus 12px trailing space.
         animation.advance(1100)
-        assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
+        assertEquals(0.535f, animation.backgroundBrightness, 0.001f)
         animation.advance(1200)
         assertEquals(25, animation.textX)
         animation.advance(1224)
@@ -52,7 +77,7 @@ class MatrixTrackTitleAnimationTest {
         assertNull(animation.textX)
         assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
         animation.advance(4775)
-        assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
+        assertEquals(0.535f, animation.backgroundBrightness, 0.001f)
         animation.advance(4925)
         assertFalse(animation.active)
         assertEquals(1f, animation.backgroundBrightness, 0.001f)
@@ -67,7 +92,7 @@ class MatrixTrackTitleAnimationTest {
             assertEquals(1f, animation.backgroundBrightness, 0.001f)
             assertNull(animation.textX)
             animation.advance(1100)
-            assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
+            assertEquals(0.535f, animation.backgroundBrightness, 0.001f)
             animation.advance(1200)
             assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
             assertEquals(length, animation.textX)
@@ -80,7 +105,7 @@ class MatrixTrackTitleAnimationTest {
             assertNull(animation.textX)
             assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
             animation.advance(end + 150)
-            assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
+            assertEquals(0.535f, animation.backgroundBrightness, 0.001f)
             animation.advance(end + 300)
             assertFalse(animation.active)
             assertEquals(1f, animation.backgroundBrightness, 0.001f)
@@ -126,17 +151,17 @@ class MatrixTrackTitleAnimationTest {
             val heights = GlyphMatrixPreviewGeometry.columnHeights(profile, length)
             MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, length, heights, output)
             assertEquals(255, output[center])
-            assertEquals(20, output[center + 1])
+            assertEquals(14, output[center + 1])
             assertEquals(0, output[0])
             assertArrayEquals(original, background) // No cumulative dimming or damage to diff rendering.
             val sdkFrame = IntArray(output.size)
             MatrixFrameBrightness.copyToSdk(output, sdkFrame, length, heights)
             assertEquals(4095, sdkFrame[center])
-            assertEquals(321, sdkFrame[center + 1])
+            assertEquals(225, sdkFrame[center + 1])
             assertEquals(255, output[center]) // Preview retains its original scale.
             background[center + 1] = 100
             MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, length, heights, output)
-            assertEquals(10, output[center + 1])
+            assertEquals(7, output[center + 1])
         }
     }
 }

@@ -6,6 +6,9 @@ import android.content.Context
 internal interface MatrixTrackTitleRenderer {
     val pixelsPerSecond: Int get() = MatrixTrackTitleAnimation.PIXELS_PER_SECOND
     val preservesTextBrightness: Boolean get() = false
+    val leadingMargin: Int get() = 0
+    val trailingMargin: Int get() = 0
+    val rightToLeft: Boolean get() = false
     fun prepare(title: String, artist: String?, matrixLength: Int): Int
     fun render(x: Int): IntArray
     fun clear()
@@ -17,14 +20,14 @@ internal object MatrixTrackTitleRendererFactory {
         physicalProfile: GlyphDeviceProfile,
         renderingProfile: GlyphDeviceProfile,
         matrixLength: Int,
-    ): MatrixTrackTitleRenderer = if (
-        physicalProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
-        renderingProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
-        matrixLength == Phone3TrackTitleRenderer.MATRIX_LENGTH
-    ) {
-        Phone3TrackTitleRenderer(context)
-    } else {
-        // Keep the SDK renderer for Phone (4a) Pro and its existing 13x13 emulation.
-        MatrixSdkTrackTitleRenderer(context)
+    ): MatrixTrackTitleRenderer {
+        val canvasProfile = when (renderingProfile) {
+            GlyphDeviceProfile.PHONE3_MATRIX -> physicalProfile == renderingProfile && matrixLength == 25
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> matrixLength == 13 &&
+                physicalProfile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)
+            else -> false
+        }
+        return if (canvasProfile) MatrixCanvasTrackTitleRenderer(context, matrixLength)
+        else MatrixSdkTrackTitleRenderer(context) // Retain the official SDK fallback.
     }
 }

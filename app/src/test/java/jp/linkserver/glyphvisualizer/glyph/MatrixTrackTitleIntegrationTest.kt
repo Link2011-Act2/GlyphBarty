@@ -86,7 +86,7 @@ class MatrixTrackTitleIntegrationTest {
             val initial = frames.size
             repeat((duration / 50).toInt()) { renderAfter(50, 0f) }
             assertTrue("Title cancelled during ${duration}ms of PLAYING silence", animation().active)
-            assertEquals(if (duration < 200) 0.55f else 0.1f, animation().backgroundBrightness, 0.001f)
+            assertEquals(if (duration < 200) 0.535f else 0.07f, animation().backgroundBrightness, 0.001f)
             assertTrue(frames.size > initial)
             val x = animation().textX
             renderAfter(50)
@@ -110,7 +110,7 @@ class MatrixTrackTitleIntegrationTest {
         playback(PlaybackState.STATE_PLAYING)
         renderAfter(100, 0f)
         assertTrue(requireNotNull(animation().textX) < x) // No new Phase A or duplicate track event.
-        assertEquals(0.1f, animation().backgroundBrightness, 0.001f)
+        assertEquals(0.07f, animation().backgroundBrightness, 0.001f)
     }
 
     @Test fun sustainedPauseExplicitStopAndIntentionalSessionEndCancelTitle() {
@@ -152,7 +152,7 @@ class MatrixTrackTitleIntegrationTest {
         val dimmed = renderAfter(200).pixels
         assertTrue(kotlin.math.abs((baseline[center] * MatrixTrackTitleAnimation.BACKGROUND_LEVEL).toInt() - dimmed[center]) <= 1)
         val scrolling = renderAfter(400).pixels
-        assertTrue(scrolling.any { it == 255 })
+        assertTrue(scrolling.any { it == 127 })
         val dimmedMaximum = (baseline.max() * MatrixTrackTitleAnimation.BACKGROUND_LEVEL).toInt() + 1
         assertTrue(scrolling.any { it in dimmedMaximum..254 })
         assertTrue(scrolling.any { it in 1..254 })
@@ -166,7 +166,7 @@ class MatrixTrackTitleIntegrationTest {
         val baseline = renderAfter(1000).pixels
         track("b", "B")
         renderAfter(1000)
-        assertTrue(renderAfter(600).pixels.any { it == 255 })
+        assertTrue(renderAfter(600).pixels.any { it == 127 })
         controller.setMatrixTrackTitleSettings(false, true)
         assertArrayEquals(baseline, renderAfter(100).pixels)
         controller.setMatrixTrackTitleSettings(true, true)
@@ -217,14 +217,50 @@ class MatrixTrackTitleIntegrationTest {
         track("b", "日本語の曲名")
         renderAfter(1000)
         val scrolling = renderAfter(700).pixels
-        assertTrue(scrolling.any { it == 255 })
-        val litRows = (0 until 25).count { y -> (0 until 25).any { x -> scrolling[y * 25 + x] == 255 } }
+        assertTrue(scrolling.any { it == 127 })
+        val litRows = (0 until 25).count { y -> (0 until 25).any { x -> scrolling[y * 25 + x] == 127 } }
         assertTrue("Large text should use more than the old 5-row font", litRows > 10)
         track("c", "New song")
         val replacement = renderAfter(100).pixels
-        assertFalse(replacement.any { it == 255 }) // New text is outside the right edge during Phase A.
-        assertTrue(renderAfter(700).pixels.any { it == 255 })
+        assertFalse(replacement.any { it == 127 }) // New text is outside the right edge during Phase A.
+        assertTrue(renderAfter(700).pixels.any { it == 127 })
         assertArrayEquals(baseline, renderAfter(21_000).pixels)
         assertArrayEquals(baseline, renderAfter(1000).pixels)
+    }
+
+    @Test fun independentLiveVirtualControllersUseBothProfilesWithoutChangingAnotherController() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            val virtualFrames = mutableListOf<GlyphPreviewFrame.Matrix>()
+            val virtual = GlyphMatrixController(context, {}, previewDeviceProfile = profile,
+                previewFrameListener = { virtualFrames += it })
+            try {
+                virtual.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS)
+                virtual.setMatrixTrackTitleSettings(true, true)
+                fun tick(ms: Long) {
+                    ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
+                    MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = true)
+                    virtual.updateLevel(0f)
+                }
+                val otherFrameCount = frames.size
+                track("seed-$profile", "Initial")
+                tick(1000)
+                assertTrue(virtualFrames.last().pixels.all { it == 0 })
+                track("next-$profile", "日本語の長い曲名 ABC 123")
+                tick(100)
+                tick(700)
+                assertEquals(if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 25 else 13, virtualFrames.last().matrixSize)
+                assertTrue(virtualFrames.last().pixels.any { it == 127 })
+                assertTrue(virtualFrames.last().pixels.all { it in listOf(0, 42, 85, 127) })
+                assertEquals(otherFrameCount, frames.size)
+                val text = GlyphMatrixController::class.java.getDeclaredField("trackTitleRenderer")
+                    .apply { isAccessible = true }.get(virtual) as MatrixCanvasTrackTitleRenderer
+                assertEquals("日本語の長い曲名 ABC 123 - Artist", text.preparedText)
+                virtual.unbind()
+                assertNull(text.cachedBitmap)
+                assertEquals(otherFrameCount, frames.size)
+                controller.updateLevel(0.5f)
+                assertTrue(frames.last().pixels.any { it > 0 })
+            } finally { virtual.unbind() }
+        }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -69,6 +71,7 @@ import jp.linkserver.glyphvisualizer.glyph.GlyphAnalysisFrameStore
 import jp.linkserver.glyphvisualizer.glyph.GlyphAutoScaleStrategy
 import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
 import jp.linkserver.glyphvisualizer.glyph.GlyphInspectorPreviewRenderer
+import jp.linkserver.glyphvisualizer.glyph.GlyphInspectorTrackTitlePreview
 import jp.linkserver.glyphvisualizer.glyph.GlyphLightController
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixPreviewGeometry
 import jp.linkserver.glyphvisualizer.glyph.GlyphMatrixController
@@ -142,6 +145,12 @@ fun GlyphInterfaceInspectorScreen(
         mutableStateOf(GlyphDeviceCatalog.defaultGlyphModeForProfile(initialDeviceProfile))
     }
     var manualLevel by rememberSaveable { mutableStateOf(0.5f) }
+    var previewTitleEnabled by rememberSaveable { mutableStateOf(true) }
+    var previewTitle by rememberSaveable { mutableStateOf("") }
+    var previewArtist by rememberSaveable { mutableStateOf("") }
+    var titleReplayRequest by remember { mutableStateOf(0) }
+    val matrixProfile = selectedProfile == GlyphDeviceProfile.PHONE3_MATRIX ||
+        selectedProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX
     var virtualTimestampMs by remember { mutableStateOf(SystemClock.elapsedRealtime()) }
     var reverseDirection by rememberSaveable { mutableStateOf(false) }
     var binaryMode by rememberSaveable { mutableStateOf(false) }
@@ -183,10 +192,11 @@ fun GlyphInterfaceInspectorScreen(
         }
     }
 
-    LaunchedEffect(inputMode, frozenFrame) {
+    LaunchedEffect(inputMode, frozenFrame, matrixProfile) {
         if (
-            inputMode in setOf(GlyphInspectorInputMode.MANUAL, GlyphInspectorInputMode.SWEEP) &&
-            frozenFrame == null
+            (inputMode == GlyphInspectorInputMode.MANUAL || inputMode == GlyphInspectorInputMode.SWEEP ||
+                (inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL && matrixProfile)) &&
+            (frozenFrame == null || inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL)
         ) {
             while (true) {
                 virtualTimestampMs = SystemClock.elapsedRealtime()
@@ -222,7 +232,9 @@ fun GlyphInterfaceInspectorScreen(
         null
     }
     val virtualAnalysisFrame = when (inputMode) {
-        GlyphInspectorInputMode.LIVE_VIRTUAL -> liveAnalysisFrame
+        GlyphInspectorInputMode.LIVE_VIRTUAL -> liveAnalysisFrame ?: if (matrixProfile) {
+            inspectorSyntheticAnalysisFrame(virtualTimestampMs, 0f)
+        } else null
         GlyphInspectorInputMode.MANUAL,
         GlyphInspectorInputMode.SWEEP -> syntheticAnalysisFrame
         GlyphInspectorInputMode.LIVE_MIRROR -> null
@@ -262,7 +274,13 @@ fun GlyphInterfaceInspectorScreen(
             visualTuning = GlyphVisualTuning(dynamics = tuningDynamics),
             fillOtherVisualTuning = fillOtherVisualTuning,
             autoScaleWindowSeconds = CaptureUiStore.state.autoScaleWindowSeconds,
-            autoScaleOffset = CaptureUiStore.state.autoScaleOffset
+            autoScaleOffset = CaptureUiStore.state.autoScaleOffset,
+            inputMode = inputMode,
+            previewTimestampMs = virtualTimestampMs,
+            titleEnabled = previewTitleEnabled,
+            testTitle = previewTitle,
+            testArtist = previewArtist,
+            titleReplayRequest = titleReplayRequest
         )
     }
     val currentFrame = if (inputMode == GlyphInspectorInputMode.LIVE_MIRROR) {
@@ -277,6 +295,7 @@ fun GlyphInterfaceInspectorScreen(
             selectedProfile = selectedProfile,
             onSelect = { profile ->
                 selectedProfileName = profile.name
+                titleReplayRequest = 0
                 selectedGlyphMode = GlyphDeviceCatalog.defaultGlyphModeForProfile(profile)
                 frozenFrame = null
                 showProfileDialog = false
@@ -356,6 +375,7 @@ fun GlyphInterfaceInspectorScreen(
                     canFreeze = currentFrame != null,
                     onInputModeChanged = { mode ->
                         inputModeName = mode.name
+                        titleReplayRequest = 0
                         frozenFrame = null
                     },
                     onOpenProfile = { showProfileDialog = true },
@@ -392,6 +412,20 @@ fun GlyphInterfaceInspectorScreen(
                         frozenFrame = if (frozen) currentFrame else null
                     }
                 )
+
+                if (matrixProfile && inputMode != GlyphInspectorInputMode.LIVE_MIRROR) {
+                    GlyphInspectorTrackTitleControls(
+                        live = inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL,
+                        enabled = previewTitleEnabled,
+                        title = previewTitle,
+                        artist = previewArtist,
+                        frozen = frozenFrame != null,
+                        onEnabledChanged = { previewTitleEnabled = it },
+                        onTitleChanged = { previewTitle = it },
+                        onArtistChanged = { previewArtist = it },
+                        onReplay = { titleReplayRequest++ }
+                    )
+                }
 
                 when (val frame = displayedFrame) {
                     is GlyphPreviewFrame.Lights -> GlyphLightsFrameContent(
@@ -468,32 +502,48 @@ private fun GlyphExactVirtualPreviewFrame(
     visualTuning: GlyphVisualTuning,
     fillOtherVisualTuning: GlyphVisualTuning?,
     autoScaleWindowSeconds: Float,
-    autoScaleOffset: Float
+    autoScaleOffset: Float,
+    inputMode: GlyphInspectorInputMode,
+    previewTimestampMs: Long,
+    titleEnabled: Boolean,
+    testTitle: String,
+    testArtist: String,
+    titleReplayRequest: Int,
 ): GlyphPreviewFrame? {
     val context = LocalContext.current.applicationContext
-    val outputState = remember(profile) {
+    val outputState = remember(profile, inputMode) {
         mutableStateOf<GlyphPreviewFrame?>(null)
     }
-    val controller = remember(profile, context) {
+    val backgroundState = remember(profile, inputMode) { mutableStateOf<GlyphPreviewFrame?>(null) }
+    val titlePreview = remember(profile, context, inputMode) {
+        if (inputMode != GlyphInspectorInputMode.LIVE_VIRTUAL &&
+            (profile == GlyphDeviceProfile.PHONE3_MATRIX || profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            GlyphInspectorTrackTitlePreview(context, profile)
+        } else null
+    }
+    val controller = remember(profile, context, inputMode) {
         val definition = requireNotNull(GlyphDeviceCatalog.definitionForProfile(profile))
         when (definition.controllerFamily) {
             GlyphControllerFamily.LIGHTS -> GlyphLightController(
                 context = context,
                 onStatusChanged = {},
                 previewDeviceProfile = profile,
-                previewFrameListener = { outputState.value = it }
+                previewFrameListener = { backgroundState.value = it }
             )
             GlyphControllerFamily.MATRIX -> GlyphMatrixController(
                 context = context,
                 onStatusChanged = {},
                 previewDeviceProfile = profile,
-                previewFrameListener = { outputState.value = it }
+                previewFrameListener = { backgroundState.value = it }
             )
         }
     }
 
-    DisposableEffect(controller) {
-        onDispose { controller.unbind() }
+    DisposableEffect(controller, titlePreview) {
+        onDispose {
+            titlePreview?.close()
+            controller.unbind() // Preview controllers only clear their local frame.
+        }
     }
 
     LaunchedEffect(
@@ -511,7 +561,12 @@ private fun GlyphExactVirtualPreviewFrame(
         visualTuning,
         fillOtherVisualTuning,
         autoScaleWindowSeconds,
-        autoScaleOffset
+        autoScaleOffset,
+        previewTimestampMs,
+        titleEnabled,
+        testTitle,
+        testArtist,
+        titleReplayRequest,
     ) {
         controller.setGlyphMode(glyphMode)
         controller.setReverseDirection(reverseDirection)
@@ -538,6 +593,9 @@ private fun GlyphExactVirtualPreviewFrame(
         controller.setAutoScaleOffset(autoScaleOffset)
         controller.setExperimentalPerformanceOptimizationsEnabled(false)
         controller.setMatrixSmoothMotionEnabled(true)
+        // Live Virtual uses this independent preview controller's existing title pipeline.
+        // Manual/Sweep compose their test text once over its text-free background.
+        controller.setMatrixTrackTitleSettings(inputMode == GlyphInspectorInputMode.LIVE_VIRTUAL && titleEnabled, true)
         controller.updateAnalysis(
             lowEnergy = analysisFrame.lowEnergy,
             highEnergy = analysisFrame.highEnergy,
@@ -551,9 +609,54 @@ private fun GlyphExactVirtualPreviewFrame(
             rightWaveformSamples = analysisFrame.rightWaveformSamples
         )
         controller.updateLevel(analysisFrame.level)
+        val now = SystemClock.elapsedRealtime()
+        titlePreview?.updateManual(titleEnabled, titleReplayRequest, testTitle, testArtist, now)
+        val background = backgroundState.value
+        outputState.value = if (background is GlyphPreviewFrame.Matrix && titlePreview != null) {
+            titlePreview.compose(background, now)
+        } else background
     }
 
     return outputState.value
+}
+
+@Composable
+private fun GlyphInspectorTrackTitleControls(
+    live: Boolean,
+    enabled: Boolean,
+    title: String,
+    artist: String,
+    frozen: Boolean,
+    onEnabledChanged: (Boolean) -> Unit,
+    onTitleChanged: (String) -> Unit,
+    onArtistChanged: (String) -> Unit,
+    onReplay: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GlyphInspectorToggleRow(
+                title = stringResource(R.string.glyph_inspector_track_title_enabled),
+                checked = enabled,
+                enabled = !frozen,
+                onCheckedChange = onEnabledChanged,
+                modifier = Modifier.testTag("inspector_title_enabled")
+            )
+            Text(stringResource(if (live) R.string.glyph_inspector_track_title_live_note else R.string.glyph_inspector_track_title_test_note),
+                style = MaterialTheme.typography.bodySmall)
+            if (!live) {
+                OutlinedTextField(value = title, onValueChange = onTitleChanged, singleLine = true,
+                    enabled = enabled && !frozen, label = { Text(stringResource(R.string.glyph_inspector_test_title)) },
+                    modifier = Modifier.fillMaxWidth().testTag("inspector_test_title"))
+                OutlinedTextField(value = artist, onValueChange = onArtistChanged, singleLine = true,
+                    enabled = enabled && !frozen, label = { Text(stringResource(R.string.glyph_inspector_test_artist)) },
+                    modifier = Modifier.fillMaxWidth().testTag("inspector_test_artist"))
+                OutlinedButton(onClick = onReplay, enabled = enabled && !frozen && title.isNotBlank(),
+                    modifier = Modifier.testTag("inspector_title_replay")) {
+                    Text(stringResource(R.string.glyph_inspector_test_title_play))
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -630,6 +733,7 @@ private fun GlyphInspectorControls(
             ) {
                 GlyphInspectorInputMode.entries.forEach { mode ->
                     FilterChip(
+                        modifier = Modifier.testTag("inspector_input_${mode.name}"),
                         selected = inputMode == mode,
                         onClick = { onInputModeChanged(mode) },
                         label = {
@@ -655,7 +759,7 @@ private fun GlyphInspectorControls(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("inspector_profile"),
                     onClick = onOpenProfile,
                     enabled = virtualInput
                 ) {
@@ -800,7 +904,8 @@ private fun GlyphInspectorControls(
                 title = stringResource(R.string.glyph_inspector_freeze),
                 checked = frozen,
                 enabled = canFreeze,
-                onCheckedChange = onFrozenChanged
+                onCheckedChange = onFrozenChanged,
+                modifier = Modifier.testTag("inspector_freeze")
             )
         }
     }
@@ -930,7 +1035,8 @@ private fun GlyphInspectorToggleRow(
     title: String,
     checked: Boolean,
     enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -948,6 +1054,7 @@ private fun GlyphInspectorToggleRow(
             }
         )
         Switch(
+            modifier = modifier,
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled
@@ -1363,6 +1470,7 @@ private fun GlyphMatrixFrameContent(
                 GlyphMatrixFrameCanvas(
                     frame = frame,
                     modifier = Modifier
+                        .testTag("inspector_matrix_pixels")
                         .fillMaxWidth()
                         .padding(top = 18.dp)
                         .aspectRatio(1f)

@@ -60,7 +60,12 @@ class MatrixTrackTitleOutputTest {
                 FloatArray(25) { if (rawPeak > 0f) 1f else 0f }, rawPeak, 0f,
                 FloatArray(64) { if (it % 2 == 0) pcmAmplitude else -pcmAmplitude }, null, null)
         }
-        override fun close() { session.release() }
+        override fun close() {
+            session.release()
+            // Robolectric's manager keeps controllers after MediaSession.release(). Do
+            // not let a previous device fixture win active-session selection in the next.
+            shadowOf(output.context.getSystemService(MediaSessionManager::class.java)).clearControllers()
+        }
     }
     private class OutputFixture(val profile: GlyphDeviceProfile, val emulate: Boolean = false) : AutoCloseable {
         val context = RuntimeEnvironment.getApplication()
@@ -624,12 +629,84 @@ class MatrixTrackTitleOutputTest {
                 val text = IntArray(frame.size).apply { this[size / 2] = 128 }
                 MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, output.length,
                     GlyphMatrixPreviewGeometry.columnHeights(profile, output.length), frame,
-                    preserveTextBrightness = profile == GlyphDeviceProfile.PHONE3_MATRIX)
+                    preserveTextBrightness = true)
                 output.send(frame)
                 output.assertEncoding()
-                assertEquals(321, output.sent.last()[frame.size / 2 + 1])
-                assertEquals(if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 2056 else 4095,
-                    output.sent.last()[frame.size / 2])
+                assertEquals(225, output.sent.last()[frame.size / 2 + 1])
+                assertEquals(2056, output.sent.last()[frame.size / 2])
+            }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun canvasTitleReachesSdkInFourLevelsWhilePlayingSilenceRetainsAllThreeProfiles() {
+        for ((profile, emulate) in listOf(GlyphDeviceProfile.PHONE3_MATRIX to false,
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX to false, GlyphDeviceProfile.PHONE3_MATRIX to true)) {
+            OutputFixture(profile, emulate).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS)
+                    output.controller.setMatrixTrackTitleSettings(true, false)
+                    playback.tick(1000)
+                    shadowOf(playback.session.controller).setMetadata(MediaMetadata.Builder()
+                        .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "new-song")
+                        .putString(MediaMetadata.METADATA_KEY_TITLE, "日本語の長い曲名 ABC 123 Artist").build())
+                    playback.tick(100)
+                    // Give the first glyph time to enter the circular physical mask; a
+                    // valid frame can still be black when only its leading blank is visible.
+                    for (elapsed in listOf(700L, 500L, 1000L)) {
+                        playback.tick(elapsed)
+                        output.assertEncoding()
+                        assertEquals(0, output.closeCount)
+                        assertEquals(0, output.blackoutCount)
+                        assertTrue("No title pixels: $profile emulate=$emulate elapsed=$elapsed", output.sent.last().any { it > 0 })
+                        assertTrue(output.internalFrame().all { it in listOf(0, 42, 85, 127) })
+                        assertTrue(output.sent.last().all { it in listOf(0, 674, 1365, 2039) })
+                    }
+                    if (emulate) {
+                        val physical = output.internalFrame()
+                        for (y in 0 until 25) for (x in 0 until 25) {
+                            if (y !in 6..18 || x !in 6..18) assertEquals(0, physical[y * 25 + x])
+                        }
+                    }
+                    output.controller.turnOff()
+                }
+            }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun reconnectSwitchesEmulationSizeAndRecyclesThePreviousTitleBitmap() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS)
+                output.controller.setMatrixTrackTitleSettings(true, false)
+                val reconnect = GlyphMatrixController::class.java.getDeclaredMethod("handleServiceConnected")
+                    .apply { isAccessible = true }
+                val rendererField = GlyphMatrixController::class.java.getDeclaredField("trackTitleRenderer")
+                    .apply { isAccessible = true }
+                var previousBitmap: android.graphics.Bitmap? = null
+                for ((index, emulate) in listOf(false, true, false).withIndex()) {
+                    output.setControllerField("initialPhone4aProEmulationEnabled", emulate)
+                    reconnect.invoke(output.controller)
+                    previousBitmap?.let { assertTrue(it.isRecycled) }
+                    playback.tick(1000) // Reconnect seeds the current track without replaying it.
+                    assertNull(rendererField.get(output.controller))
+                    shadowOf(playback.session.controller).setMetadata(MediaMetadata.Builder()
+                        .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "switch-$index")
+                        .putString(MediaMetadata.METADATA_KEY_TITLE, "日本語の曲名 ABC 123").build())
+                    playback.tick(100)
+                    val renderer = rendererField.get(output.controller) as MatrixCanvasTrackTitleRenderer
+                    assertEquals(if (emulate) 13 else 25, renderer.matrixLength)
+                    previousBitmap = requireNotNull(renderer.cachedBitmap)
+                    assertEquals(renderer.matrixLength, previousBitmap.height)
+                    playback.tick(700)
+                    output.assertEncoding()
+                    assertTrue(output.sent.last().any { it > 0 })
+                }
+                output.controller.turnOff()
+                assertTrue(requireNotNull(previousBitmap).isRecycled)
             }
         }
     }
@@ -646,8 +723,59 @@ class MatrixTrackTitleOutputTest {
                 preview.updateLevel(0.5f)
                 assertTrue(frames.last().pixels.all { it == 0 || it == 255 })
                 assertTrue(frames.last().pixels.any { it == 255 })
+                preview.unbind()
                 assertTrue(output.sent.isEmpty())
+                assertTrue(output.registrationTimes.isEmpty())
+                assertEquals(0, output.closeCount)
+                assertEquals(0, output.blackoutCount)
             }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun liveMirrorAlreadyReceivesFinalTitleCompositionAndCenteredEmulationInEightBits() {
+        for ((profile, emulate) in listOf(GlyphDeviceProfile.PHONE3_MATRIX to false,
+            GlyphDeviceProfile.PHONE4A_PRO_MATRIX to false, GlyphDeviceProfile.PHONE3_MATRIX to true)) {
+            val frames = mutableListOf<GlyphPreviewFrame.Matrix>()
+            val listener: (GlyphPreviewFrame?) -> Unit = { if (it is GlyphPreviewFrame.Matrix) frames += it }
+            GlyphPreviewFrameStore.register(listener)
+            try {
+                OutputFixture(profile, emulate).use { output ->
+                    PlaybackFixture(output).use { playback ->
+                        output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS)
+                        output.controller.setMatrixTrackTitleSettings(true, false)
+                        playback.tick(1000, 0.5f)
+                        shadowOf(playback.session.controller).setMetadata(MediaMetadata.Builder()
+                            .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, "mirror-next")
+                            .putString(MediaMetadata.METADATA_KEY_TITLE, "日本語の長い曲名 ABC 123").build())
+                        playback.tick(100, 0.5f)
+                        playback.tick(700, 0.5f)
+                        val frozen = frames.last()
+                        assertEquals(output.logicalProfile, frozen.deviceProfile)
+                        assertEquals(profile, frozen.physicalDeviceProfile)
+                        assertEquals(output.length, frozen.matrixSize)
+                        assertArrayEquals(output.internalFrame(), frozen.pixels)
+                        assertTrue(frozen.pixels.all { it in 0..255 })
+                        assertTrue(frozen.pixels.any { it == 127 })
+                        output.assertEncoding()
+                        val frozenPixels = frozen.pixels.copyOf()
+                        playback.tick(1000, 0.5f)
+                        assertArrayEquals(frozenPixels, frozen.pixels)
+                        assertFalse(frozen.pixels.contentEquals(frames.last().pixels))
+                        assertArrayEquals(output.internalFrame(), frames.last().pixels)
+                        if (emulate) {
+                            for (y in 0 until 25) for (x in 0 until 25) {
+                                if (y !in 6..18 || x !in 6..18) assertEquals(0, frames.last().pixels[y * 25 + x])
+                            }
+                        }
+                        playback.tick(21_000, 0.5f)
+                        assertArrayEquals(output.internalFrame(), frames.last().pixels)
+                        output.controller.turnOff()
+                        assertTrue(frames.last().pixels.all { it == 0 })
+                    }
+                }
+            } finally { GlyphPreviewFrameStore.unregister(listener) }
         }
     }
 }

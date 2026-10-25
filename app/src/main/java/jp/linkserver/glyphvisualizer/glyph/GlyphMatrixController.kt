@@ -475,7 +475,8 @@ class GlyphMatrixController(
                     )
                 } ?: 0
                 if (width > 0) {
-                    trackTitleAnimation.start(nowMs, matrixLength, width, renderer.pixelsPerSecond)
+                    trackTitleAnimation.start(nowMs, matrixLength, width, renderer.pixelsPerSecond,
+                        renderer.leadingMargin, renderer.trailingMargin, renderer.rightToLeft)
                     AppLogger.i(TAG, "Track title started: renderer=${renderer.javaClass.simpleName} width=$width duration=${trackTitleAnimation.scrollDurationMs}ms")
                 } else {
                     trackTitleAnimation.cancel()
