@@ -13,7 +13,8 @@ class MatrixTrackTitleAnimationTest {
         val preview = IntArray(625)
         val sdk = IntArray(625)
         val heights = GlyphMatrixPreviewGeometry.columnHeights(GlyphDeviceProfile.PHONE3_MATRIX, 25)
-        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, sdk)
+        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, true)
+        MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
         for ((x, level) in levels.withIndex()) {
             assertEquals(level, preview[12 * 25 + x])
             assertEquals((level * 4095 + 127) / 255, sdk[12 * 25 + x])
@@ -21,12 +22,13 @@ class MatrixTrackTitleAnimationTest {
         assertEquals(0, preview[0])
         assertEquals(0, sdk[0])
         background.fill(200)
-        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, sdk)
+        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, true)
+        MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
         for ((x, level) in levels.withIndex()) {
             assertEquals(maxOf(40, level), preview[12 * 25 + x])
-            assertEquals(maxOf(40, (level * 4095 + 127) / 255), sdk[12 * 25 + x])
+            assertEquals((maxOf(40, level) * 4095 + 127) / 255, sdk[12 * 25 + x])
         }
-        assertEquals(40, sdk[12 * 25 + 12]) // Background was not scaled to 12-bit brightness.
+        assertEquals(642, sdk[12 * 25 + 12]) // The 20% background shares the text's scale.
         assertTrue(background.all { it == 200 })
     }
 
@@ -128,9 +130,9 @@ class MatrixTrackTitleAnimationTest {
             assertEquals(0, output[0])
             assertArrayEquals(original, background) // No cumulative dimming or damage to diff rendering.
             val sdkFrame = IntArray(output.size)
-            MatrixTrackTitleCompositor.copyTextToSdkBrightness(output, sdkFrame)
+            MatrixFrameBrightness.copyToSdk(output, sdkFrame, length, heights)
             assertEquals(4095, sdkFrame[center])
-            assertEquals(40, sdkFrame[center + 1])
+            assertEquals(642, sdkFrame[center + 1])
             assertEquals(255, output[center]) // Preview retains its original scale.
             background[center + 1] = 100
             MatrixTrackTitleCompositor.compose(background, text, 0.2f, length, heights, output)

@@ -70,15 +70,6 @@ internal class MatrixTrackTitleAnimation {
 }
 
 internal object MatrixTrackTitleCompositor {
-    const val SDK_MAX_BRIGHTNESS = 4095
-
-    /** During the text phase the background is <=51, so 255 identifies text only. */
-    fun copyTextToSdkBrightness(composite: IntArray, destination: IntArray) {
-        for (index in composite.indices) {
-            destination[index] = if (composite[index] == 255) SDK_MAX_BRIGHTNESS else composite[index]
-        }
-    }
-
     fun compose(
         background: IntArray,
         text: IntArray?,
@@ -86,7 +77,7 @@ internal object MatrixTrackTitleCompositor {
         length: Int,
         columnHeights: IntArray,
         destination: IntArray,
-        sdkDestination: IntArray? = null,
+        preserveTextBrightness: Boolean = false,
     ) {
         for (y in 0 until length) for (x in 0 until length) {
             val index = y * length + x
@@ -96,14 +87,9 @@ internal object MatrixTrackTitleCompositor {
             val physicalLed = y >= top && y < top + columnHeights[x]
             destination[index] = when {
                 !physicalLed -> 0
-                sdkDestination != null -> max(dimmed, textLevel)
+                preserveTextBrightness -> max(dimmed, textLevel)
                 textLevel > 0 -> 255 // Preserve the legacy SDK renderer on Phone (4a) Pro.
                 else -> dimmed
-            }
-            if (sdkDestination != null) {
-                // Scale text coverage only. Scaling the composed frame would brighten the background.
-                val sdkText = (textLevel * SDK_MAX_BRIGHTNESS + 127) / 255
-                sdkDestination[index] = if (physicalLed) max(dimmed, sdkText) else 0
             }
         }
     }

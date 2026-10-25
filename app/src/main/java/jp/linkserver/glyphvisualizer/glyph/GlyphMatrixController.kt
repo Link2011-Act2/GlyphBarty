@@ -111,7 +111,6 @@ class GlyphMatrixController(
     private val trackTitleAnimation = MatrixTrackTitleAnimation()
     private var trackTitleRenderer: MatrixTrackTitleRenderer? = null
     private var trackTitleComposite = IntArray(0)
-    private var sdkTrackTitleFrame = IntArray(0)
     private var trackTitleColumnHeights = IntArray(0)
     private var lastFrameHadTrackTitle = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
@@ -160,7 +159,9 @@ class GlyphMatrixController(
     private var phone4aProEmulatedOnPhone3 = false
     
     private var lastSentFrameBuffer = IntArray(0)
-    private var lastSentSdkFrameBuffer = IntArray(0)
+    private var sdkOutputFrameBuffer = IntArray(0)
+    private var sdkPhysicalColumnHeights = IntArray(0)
+    private var sdkPhysicalProfile: GlyphDeviceProfile? = null
     private var physicalFrameBuffer = IntArray(0)
     private var cachedMaxPixelsByColumn: IntArray? = null
     private var cachedMaxPixelsLength = -1
@@ -474,25 +475,12 @@ class GlyphMatrixController(
             trackTitleColumnHeights = GlyphMatrixPreviewGeometry.columnHeights(matrixProfile, matrixLength)
         }
         val preserveTextBrightness = text != null && trackTitleRenderer?.preservesTextBrightness == true
-        if (preserveTextBrightness && sdkTrackTitleFrame.size != frameBuffer.size) {
-            sdkTrackTitleFrame = IntArray(frameBuffer.size)
-        }
         MatrixTrackTitleCompositor.compose(
             frameBuffer, text, trackTitleAnimation.backgroundBrightness, matrixLength,
             trackTitleColumnHeights, trackTitleComposite,
-            sdkDestination = if (preserveTextBrightness) sdkTrackTitleFrame else null
+            preserveTextBrightness = preserveTextBrightness
         )
-        val deviceFrame = frameForPhysicalDevice(trackTitleComposite)
-        // Keep the existing 0..255 preview scale; send text at the SDK's actual maximum.
-        val sdkFrame = if (preserveTextBrightness) {
-            // This path is restricted by the factory to the physical/logical 25x25 Phone (3).
-            sdkTrackTitleFrame
-        } else if (text != null) {
-            if (sdkTrackTitleFrame.size != deviceFrame.size) sdkTrackTitleFrame = IntArray(deviceFrame.size)
-            MatrixTrackTitleCompositor.copyTextToSdkBrightness(deviceFrame, sdkTrackTitleFrame)
-            sdkTrackTitleFrame
-        } else deviceFrame
-        submitMatrixFrame(deviceFrame, sdkFrame)
+        submitMatrixFrame(frameForPhysicalDevice(trackTitleComposite))
         lastFrameHadTrackTitle = trackTitleAnimation.active
     }
 
@@ -1876,7 +1864,7 @@ class GlyphMatrixController(
         }
     }
 
-    private fun submitMatrixFrame(deviceFrame: IntArray, sdkDeviceFrame: IntArray = deviceFrame) {
+    private fun submitMatrixFrame(deviceFrame: IntArray) {
         if (previewDeviceProfile != null) {
             if (lastSentFrameBuffer.size != deviceFrame.size) {
                 lastSentFrameBuffer = deviceFrame.copyOf()
@@ -1897,26 +1885,28 @@ class GlyphMatrixController(
         }
         if (
             lastSentFrameBuffer.size == deviceFrame.size &&
-            lastSentFrameBuffer.contentEquals(deviceFrame) &&
-            lastSentSdkFrameBuffer.contentEquals(sdkDeviceFrame)
+            lastSentFrameBuffer.contentEquals(deviceFrame)
         ) {
             mirrorMatrixPreviewFrame(deviceFrame)
             return
         }
 
         try {
-            glyphMatrixManager.setAppMatrixFrame(sdkDeviceFrame)
+            if (sdkOutputFrameBuffer.size != deviceFrame.size) {
+                sdkOutputFrameBuffer = IntArray(deviceFrame.size)
+            }
+            if (sdkPhysicalColumnHeights.size != physicalMatrixLength || sdkPhysicalProfile != physicalMatrixProfile) {
+                sdkPhysicalColumnHeights = GlyphMatrixPreviewGeometry.columnHeights(physicalMatrixProfile, physicalMatrixLength)
+                sdkPhysicalProfile = physicalMatrixProfile
+            }
+            // Convert after gamma, auto scaling, composition and device mapping, exactly once.
+            MatrixFrameBrightness.copyToSdk(deviceFrame, sdkOutputFrameBuffer,
+                physicalMatrixLength, sdkPhysicalColumnHeights)
+            glyphMatrixManager.setAppMatrixFrame(sdkOutputFrameBuffer)
             if (lastSentFrameBuffer.size != deviceFrame.size) {
                 lastSentFrameBuffer = deviceFrame.copyOf()
             } else {
                 deviceFrame.copyInto(lastSentFrameBuffer)
-            }
-            if (sdkDeviceFrame === deviceFrame) {
-                lastSentSdkFrameBuffer = lastSentFrameBuffer
-            } else if (lastSentSdkFrameBuffer.size != sdkDeviceFrame.size || lastSentSdkFrameBuffer === lastSentFrameBuffer) {
-                lastSentSdkFrameBuffer = sdkDeviceFrame.copyOf()
-            } else {
-                sdkDeviceFrame.copyInto(lastSentSdkFrameBuffer)
             }
             mirrorMatrixPreviewFrame(deviceFrame)
             failureCount = 0
@@ -1940,7 +1930,6 @@ class GlyphMatrixController(
     }
 
     private fun invalidateLastSentFrame() {
-        if (lastSentSdkFrameBuffer.isNotEmpty()) lastSentSdkFrameBuffer = IntArray(0)
         if (lastSentFrameBuffer.isNotEmpty()) {
             lastSentFrameBuffer = IntArray(0)
         }
