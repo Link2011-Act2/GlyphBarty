@@ -604,4 +604,8 @@
     <string name="spectrum_label_bass">低域</string>
     <string name="spectrum_label_bands">%1$d バンド</string>
     <string name="spectrum_label_treble">高域</string>
+    <string name="settings_matrix_track_title_enabled">曲名スクロール表示</string>
+    <string name="settings_matrix_track_title_enabled_description">曲の切り替え時にGlyph Matrixで曲名をスクロールします。通知へのアクセス権限が必要です。</string>
+    <string name="settings_matrix_track_artist_enabled">アーティスト名も表示する</string>
+    <string name="settings_matrix_track_artist_enabled_description">曲名に続けてアーティスト名を表示します。</string>
 </resources>

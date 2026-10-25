@@ -648,6 +648,12 @@ class MainActivity : ComponentActivity() {
                                     it.copy(experimentalVisualizerSignalWatchdogEnabled = enabled)
                                 }
                             },
+                            onMatrixTrackTitleEnabledChanged = { enabled ->
+                                mainCoordinator.updatePushAndPersist { it.copy(matrixTrackTitleEnabled = enabled) }
+                            },
+                            onMatrixTrackArtistEnabledChanged = { enabled ->
+                                mainCoordinator.updatePushAndPersist { it.copy(matrixTrackArtistEnabled = enabled) }
+                            },
                             onMatrixSmoothMotionEnabledChanged = { enabled ->
                                 val updated = CaptureUiStore.state.copy(
                                 matrixSmoothMotionEnabled = enabled
@@ -1037,6 +1043,8 @@ class MainActivity : ComponentActivity() {
                 experimentalVisualizerSignalWatchdogEnabled = parameters.experimentalVisualizerSignalWatchdogEnabled,
                 experimentalSpectrumDecayEnabled = parameters.experimentalSpectrumDecayEnabled,
                 experimentalPerformanceOptimizationsEnabled = parameters.experimentalPerformanceOptimizationsEnabled,
+                matrixTrackTitleEnabled = parameters.matrixTrackTitleEnabled,
+                matrixTrackArtistEnabled = parameters.matrixTrackArtistEnabled,
                 matrixSmoothMotionEnabled = parameters.matrixSmoothMotionEnabled,
                 oscilloscopeAutoTimeAxisEnabled = parameters.oscilloscopeAutoTimeAxisEnabled,
                 turnOffWhenBackDown = parameters.turnOffWhenBackDown

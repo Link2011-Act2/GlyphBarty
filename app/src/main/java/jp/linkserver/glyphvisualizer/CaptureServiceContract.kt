@@ -32,7 +32,9 @@ data class CaptureConfig(
     val experimentalPerformanceOptimizationsEnabled: Boolean,
     val matrixSmoothMotionEnabled: Boolean,
     val oscilloscopeAutoTimeAxisEnabled: Boolean,
-    val turnOffWhenBackDown: Boolean
+    val turnOffWhenBackDown: Boolean,
+    val matrixTrackTitleEnabled: Boolean = false,
+    val matrixTrackArtistEnabled: Boolean = false
 )
 
 fun CaptureUiState.toCaptureConfig(): CaptureConfig = CaptureConfig(
@@ -62,6 +64,8 @@ fun CaptureUiState.toCaptureConfig(): CaptureConfig = CaptureConfig(
     experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
     experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
     experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+    matrixTrackTitleEnabled = matrixTrackTitleEnabled,
+    matrixTrackArtistEnabled = matrixTrackArtistEnabled,
     matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
     oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
     turnOffWhenBackDown = turnOffWhenBackDown
@@ -94,6 +98,8 @@ internal fun CaptureConfig.applyToUiState(state: CaptureUiState): CaptureUiState
     experimentalVisualizerSignalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled,
     experimentalSpectrumDecayEnabled = experimentalSpectrumDecayEnabled,
     experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
+    matrixTrackTitleEnabled = matrixTrackTitleEnabled,
+    matrixTrackArtistEnabled = matrixTrackArtistEnabled,
     matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
     oscilloscopeAutoTimeAxisEnabled = oscilloscopeAutoTimeAxisEnabled,
     turnOffWhenBackDown = turnOffWhenBackDown
@@ -167,6 +173,8 @@ object CaptureIntentCommandCodec {
     const val EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
         "extra_oscilloscope_auto_time_axis_enabled"
     const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
+    const val EXTRA_MATRIX_TRACK_TITLE_ENABLED = "extra_matrix_track_title_enabled"
+    const val EXTRA_MATRIX_TRACK_ARTIST_ENABLED = "extra_matrix_track_artist_enabled"
     const val EXTRA_START_SOURCE = "extra_start_source"
 
     fun encode(context: Context, command: CaptureCommand): Intent {
@@ -278,6 +286,8 @@ object CaptureIntentCommandCodec {
             EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
             config.experimentalPerformanceOptimizationsEnabled
         )
+        putExtra(EXTRA_MATRIX_TRACK_TITLE_ENABLED, config.matrixTrackTitleEnabled)
+        putExtra(EXTRA_MATRIX_TRACK_ARTIST_ENABLED, config.matrixTrackArtistEnabled)
         putExtra(EXTRA_MATRIX_SMOOTH_MOTION_ENABLED, config.matrixSmoothMotionEnabled)
         putExtra(
             EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
@@ -360,6 +370,8 @@ object CaptureIntentCommandCodec {
                 EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
                 fallback.experimentalPerformanceOptimizationsEnabled
             ),
+            matrixTrackTitleEnabled = getBooleanExtra(EXTRA_MATRIX_TRACK_TITLE_ENABLED, fallback.matrixTrackTitleEnabled),
+            matrixTrackArtistEnabled = getBooleanExtra(EXTRA_MATRIX_TRACK_ARTIST_ENABLED, fallback.matrixTrackArtistEnabled),
             matrixSmoothMotionEnabled = getBooleanExtra(
                 EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
                 fallback.matrixSmoothMotionEnabled

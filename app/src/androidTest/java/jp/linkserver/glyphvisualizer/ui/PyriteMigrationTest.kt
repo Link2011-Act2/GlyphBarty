@@ -107,8 +107,20 @@ class PyriteMigrationTest {
 }
 
 @Composable
-internal fun FixtureSettings(nothing: Boolean, automatic: Boolean, onAutomatic: (Boolean) -> Unit, onAbout: () -> Unit) {
+internal fun FixtureSettings(
+    nothing: Boolean, automatic: Boolean, onAutomatic: (Boolean) -> Unit, onAbout: () -> Unit,
+    matrixSupported: Boolean = false,
+    matrixTrackTitleEnabled: Boolean = false,
+    matrixTrackArtistEnabled: Boolean = false,
+    onMatrixTrackTitleEnabledChanged: (Boolean) -> Unit = {},
+    onMatrixTrackArtistEnabledChanged: (Boolean) -> Unit = {},
+) {
     SettingsScreen(
+        matrixSupported = matrixSupported,
+        matrixTrackTitleEnabled = matrixTrackTitleEnabled,
+        matrixTrackArtistEnabled = matrixTrackArtistEnabled,
+        onMatrixTrackTitleEnabledChanged = onMatrixTrackTitleEnabledChanged,
+        onMatrixTrackArtistEnabledChanged = onMatrixTrackArtistEnabledChanged,
         onBack = {},
         onAbout = onAbout,
         onExperimentalFeatures = {},

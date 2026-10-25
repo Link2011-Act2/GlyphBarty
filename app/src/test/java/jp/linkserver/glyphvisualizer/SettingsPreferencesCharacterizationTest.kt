@@ -431,6 +431,8 @@ class SettingsPreferencesCharacterizationTest {
             "autoScaleWindowSeconds",
             "autoScaleOffset",
             "visualDynamicsOverrides",
+            "matrixTrackTitleEnabled",
+            "matrixTrackArtistEnabled",
             "oscilloscopeAutoTimeAxisEnabled"
         )
 
@@ -478,6 +480,8 @@ class SettingsPreferencesCharacterizationTest {
             "experimental_visualizer_signal_watchdog_enabled",
             "experimental_spectrum_decay_enabled",
             "experimental_performance_optimizations_enabled",
+            "matrix_track_title_enabled",
+            "matrix_track_artist_enabled",
             "matrix_smooth_motion_enabled",
             "oscilloscope_auto_time_axis_enabled",
             "show_phone1_glyph_debug_controls_everywhere",

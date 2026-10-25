@@ -40,6 +40,8 @@ internal object MediaSessionPlaybackGate {
         val trackKey: String? = null,
         val trackChangeDirection: MediaTrackChangeDirection? = null,
         val motionPaused: Boolean = false,
+        val title: String? = null,
+        val artist: String? = null,
     ) {
         val activeForOpenReel: Boolean
             get() = status == PlaybackStatus.PLAYING ||
@@ -95,6 +97,7 @@ internal object MediaSessionPlaybackGate {
         return currentPlaybackSnapshot(context).progress
     }
 
+    @Synchronized
     fun currentPlaybackSnapshot(
         context: Context,
         forceRefresh: Boolean = false,
@@ -104,7 +107,8 @@ internal object MediaSessionPlaybackGate {
             return cachedSnapshot
         }
         cachedSnapshotAtMs = now
-        cachedSnapshot = readPlaybackSnapshot(context, now)
+        cachedSnapshot = runCatching { readPlaybackSnapshot(context, now) }
+            .getOrElse { emptyPlaybackSnapshot() }
         return cachedSnapshot
     }
 
@@ -170,6 +174,15 @@ internal object MediaSessionPlaybackGate {
             trackKey = trackKey,
             trackChangeDirection = directionResolution.resolvedDirection,
             motionPaused = semantics.motionPaused,
+            title = firstNonBlank(
+                metadata?.getString(MediaMetadata.METADATA_KEY_TITLE),
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+            )?.trim(),
+            artist = firstNonBlank(
+                metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST),
+                metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST),
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+            )?.trim(),
         ).also { snapshot ->
             logPlaybackState(state.state, snapshot)
         }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,11 @@ private const val NATIVE_METER_VIEW_SETTING_VISIBLE = false
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    matrixSupported: Boolean,
+    matrixTrackTitleEnabled: Boolean,
+    onMatrixTrackTitleEnabledChanged: (Boolean) -> Unit,
+    matrixTrackArtistEnabled: Boolean,
+    onMatrixTrackArtistEnabledChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onAbout: () -> Unit,
     onExperimentalFeatures: () -> Unit,
@@ -102,6 +108,18 @@ fun SettingsScreen(
     nothingStyleEnabled: Boolean,
     onNothingStyleEnabledChanged: (Boolean) -> Unit
 ) {
+    var showTrackTitleSettings by rememberSaveable { mutableStateOf(false) }
+    if (matrixSupported && showTrackTitleSettings) {
+        BackHandler { showTrackTitleSettings = false }
+        MatrixTrackTitleSettingsScreen(
+            enabled = matrixTrackTitleEnabled,
+            showArtist = matrixTrackArtistEnabled,
+            onEnabledChange = onMatrixTrackTitleEnabledChanged,
+            onShowArtistChange = onMatrixTrackArtistEnabledChanged,
+            onBack = { showTrackTitleSettings = false }
+        )
+        return
+    }
     val context = LocalContext.current
     val openFailedText = stringResource(R.string.about_language_open_failed)
     val nothingLabel = stringResource(R.string.settings_ui_mode_nothing)
@@ -318,6 +336,15 @@ fun SettingsScreen(
                         checked = syncWithNothingOsGlyphSettingEnabled,
                         onCheckedChange = onSyncWithNothingOsGlyphSettingEnabledChanged
                     )
+                }
+                if (matrixSupported) {
+                    item("settings_matrix_track_title_enabled") {
+                        MatrixTrackTitleSettingsEntry(
+                            enabled = matrixTrackTitleEnabled,
+                            onEnabledChange = onMatrixTrackTitleEnabledChanged,
+                            onClick = { showTrackTitleSettings = true }
+                        )
+                    }
                 }
                 item("settings_media_playback_only_title") {
                     SettingsSwitchItem(

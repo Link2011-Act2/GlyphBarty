@@ -14,6 +14,7 @@ import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
+import jp.linkserver.glyphvisualizer.audio.MediaTrackTitleChangeDetector
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -104,6 +105,15 @@ class GlyphMatrixController(
     private var binaryMode = false
     private var experimentalPerformanceOptimizationsEnabled = false
     private var matrixSmoothMotionEnabled = false
+    private var matrixTrackTitleEnabled = false
+    private var matrixTrackArtistEnabled = false
+    private val trackTitleDetector = MediaTrackTitleChangeDetector()
+    private val trackTitleAnimation = MatrixTrackTitleAnimation()
+    private var trackTitleRenderer: MatrixTrackTitleRenderer? = null
+    private var trackTitleComposite = IntArray(0)
+    private var sdkTrackTitleFrame = IntArray(0)
+    private var trackTitleColumnHeights = IntArray(0)
+    private var lastFrameHadTrackTitle = false
     private var outputGamma = ALL_BRIGHTNESS_RESPONSE_GAMMA
     private var levelAutoScaleEnabled = false
     private var spectrumAutoScaleEnabled = false
@@ -150,6 +160,7 @@ class GlyphMatrixController(
     private var phone4aProEmulatedOnPhone3 = false
     
     private var lastSentFrameBuffer = IntArray(0)
+    private var lastSentSdkFrameBuffer = IntArray(0)
     private var physicalFrameBuffer = IntArray(0)
     private var cachedMaxPixelsByColumn: IntArray? = null
     private var cachedMaxPixelsLength = -1
@@ -230,6 +241,8 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceConnected() {
+        resetTrackTitle()
+        trackTitleRenderer = null // Select again after the actual device/profile is known.
         if (!isBound) return
         invalidateLastSentFrame()
         val currentDevice = GlyphDeviceCatalog.currentOrNull()
@@ -299,6 +312,7 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceDisconnected() {
+        resetTrackTitle()
         invalidateLastSentFrame()
         isSessionOpen = false
         onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
@@ -396,6 +410,90 @@ class GlyphMatrixController(
             lastRenderedMode = null
             resetPatternVisualState()
         }
+    }
+
+    override fun setMatrixTrackTitleSettings(enabled: Boolean, showArtist: Boolean) {
+        if (matrixTrackTitleEnabled != enabled) resetTrackTitle()
+        matrixTrackTitleEnabled = enabled
+        matrixTrackArtistEnabled = showArtist
+    }
+
+    private fun resetTrackTitle() {
+        trackTitleDetector.reset()
+        trackTitleAnimation.cancel()
+        trackTitleRenderer?.clear()
+        // Keep lastFrameHadTrackTitle until the next frame replaces the composite.
+    }
+
+    private fun updateTrackTitle(snapshot: MediaSessionPlaybackGate.PlaybackSnapshot, nowMs: Long) {
+        val changed = trackTitleDetector.observe(snapshot)
+        if (!snapshot.activeForOpenReel) {
+            trackTitleAnimation.cancel()
+            trackTitleRenderer?.clear()
+        } else if (changed) {
+            try {
+                val renderer = trackTitleRenderer ?: MatrixTrackTitleRendererFactory.create(
+                    context, physicalMatrixProfile, matrixProfile, matrixLength
+                ).also { trackTitleRenderer = it }
+                val width = snapshot.title?.takeIf { it.isNotBlank() }?.let {
+                    renderer.prepare(
+                        it, snapshot.artist.takeIf { matrixTrackArtistEnabled }, matrixLength
+                    )
+                } ?: 0
+                if (width > 0) trackTitleAnimation.start(nowMs, matrixLength, width, renderer.pixelsPerSecond)
+                else {
+                    trackTitleAnimation.cancel()
+                    renderer.clear()
+                }
+            } catch (error: Exception) {
+                trackTitleAnimation.cancel()
+                trackTitleRenderer?.clear()
+                AppLogger.w(TAG, "Track title preparation failed", error)
+            }
+        }
+        trackTitleAnimation.advance(nowMs)
+    }
+
+    private fun submitTrackTitleFrame() {
+        if (!trackTitleAnimation.active) {
+            submitMatrixFrame(frameForPhysicalDevice())
+            lastFrameHadTrackTitle = false
+            trackTitleRenderer?.clear()
+            return
+        }
+        val text = try {
+            trackTitleAnimation.textX?.let { requireNotNull(trackTitleRenderer).render(it) }
+        } catch (error: Exception) {
+            AppLogger.w(TAG, "Track title rendering failed", error)
+            trackTitleAnimation.cancel()
+            trackTitleRenderer?.clear()
+            null
+        }
+        if (trackTitleComposite.size != frameBuffer.size) {
+            trackTitleComposite = IntArray(frameBuffer.size)
+            trackTitleColumnHeights = GlyphMatrixPreviewGeometry.columnHeights(matrixProfile, matrixLength)
+        }
+        val preserveTextBrightness = text != null && trackTitleRenderer?.preservesTextBrightness == true
+        if (preserveTextBrightness && sdkTrackTitleFrame.size != frameBuffer.size) {
+            sdkTrackTitleFrame = IntArray(frameBuffer.size)
+        }
+        MatrixTrackTitleCompositor.compose(
+            frameBuffer, text, trackTitleAnimation.backgroundBrightness, matrixLength,
+            trackTitleColumnHeights, trackTitleComposite,
+            sdkDestination = if (preserveTextBrightness) sdkTrackTitleFrame else null
+        )
+        val deviceFrame = frameForPhysicalDevice(trackTitleComposite)
+        // Keep the existing 0..255 preview scale; send text at the SDK's actual maximum.
+        val sdkFrame = if (preserveTextBrightness) {
+            // This path is restricted by the factory to the physical/logical 25x25 Phone (3).
+            sdkTrackTitleFrame
+        } else if (text != null) {
+            if (sdkTrackTitleFrame.size != deviceFrame.size) sdkTrackTitleFrame = IntArray(deviceFrame.size)
+            MatrixTrackTitleCompositor.copyTextToSdkBrightness(deviceFrame, sdkTrackTitleFrame)
+            sdkTrackTitleFrame
+        } else deviceFrame
+        submitMatrixFrame(deviceFrame, sdkFrame)
+        lastFrameHadTrackTitle = trackTitleAnimation.active
     }
 
     override fun setOutputGamma(gamma: Float) {
@@ -698,11 +796,12 @@ class GlyphMatrixController(
         }
         val maxBand = rawSpectrumPeak
         val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
-        val openReelPlayback = if (renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
+        val openReelPlayback = if (matrixTrackTitleEnabled || renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
             MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         } else {
             null
         }
+        if (matrixTrackTitleEnabled && openReelPlayback != null) updateTrackTitle(openReelPlayback, now)
         val holdOpenReelFrameForPause =
             openReelPlayback?.motionPaused == true
         var silenceDecision = MatrixAudioSilencePolicy.evaluate(
@@ -821,9 +920,13 @@ class GlyphMatrixController(
                 )
             )
         ) {
-            MatrixRenderResult.ReuseLastFrame -> deliverLastMatrixFrame()
+            MatrixRenderResult.ReuseLastFrame -> {
+                if (trackTitleAnimation.active || lastFrameHadTrackTitle) submitTrackTitleFrame()
+                else deliverLastMatrixFrame()
+            }
             is MatrixRenderResult.GeneratedFrame -> {
-                submitMatrixFrame(result.deviceFrame)
+                if (trackTitleAnimation.active || lastFrameHadTrackTitle) submitTrackTitleFrame()
+                else submitMatrixFrame(result.deviceFrame)
                 if (
                     renderingSilenceDrain &&
                     result.silenceDrainComplete &&
@@ -1773,7 +1876,7 @@ class GlyphMatrixController(
         }
     }
 
-    private fun submitMatrixFrame(deviceFrame: IntArray) {
+    private fun submitMatrixFrame(deviceFrame: IntArray, sdkDeviceFrame: IntArray = deviceFrame) {
         if (previewDeviceProfile != null) {
             if (lastSentFrameBuffer.size != deviceFrame.size) {
                 lastSentFrameBuffer = deviceFrame.copyOf()
@@ -1794,18 +1897,26 @@ class GlyphMatrixController(
         }
         if (
             lastSentFrameBuffer.size == deviceFrame.size &&
-            lastSentFrameBuffer.contentEquals(deviceFrame)
+            lastSentFrameBuffer.contentEquals(deviceFrame) &&
+            lastSentSdkFrameBuffer.contentEquals(sdkDeviceFrame)
         ) {
             mirrorMatrixPreviewFrame(deviceFrame)
             return
         }
 
         try {
-            glyphMatrixManager.setAppMatrixFrame(deviceFrame)
+            glyphMatrixManager.setAppMatrixFrame(sdkDeviceFrame)
             if (lastSentFrameBuffer.size != deviceFrame.size) {
                 lastSentFrameBuffer = deviceFrame.copyOf()
             } else {
                 deviceFrame.copyInto(lastSentFrameBuffer)
+            }
+            if (sdkDeviceFrame === deviceFrame) {
+                lastSentSdkFrameBuffer = lastSentFrameBuffer
+            } else if (lastSentSdkFrameBuffer.size != sdkDeviceFrame.size || lastSentSdkFrameBuffer === lastSentFrameBuffer) {
+                lastSentSdkFrameBuffer = sdkDeviceFrame.copyOf()
+            } else {
+                sdkDeviceFrame.copyInto(lastSentSdkFrameBuffer)
             }
             mirrorMatrixPreviewFrame(deviceFrame)
             failureCount = 0
@@ -1829,6 +1940,7 @@ class GlyphMatrixController(
     }
 
     private fun invalidateLastSentFrame() {
+        if (lastSentSdkFrameBuffer.isNotEmpty()) lastSentSdkFrameBuffer = IntArray(0)
         if (lastSentFrameBuffer.isNotEmpty()) {
             lastSentFrameBuffer = IntArray(0)
         }
@@ -1837,6 +1949,7 @@ class GlyphMatrixController(
     }
 
     override fun turnOff() {
+        resetTrackTitle()
         invalidateLastSentFrame()
         lastPreviewLevel = 0f
         silenceStartedAt = 0L
@@ -1881,6 +1994,7 @@ class GlyphMatrixController(
     }
 
     private fun releaseMatrixForSilence() {
+        resetTrackTitle()
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
@@ -1898,6 +2012,7 @@ class GlyphMatrixController(
     }
 
     private fun blackoutMatrixForSilence() {
+        resetTrackTitle()
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
@@ -1986,14 +2101,14 @@ class GlyphMatrixController(
         }
     }
 
-    private fun frameForPhysicalDevice(): IntArray {
-        if (!phone4aProEmulatedOnPhone3) return frameBuffer
+    private fun frameForPhysicalDevice(logicalFrame: IntArray = frameBuffer): IntArray {
+        if (!phone4aProEmulatedOnPhone3) return logicalFrame
         val requiredSize = physicalMatrixLength * physicalMatrixLength
         if (physicalFrameBuffer.size != requiredSize) {
             physicalFrameBuffer = IntArray(requiredSize)
         }
         GlyphMatrixProfileEmulator.copyPhone4aProFrameIntoCenteredRegion(
-            source = frameBuffer,
+            source = logicalFrame,
             physicalMatrixLength = physicalMatrixLength,
             destination = physicalFrameBuffer
         )

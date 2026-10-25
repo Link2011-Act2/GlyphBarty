@@ -53,6 +53,8 @@ data class PersistedSettings(
     val experimentalVisualizerSignalWatchdogEnabled: Boolean,
     val experimentalSpectrumDecayEnabled: Boolean,
     val experimentalPerformanceOptimizationsEnabled: Boolean,
+    val matrixTrackTitleEnabled: Boolean = false,
+    val matrixTrackArtistEnabled: Boolean = false,
     val matrixSmoothMotionEnabled: Boolean,
     val oscilloscopeAutoTimeAxisEnabled: Boolean,
     val showPhone1GlyphDebugControlsEverywhere: Boolean,
@@ -118,6 +120,8 @@ internal object PersistedSettingsSchema {
         experimentalSpectrumDecayEnabled = state.experimentalSpectrumDecayEnabled,
         experimentalPerformanceOptimizationsEnabled =
             state.experimentalPerformanceOptimizationsEnabled,
+        matrixTrackTitleEnabled = state.matrixTrackTitleEnabled,
+        matrixTrackArtistEnabled = state.matrixTrackArtistEnabled,
         matrixSmoothMotionEnabled = state.matrixSmoothMotionEnabled,
         oscilloscopeAutoTimeAxisEnabled = state.oscilloscopeAutoTimeAxisEnabled,
         showPhone1GlyphDebugControlsEverywhere = state.showPhone1GlyphDebugControlsEverywhere,
@@ -175,6 +179,8 @@ internal object PersistedSettingsSchema {
         experimentalSpectrumDecayEnabled = settings.experimentalSpectrumDecayEnabled,
         experimentalPerformanceOptimizationsEnabled =
             settings.experimentalPerformanceOptimizationsEnabled,
+        matrixTrackTitleEnabled = settings.matrixTrackTitleEnabled,
+        matrixTrackArtistEnabled = settings.matrixTrackArtistEnabled,
         matrixSmoothMotionEnabled = settings.matrixSmoothMotionEnabled,
         oscilloscopeAutoTimeAxisEnabled = settings.oscilloscopeAutoTimeAxisEnabled,
         showPhone1GlyphDebugControlsEverywhere = settings.showPhone1GlyphDebugControlsEverywhere,
@@ -428,6 +434,8 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
                 defaults.experimentalPerformanceOptimizationsEnabled
             ),
+            matrixTrackTitleEnabled = preferences.getBoolean(Keys.MATRIX_TRACK_TITLE_ENABLED, defaults.matrixTrackTitleEnabled),
+            matrixTrackArtistEnabled = preferences.getBoolean(Keys.MATRIX_TRACK_ARTIST_ENABLED, defaults.matrixTrackArtistEnabled),
             matrixSmoothMotionEnabled = preferences.getBoolean(
                 Keys.MATRIX_SMOOTH_MOTION_ENABLED,
                 defaults.matrixSmoothMotionEnabled
@@ -541,6 +549,8 @@ internal object PersistedSettingsPreferenceCodec {
                 Keys.EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
                 settings.experimentalPerformanceOptimizationsEnabled
             )
+            .putBoolean(Keys.MATRIX_TRACK_TITLE_ENABLED, settings.matrixTrackTitleEnabled)
+            .putBoolean(Keys.MATRIX_TRACK_ARTIST_ENABLED, settings.matrixTrackArtistEnabled)
             .putBoolean(Keys.MATRIX_SMOOTH_MOTION_ENABLED, settings.matrixSmoothMotionEnabled)
             .putBoolean(
                 Keys.OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
@@ -649,6 +659,8 @@ internal object PersistedSettingsPreferenceCodec {
             "experimental_spectrum_decay_enabled"
         const val EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED =
             "experimental_performance_optimizations_enabled"
+        const val MATRIX_TRACK_TITLE_ENABLED = "matrix_track_title_enabled"
+        const val MATRIX_TRACK_ARTIST_ENABLED = "matrix_track_artist_enabled"
         const val MATRIX_SMOOTH_MOTION_ENABLED = "matrix_smooth_motion_enabled"
         const val OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
             "oscilloscope_auto_time_axis_enabled"
@@ -686,6 +698,8 @@ internal object PersistedSettingsJsonCodec {
                     put("toneFocus", settings.toneFocus.toDouble())
                     put("smoothing", settings.smoothing.toDouble())
                     put("smoothingBalance", settings.smoothingBalance.toDouble())
+                    put("matrixTrackTitleEnabled", settings.matrixTrackTitleEnabled)
+                    put("matrixTrackArtistEnabled", settings.matrixTrackArtistEnabled)
                     put("glyphMode", settings.glyphMode)
                     put("autoScaleWindowSeconds", settings.autoScaleWindowSeconds.toDouble())
                     put("autoScaleOffset", settings.autoScaleOffset.toDouble())
@@ -739,6 +753,8 @@ internal object PersistedSettingsJsonCodec {
                 "smoothingBalance",
                 defaults.smoothingBalance.toDouble()
             ).toFloat(),
+            matrixTrackTitleEnabled = parameters.optBoolean("matrixTrackTitleEnabled", defaults.matrixTrackTitleEnabled),
+            matrixTrackArtistEnabled = parameters.optBoolean("matrixTrackArtistEnabled", defaults.matrixTrackArtistEnabled),
             glyphMode = parameters.optString("glyphMode", defaults.glyphMode),
             autoScaleWindowSeconds = parameters.optDouble(
                 "autoScaleWindowSeconds",

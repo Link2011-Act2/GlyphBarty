@@ -525,6 +525,13 @@ internal fun GlyphVisualizerApp(
                         }
                     )
                     Screen.SETTINGS -> SettingsScreen(
+                        matrixSupported = actualDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX ||
+                            actualDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
+                        matrixTrackTitleEnabled = matrixTrackTitleEnabled,
+                        onMatrixTrackTitleEnabledChanged = onMatrixTrackTitleEnabledChanged,
+                        matrixTrackArtistEnabled = matrixTrackArtistEnabled,
+                        onMatrixTrackArtistEnabledChanged = onMatrixTrackArtistEnabledChanged,
+
                         onBack = { screen = settingsReturnScreen },
                         onAbout = { screen = Screen.ABOUT },
                         onExperimentalFeatures = { screen = Screen.EXPERIMENTAL },
@@ -870,6 +877,8 @@ private fun GlyphVisualizerPreview() {
                     onMediaPlaybackOnlyEnabledChanged = {},
                     onExperimentalVisualizerStabilizationEnabledChanged = {},
                     onExperimentalVisualizerSignalWatchdogEnabledChanged = {},
+                    onMatrixTrackTitleEnabledChanged = {},
+                    onMatrixTrackArtistEnabledChanged = {},
                     onMatrixSmoothMotionEnabledChanged = {},
                     onOscilloscopeAutoTimeAxisEnabledChanged = {},
                     onAutoEnablePhone1GlyphDebugOnStartChanged = {},

@@ -604,4 +604,8 @@
     <string name="spectrum_label_bass">Bass</string>
     <string name="spectrum_label_bands">%1$d bands</string>
     <string name="spectrum_label_treble">Treble</string>
+    <string name="settings_matrix_track_title_enabled">Scroll track title</string>
+    <string name="settings_matrix_track_title_enabled_description">Scroll the new track title on Glyph Matrix. Requires notification access.</string>
+    <string name="settings_matrix_track_artist_enabled">Also show artist name</string>
+    <string name="settings_matrix_track_artist_enabled_description">Include the artist after the track title.</string>
 </resources>

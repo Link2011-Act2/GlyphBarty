@@ -68,6 +68,8 @@ internal data class VisualizerSettingsActions(
     val onMediaPlaybackOnlyEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerStabilizationEnabledChanged: (Boolean) -> Unit,
     val onExperimentalVisualizerSignalWatchdogEnabledChanged: (Boolean) -> Unit,
+    val onMatrixTrackTitleEnabledChanged: (Boolean) -> Unit,
+    val onMatrixTrackArtistEnabledChanged: (Boolean) -> Unit,
     val onMatrixSmoothMotionEnabledChanged: (Boolean) -> Unit,
     val onOscilloscopeAutoTimeAxisEnabledChanged: (Boolean) -> Unit,
     val onAutoEnablePhone1GlyphDebugOnStartChanged: (Boolean) -> Unit,

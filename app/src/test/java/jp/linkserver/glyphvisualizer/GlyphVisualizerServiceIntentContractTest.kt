@@ -309,6 +309,8 @@ class GlyphVisualizerServiceIntentContractTest {
             "extra_experimental_performance_optimizations_enabled"
         private const val EXTRA_MATRIX_SMOOTH_MOTION_ENABLED =
             "extra_matrix_smooth_motion_enabled"
+        private const val EXTRA_MATRIX_TRACK_TITLE_ENABLED = "extra_matrix_track_title_enabled"
+        private const val EXTRA_MATRIX_TRACK_ARTIST_ENABLED = "extra_matrix_track_artist_enabled"
         private const val EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED =
             "extra_oscilloscope_auto_time_axis_enabled"
         private const val EXTRA_TURN_OFF_WHEN_BACK_DOWN = "extra_turn_off_when_back_down"
@@ -342,6 +344,8 @@ class GlyphVisualizerServiceIntentContractTest {
             EXTRA_EXPERIMENTAL_SPECTRUM_DECAY_ENABLED,
             EXTRA_EXPERIMENTAL_PERFORMANCE_OPTIMIZATIONS_ENABLED,
             EXTRA_MATRIX_SMOOTH_MOTION_ENABLED,
+            EXTRA_MATRIX_TRACK_TITLE_ENABLED,
+            EXTRA_MATRIX_TRACK_ARTIST_ENABLED,
             EXTRA_OSCILLOSCOPE_AUTO_TIME_AXIS_ENABLED,
             EXTRA_TURN_OFF_WHEN_BACK_DOWN
         )

@@ -61,6 +61,8 @@ data class CaptureUiState(
     val experimentalVisualizerSignalWatchdogEnabled: Boolean = true,
     val experimentalSpectrumDecayEnabled: Boolean = false,
     val experimentalPerformanceOptimizationsEnabled: Boolean = true,
+    val matrixTrackTitleEnabled: Boolean = false,
+    val matrixTrackArtistEnabled: Boolean = false,
     val matrixSmoothMotionEnabled: Boolean = false,
     val oscilloscopeAutoTimeAxisEnabled: Boolean = false,
     val showPhone1GlyphDebugControlsEverywhere: Boolean = false,

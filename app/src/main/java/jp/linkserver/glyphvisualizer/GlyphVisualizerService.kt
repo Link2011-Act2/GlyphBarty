@@ -443,6 +443,8 @@ class GlyphVisualizerService : Service() {
         val autoScaleStrategy: GlyphAutoScaleStrategy,
         val experimentalPerformanceOptimizationsEnabled: Boolean,
         val matrixSmoothMotionEnabled: Boolean,
+        val matrixTrackTitleEnabled: Boolean,
+        val matrixTrackArtistEnabled: Boolean,
         val allBrightnessAutoScale: Boolean,
         val autoScaleWindowSeconds: Float,
         val autoScaleOffset: Float,
@@ -1563,6 +1565,8 @@ class GlyphVisualizerService : Service() {
             ),
             experimentalPerformanceOptimizationsEnabled = experimentalPerformanceOptimizationsEnabled,
             matrixSmoothMotionEnabled = matrixSmoothMotionEnabled,
+            matrixTrackTitleEnabled = captureConfig.matrixTrackTitleEnabled,
+            matrixTrackArtistEnabled = captureConfig.matrixTrackArtistEnabled,
             allBrightnessAutoScale = allBrightnessAutoScale,
             autoScaleWindowSeconds = autoScaleWindowSeconds,
             autoScaleOffset = autoScaleOffset,
@@ -1593,6 +1597,7 @@ class GlyphVisualizerService : Service() {
             setAutoScaleStrategy(snapshot.autoScaleStrategy)
             setExperimentalPerformanceOptimizationsEnabled(snapshot.experimentalPerformanceOptimizationsEnabled)
             setMatrixSmoothMotionEnabled(snapshot.matrixSmoothMotionEnabled)
+            setMatrixTrackTitleSettings(snapshot.matrixTrackTitleEnabled, snapshot.matrixTrackArtistEnabled)
             setAllBrightnessAutoScaleEnabled(snapshot.allBrightnessAutoScale)
             setAutoScaleWindowSeconds(snapshot.autoScaleWindowSeconds)
             setAutoScaleOffset(snapshot.autoScaleOffset)

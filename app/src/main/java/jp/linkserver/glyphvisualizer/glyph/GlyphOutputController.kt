@@ -19,6 +19,7 @@ interface GlyphOutputController {
     fun setSpectrumAutoScaleEnabled(enabled: Boolean) {}
     fun setExperimentalPerformanceOptimizationsEnabled(enabled: Boolean) {}
     fun setMatrixSmoothMotionEnabled(enabled: Boolean) {}
+    fun setMatrixTrackTitleSettings(enabled: Boolean, showArtist: Boolean) {}
     fun setAllBrightnessAutoScaleEnabled(enabled: Boolean) {}
     fun setAutoScaleWindowSeconds(seconds: Float) {}
     fun setAutoScaleOffset(offset: Float) {}
