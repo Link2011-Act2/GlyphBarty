@@ -7,6 +7,19 @@ import org.junit.Test
 
 class MediaPlaybackActivityTrackerTest {
     @Test
+    fun `normal playback recovers after paused buffering playing without a stuck suppression`() {
+        val tracker = tracker()
+        tracker.update(1000, true, false, false)
+        assertTrue(tracker.update(2000, true, false, false).allowed)
+        assertFalse(tracker.update(2100, false, false, false).allowed) // PAUSED
+        assertFalse(tracker.update(2300, false, false, false).allowed) // BUFFERING
+        assertFalse(tracker.update(2500, true, false, false).allowed) // PLAYING candidate
+        assertFalse(tracker.update(3499, true, false, false).allowed)
+        assertTrue(tracker.update(3500, true, false, false).allowed)
+        assertTrue(tracker.update(3600, true, false, false).allowed)
+    }
+
+    @Test
     fun `open reel keeps playback active when session recovers after 500ms`() {
         val tracker = tracker()
         activateOpenReel(tracker, nowMs = 1_000L)

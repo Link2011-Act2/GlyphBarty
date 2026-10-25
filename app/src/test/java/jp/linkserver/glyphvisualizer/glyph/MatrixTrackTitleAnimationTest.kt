@@ -13,7 +13,7 @@ class MatrixTrackTitleAnimationTest {
         val preview = IntArray(625)
         val sdk = IntArray(625)
         val heights = GlyphMatrixPreviewGeometry.columnHeights(GlyphDeviceProfile.PHONE3_MATRIX, 25)
-        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, true)
+        MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, 25, heights, preview, true)
         MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
         for ((x, level) in levels.withIndex()) {
             assertEquals(level, preview[12 * 25 + x])
@@ -22,13 +22,13 @@ class MatrixTrackTitleAnimationTest {
         assertEquals(0, preview[0])
         assertEquals(0, sdk[0])
         background.fill(200)
-        MatrixTrackTitleCompositor.compose(background, text, 0.2f, 25, heights, preview, true)
+        MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, 25, heights, preview, true)
         MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
         for ((x, level) in levels.withIndex()) {
-            assertEquals(maxOf(40, level), preview[12 * 25 + x])
-            assertEquals((maxOf(40, level) * 4095 + 127) / 255, sdk[12 * 25 + x])
+            assertEquals(maxOf(20, level), preview[12 * 25 + x])
+            assertEquals((maxOf(20, level) * 4095 + 127) / 255, sdk[12 * 25 + x])
         }
-        assertEquals(642, sdk[12 * 25 + 12]) // The 20% background shares the text's scale.
+        assertEquals(321, sdk[12 * 25 + 12]) // The 10% background shares the text's scale.
         assertTrue(background.all { it == 200 })
     }
 
@@ -36,7 +36,7 @@ class MatrixTrackTitleAnimationTest {
         val animation = MatrixTrackTitleAnimation()
         animation.start(1000, 25, 112, 40) // 100px text plus 12px trailing space.
         animation.advance(1100)
-        assertEquals(0.6f, animation.backgroundBrightness, 0.001f)
+        assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
         animation.advance(1200)
         assertEquals(25, animation.textX)
         animation.advance(1224)
@@ -50,9 +50,9 @@ class MatrixTrackTitleAnimationTest {
         assertEquals(-111, animation.textX)
         animation.advance(4625)
         assertNull(animation.textX)
-        assertEquals(0.2f, animation.backgroundBrightness, 0.001f)
+        assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
         animation.advance(4775)
-        assertEquals(0.6f, animation.backgroundBrightness, 0.001f)
+        assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
         animation.advance(4925)
         assertFalse(animation.active)
         assertEquals(1f, animation.backgroundBrightness, 0.001f)
@@ -67,9 +67,9 @@ class MatrixTrackTitleAnimationTest {
             assertEquals(1f, animation.backgroundBrightness, 0.001f)
             assertNull(animation.textX)
             animation.advance(1100)
-            assertEquals(0.6f, animation.backgroundBrightness, 0.001f)
+            assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
             animation.advance(1200)
-            assertEquals(0.2f, animation.backgroundBrightness, 0.001f)
+            assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
             assertEquals(length, animation.textX)
             animation.advance(2200)
             assertEquals(length - 12, animation.textX)
@@ -78,9 +78,9 @@ class MatrixTrackTitleAnimationTest {
             assertEquals(-59, animation.textX)
             animation.advance(end)
             assertNull(animation.textX)
-            assertEquals(0.2f, animation.backgroundBrightness, 0.001f)
+            assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
             animation.advance(end + 150)
-            assertEquals(0.6f, animation.backgroundBrightness, 0.001f)
+            assertEquals(0.55f, animation.backgroundBrightness, 0.001f)
             animation.advance(end + 300)
             assertFalse(animation.active)
             assertEquals(1f, animation.backgroundBrightness, 0.001f)
@@ -105,7 +105,7 @@ class MatrixTrackTitleAnimationTest {
         animation.advance(1000)
         animation.start(1000, 13, 10)
         assertNull(animation.textX)
-        assertEquals(0.2f, animation.backgroundBrightness, 0.001f)
+        assertEquals(MatrixTrackTitleAnimation.BACKGROUND_LEVEL, animation.backgroundBrightness, 0.001f)
         animation.advance(1200)
         assertEquals(13, animation.textX)
         animation.cancel()
@@ -124,19 +124,19 @@ class MatrixTrackTitleAnimationTest {
             text[0] = 255
             val output = IntArray(background.size)
             val heights = GlyphMatrixPreviewGeometry.columnHeights(profile, length)
-            MatrixTrackTitleCompositor.compose(background, text, 0.2f, length, heights, output)
+            MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, length, heights, output)
             assertEquals(255, output[center])
-            assertEquals(40, output[center + 1])
+            assertEquals(20, output[center + 1])
             assertEquals(0, output[0])
             assertArrayEquals(original, background) // No cumulative dimming or damage to diff rendering.
             val sdkFrame = IntArray(output.size)
             MatrixFrameBrightness.copyToSdk(output, sdkFrame, length, heights)
             assertEquals(4095, sdkFrame[center])
-            assertEquals(642, sdkFrame[center + 1])
+            assertEquals(321, sdkFrame[center + 1])
             assertEquals(255, output[center]) // Preview retains its original scale.
             background[center + 1] = 100
-            MatrixTrackTitleCompositor.compose(background, text, 0.2f, length, heights, output)
-            assertEquals(20, output[center + 1])
+            MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, length, heights, output)
+            assertEquals(10, output[center + 1])
         }
     }
 }

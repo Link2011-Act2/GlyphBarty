@@ -11,7 +11,7 @@ internal class MatrixTrackTitleAnimation {
         const val RESTORE_MS = 300L
         const val PIXELS_PER_SECOND = 12
         const val MAX_SCROLL_MS = 20_000L
-        const val BACKGROUND_LEVEL = 0.2f
+        const val BACKGROUND_LEVEL = 0.1f
         fun maxTextWidth(matrixLength: Int, pixelsPerSecond: Int = PIXELS_PER_SECOND): Int =
             (MAX_SCROLL_MS * pixelsPerSecond / 1000).toInt() - matrixLength
     }

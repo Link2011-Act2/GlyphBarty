@@ -43,7 +43,7 @@ class Phone3TrackTitleRendererDeviceTest {
                 var intermediate = false
                 for (position in 0 downTo -width step 10) {
                     MatrixTrackTitleCompositor.compose(background, renderer.render(position),
-                        0.2f, 25, heights, preview, true)
+                        MatrixTrackTitleAnimation.BACKGROUND_LEVEL, 25, heights, preview, true)
                     MatrixFrameBrightness.copyToSdk(preview, sdk, 25, heights)
                     if (preview.any { it in 21..254 } && sdk.any { it in 21..4094 }) intermediate = true
                 }
@@ -88,7 +88,7 @@ class Phone3TrackTitleRendererDeviceTest {
         val composed = IntArray(625)
         val heights = GlyphMatrixPreviewGeometry.columnHeights(GlyphDeviceProfile.PHONE3_MATRIX, 25)
         for ((column, x) in listOf(0, -10, -25, -40).withIndex()) {
-            MatrixTrackTitleCompositor.compose(background, renderer.render(x), 0.2f, 25, heights, composed, true)
+            MatrixTrackTitleCompositor.compose(background, renderer.render(x), MatrixTrackTitleAnimation.BACKGROUND_LEVEL, 25, heights, composed, true)
             for (y in 0 until 25) for (px in 0 until 25) {
                 val level = composed[y * 25 + px]
                 sheet.setPixel(column * 25 + px, y, Color.rgb(level, level, level))

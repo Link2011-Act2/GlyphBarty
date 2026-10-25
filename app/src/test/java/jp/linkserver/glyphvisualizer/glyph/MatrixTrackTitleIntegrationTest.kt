@@ -76,10 +76,10 @@ class MatrixTrackTitleIntegrationTest {
         track("b", "B")
         assertEquals(baseline[center], renderAfter(1000).pixels[center]) // Fade starts at 100%.
         val dimmed = renderAfter(200).pixels
-        assertTrue(kotlin.math.abs((baseline[center] * 0.2f).toInt() - dimmed[center]) <= 1)
+        assertTrue(kotlin.math.abs((baseline[center] * MatrixTrackTitleAnimation.BACKGROUND_LEVEL).toInt() - dimmed[center]) <= 1)
         val scrolling = renderAfter(400).pixels
         assertTrue(scrolling.any { it == 255 })
-        val dimmedMaximum = (baseline.max() * 0.2f).toInt() + 1
+        val dimmedMaximum = (baseline.max() * MatrixTrackTitleAnimation.BACKGROUND_LEVEL).toInt() + 1
         assertTrue(scrolling.any { it in dimmedMaximum..254 })
         assertTrue(scrolling.any { it in 1..254 })
         assertEquals(0, scrolling[0]) // No LED in this corner.

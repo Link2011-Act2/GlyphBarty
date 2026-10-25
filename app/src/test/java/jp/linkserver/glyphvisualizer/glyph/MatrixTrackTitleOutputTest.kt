@@ -13,6 +13,9 @@ import org.robolectric.shadows.ShadowBuild
 import org.robolectric.shadows.ShadowSystemClock
 import java.lang.reflect.Proxy
 import java.time.Duration
+import android.os.SystemClock
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -24,7 +27,17 @@ class MatrixTrackTitleOutputTest {
         val manager: GlyphMatrixManager
         val field = GlyphMatrixManager::class.java.getDeclaredField("mService").apply { isAccessible = true }
         val original: Any?
+        private val executorField = GlyphMatrixManager::class.java.getDeclaredField("mExecutor").apply { isAccessible = true }
+        private val taskField = GlyphMatrixManager::class.java.getDeclaredField("mTask").apply { isAccessible = true }
+        private val originalExecutor: Any?
+        private val originalTask: Any?
         val sent = mutableListOf<IntArray>()
+        var framesToFail = 0
+        var registrationsToFail = 0
+        val registrationTimes = mutableListOf<Long>()
+        var closeCount = 0
+        var blackoutCount = 0
+        var visible = false
         val controller: GlyphMatrixController
         private val submit = GlyphMatrixController::class.java.getDeclaredMethod("submitMatrixFrame",
             IntArray::class.java).apply { isAccessible = true }
@@ -33,9 +46,40 @@ class MatrixTrackTitleOutputTest {
             ShadowBuild.setModel(if (length == 25) Glyph.DEVICE_23112 else Glyph.DEVICE_25111p)
             manager = GlyphMatrixManager.getInstance(context)
             original = field.get(manager)
+            originalExecutor = executorField.get(manager)
+            originalTask = taskField.get(manager)
+            taskField.set(manager, null)
+            // SDK turnOff normally queues a global clear. Execute it synchronously in this fake
+            // so lifecycle assertions cannot race an unrelated executor thread.
+            executorField.set(manager, object : AbstractExecutorService() {
+                override fun execute(command: Runnable) = command.run()
+                override fun shutdown() = Unit
+                override fun shutdownNow(): MutableList<Runnable> = mutableListOf()
+                override fun isShutdown() = false
+                override fun isTerminated() = false
+                override fun awaitTermination(timeout: Long, unit: TimeUnit) = true
+            })
             val service = Proxy.newProxyInstance(IGlyphService::class.java.classLoader,
                 arrayOf(IGlyphService::class.java)) { _, method, arguments ->
-                if (method.name == "setAppMatrixColors") sent += (requireNotNull(arguments)[0] as IntArray).copyOf()
+                when (method.name) {
+                    "setAppMatrixColors" -> {
+                        if (framesToFail > 0) {
+                            framesToFail--
+                            throw IllegalStateException("fake SDK frame failure")
+                        }
+                        sent += (requireNotNull(arguments)[0] as IntArray).copyOf()
+                        visible = true
+                    }
+                    "registerMatrixSDK" -> {
+                        registrationTimes += SystemClock.elapsedRealtime()
+                        if (registrationsToFail > 0) {
+                            registrationsToFail--
+                            return@newProxyInstance false
+                        }
+                    }
+                    "closeAppMatrix" -> { closeCount++; visible = false }
+                    "setMatrixColors" -> { blackoutCount++; visible = false }
+                }
                 when (method.returnType) {
                     java.lang.Boolean.TYPE -> true
                     java.lang.Integer.TYPE -> 0
@@ -50,14 +94,22 @@ class MatrixTrackTitleOutputTest {
             setControllerField("physicalMatrixLength", length)
             setControllerField("matrixLength", if (emulate) 13 else length)
             setControllerField("isSessionOpen", true)
+            setControllerField("isBound", true)
+            setControllerField("bindRequested", true)
+            setControllerField("sdkConnected", true)
+            setControllerField("glyphOutputAllowed", true)
             setControllerField("phone4aProEmulatedOnPhone3", emulate)
         }
 
-        private fun setControllerField(name: String, value: Any) {
+        fun setControllerField(name: String, value: Any) {
             GlyphMatrixController::class.java.getDeclaredField(name).apply { isAccessible = true }.set(controller, value)
         }
 
         fun send(frame: IntArray) { submit.invoke(controller, frame) }
+        fun updateAfter(ms: Long, level: Float = 0.5f) {
+            ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
+            controller.updateLevel(level)
+        }
         fun internalFrame(): IntArray = (GlyphMatrixController::class.java.getDeclaredField("lastSentFrameBuffer")
             .apply { isAccessible = true }.get(controller) as IntArray).copyOf()
 
@@ -83,7 +135,227 @@ class MatrixTrackTitleOutputTest {
             }
         }
 
-        override fun close() { field.set(manager, original) }
+        override fun close() {
+            field.set(manager, original)
+            executorField.set(manager, originalExecutor)
+            taskField.set(manager, originalTask)
+            val monitor = GlyphMatrixController::class.java.getDeclaredField("nothingOsGlyphSettingsMonitor")
+                .apply { isAccessible = true }.get(controller) as NothingOsGlyphSettingsMonitor
+            monitor.stop()
+        }
+    }
+
+    @Test fun silenceThresholdsAndAudioResumePreserveTheSessionLifecycle() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            OutputFixture(profile).use { output ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.updateAfter(1000)
+                output.updateAfter(1, 0f)
+                output.updateAfter(119, 0f)
+                assertEquals(0, output.blackoutCount)
+                output.updateAfter(1, 0f)
+                assertEquals(1, output.blackoutCount)
+                assertEquals(0, output.closeCount)
+                output.updateAfter(329, 0f)
+                assertEquals(0, output.closeCount)
+                output.updateAfter(1, 0f)
+                assertEquals(1, output.closeCount)
+                output.updateAfter(500, 0f)
+                assertTrue(output.registrationTimes.isEmpty())
+                output.updateAfter(50)
+                assertEquals(1, output.registrationTimes.size)
+                assertTrue(output.visible)
+                output.assertEncoding()
+                output.updateAfter(1, 0f)
+                output.updateAfter(100)
+                assertEquals(1, output.closeCount) // A short track gap never releases.
+                assertTrue(output.visible)
+            }
+        }
+    }
+
+    @Test fun threeSendFailuresRecoverAfterBackoffInsteadOfPermanentlyReturningEarly() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000)
+            output.framesToFail = 3
+            repeat(3) { output.send(IntArray(625) { 128 }) }
+            assertEquals(1, output.closeCount)
+            val count = output.sent.size
+            output.updateAfter(499)
+            assertEquals(count, output.sent.size)
+            assertTrue(output.registrationTimes.isEmpty())
+            output.updateAfter(1)
+            assertEquals(1, output.registrationTimes.size)
+            assertTrue(output.sent.size > count)
+            output.assertEncoding()
+        }
+    }
+
+    @Test fun failedResumeRegistrationsBackOffAndStopAfterFiveAttempts() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000)
+            output.controller.suspendSession()
+            output.registrationsToFail = 99
+            output.updateAfter(1)
+            repeat(499) { output.updateAfter(1) }
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(1)
+            assertEquals(2, output.registrationTimes.size)
+            output.updateAfter(1000)
+            output.updateAfter(2000)
+            output.updateAfter(4000)
+            assertEquals(5, output.registrationTimes.size)
+            output.updateAfter(60_000)
+            assertEquals(5, output.registrationTimes.size)
+            assertFalse(output.visible)
+        }
+    }
+
+    @Test fun registrationFailureThenSuccessRestoresOutputAndInvalidatesTheOldFrame() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000)
+            val original = output.sent.last()
+            output.controller.suspendSession()
+            output.registrationsToFail = 1
+            output.updateAfter(1)
+            assertFalse(output.visible)
+            output.updateAfter(500)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.visible)
+            assertArrayEquals(original, output.sent.last())
+        }
+    }
+
+    @Test fun reusedFramesRefreshAfterOneSecondAndCanRedrawAfterAnExternalBlackout() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.controller.setBinaryMode(true)
+            output.controller.setExperimentalPerformanceOptimizationsEnabled(true)
+            output.updateAfter(1000)
+            val count = output.sent.size
+            output.visible = false // Simulate OS-side loss of the displayed frame; app cache remains.
+            repeat(9) { output.updateAfter(100) }
+            assertEquals(count, output.sent.size)
+            assertFalse(output.visible)
+            output.updateAfter(100)
+            assertEquals(count + 1, output.sent.size)
+            assertTrue(output.visible)
+            output.assertEncoding()
+        }
+    }
+
+    @Test fun intentionalStopOsDisableAndDisconnectionNeverRunRegistrationRecovery() {
+        for (stop in listOf("release", "unbind", "os", "disconnect")) {
+            OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+                output.framesToFail = 3
+                repeat(3) { output.send(IntArray(625) { 128 }) }
+                when (stop) {
+                    "release" -> output.controller.releaseSession()
+                    "unbind" -> output.setControllerField("bindRequested", false)
+                    "os" -> output.setControllerField("glyphOutputAllowed", false)
+                    "disconnect" -> output.setControllerField("sdkConnected", false)
+                }
+                output.updateAfter(60_000)
+                assertTrue("Unexpected recovery after $stop", output.registrationTimes.isEmpty())
+                assertTrue(output.sent.isEmpty())
+            }
+        }
+    }
+
+    @Test fun sdkReconnectionAndExplicitRestartReopenButLateCallbacksDoNotUndoAStop() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            fun callback(name: String) = GlyphMatrixController::class.java.getDeclaredMethod(name)
+                .apply { isAccessible = true }.invoke(output.controller)
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000)
+            callback("handleServiceDisconnected")
+            output.updateAfter(1000)
+            assertTrue(output.registrationTimes.isEmpty())
+            callback("handleServiceConnected")
+            output.updateAfter(100)
+            assertEquals(1, output.registrationTimes.size)
+            assertTrue(output.visible)
+            output.controller.releaseSession()
+            callback("handleServiceConnected")
+            output.updateAfter(1000)
+            assertEquals(1, output.registrationTimes.size)
+            assertFalse(output.visible)
+            output.controller.bind()
+            output.updateAfter(1000)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.visible)
+        }
+    }
+
+    @Test fun osDisablePreservesResumeIntentButNeverOverridesAnExplicitStop() {
+        for (stopped in listOf(false, true)) {
+            OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+                fun callback(name: String) = GlyphMatrixController::class.java.getDeclaredMethod(name)
+                    .apply { isAccessible = true }.invoke(output.controller)
+                if (stopped) output.controller.releaseSession()
+                // The fixture has no Android service binding. Exercise the OS release transition
+                // without calling Context.unbindService on a fabricated connection.
+                output.setControllerField("isBound", false)
+                output.setControllerField("glyphOutputAllowed", false)
+                callback("unbindSdk")
+                output.setControllerField("isBound", true)
+                output.setControllerField("glyphOutputAllowed", true)
+                callback("handleServiceConnected")
+                output.updateAfter(1000)
+                assertEquals(if (stopped) 0 else 1, output.registrationTimes.size)
+                assertEquals(!stopped, output.visible)
+            }
+        }
+    }
+
+    @Test fun failedInitialRegistrationIsRetriedFromActiveAudioOnly() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.registrationsToFail = 1
+            GlyphMatrixController::class.java.getDeclaredMethod("handleServiceConnected")
+                .apply { isAccessible = true }.invoke(output.controller)
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(2000, 0f)
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(100)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.visible)
+            output.assertEncoding()
+        }
+    }
+
+    @Test fun healthyRapidTrackGapsDoNotExhaustTheFailureRecoveryBudget() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000)
+            repeat(12) {
+                output.updateAfter(1, 0f)
+                output.updateAfter(450, 0f)
+                output.updateAfter(50)
+                assertTrue("Failed after rapid track gap $it", output.visible)
+            }
+            assertEquals(12, output.registrationTimes.size)
+            output.assertEncoding()
+        }
+    }
+
+    @Test fun successfulRegistrationWithContinuouslyFailingFramesCannotRetryForever() {
+        OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
+            output.framesToFail = 99
+            repeat(3) { output.send(IntArray(625) { 128 }) }
+            repeat(5) { attempt ->
+                output.updateAfter(500L shl attempt)
+                output.updateAfter(33)
+                output.updateAfter(33)
+                assertEquals(attempt + 1, output.registrationTimes.size)
+            }
+            output.updateAfter(60_000)
+            assertEquals(5, output.registrationTimes.size)
+            assertEquals(6, output.closeCount)
+            assertTrue(output.sent.isEmpty())
+        }
     }
 
     @Test fun sharedBoundaryEncodesNormalFramesOnceAndDeduplicatesInEightBitScale() {
@@ -145,12 +417,12 @@ class MatrixTrackTitleOutputTest {
                 val frame = IntArray(output.length * output.length)
                 val background = IntArray(frame.size) { 200 }
                 val text = IntArray(frame.size).apply { this[size / 2] = 128 }
-                MatrixTrackTitleCompositor.compose(background, text, 0.2f, output.length,
+                MatrixTrackTitleCompositor.compose(background, text, MatrixTrackTitleAnimation.BACKGROUND_LEVEL, output.length,
                     GlyphMatrixPreviewGeometry.columnHeights(profile, output.length), frame,
                     preserveTextBrightness = profile == GlyphDeviceProfile.PHONE3_MATRIX)
                 output.send(frame)
                 output.assertEncoding()
-                assertEquals(642, output.sent.last()[frame.size / 2 + 1])
+                assertEquals(321, output.sent.last()[frame.size / 2 + 1])
                 assertEquals(if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 2056 else 4095,
                     output.sent.last()[frame.size / 2])
             }

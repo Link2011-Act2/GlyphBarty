@@ -1332,6 +1332,7 @@ class GlyphVisualizerService : Service() {
             )
         }
 
+        if (mediaPlaybackSuppressed) AppLogger.i(TAG, "Matrix MediaSession suppression cleared; audio-driven session resume allowed")
         mediaPlaybackSuppressed = false
         val backDownSuppressed = isBackDownSuppressed
         if (!backDownSuppressed) {

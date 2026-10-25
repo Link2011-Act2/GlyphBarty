@@ -69,6 +69,8 @@ class GlyphMatrixController(
         private const val ALL_BRIGHTNESS_MAX_LIGHT_MATRIX = 255
         private const val FRAME_INTERVAL_SMOOTH_MS = 16L // allow higher effective fps when callbacks are uneven
         private const val FRAME_INTERVAL_REDUCED_MS = 33L // ~30fps
+        private const val FRAME_REFRESH_MS = 1_000L
+        private const val FRAME_DIAGNOSTIC_MS = 30_000L
         private const val SPECTROGRAM_REFERENCE_MATRIX_LENGTH = 25
         private const val SPECTROGRAM_REFERENCE_SHIFT_INTERVAL_MS = FRAME_INTERVAL_REDUCED_MS
         private const val SIGNATURE_EDGE_BRIGHTNESS_STEP = 32
@@ -86,6 +88,11 @@ class GlyphMatrixController(
     private var isBound = false
     private var isSessionOpen = false
     private var bindRequested = false
+    private var sdkConnected = false
+    private var sessionStopped = false
+    private val sessionRecovery = MatrixSessionRecovery()
+    private var lastSdkFrameAtMs = 0L
+    private var lastFrameDiagnosticAtMs = 0L
     private var glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
     private val nothingOsGlyphSettingsMonitor = NothingOsGlyphSettingsMonitor(context) { state ->
         runOnOwnerThread {
@@ -242,9 +249,13 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceConnected() {
+        AppLogger.i(TAG, "SDK connected: bound=$isBound requested=$bindRequested stopped=$sessionStopped allowed=$glyphOutputAllowed")
+        sdkConnected = true
         resetTrackTitle()
         trackTitleRenderer = null // Select again after the actual device/profile is known.
-        if (!isBound) return
+        if (!isBound || !bindRequested || !glyphOutputAllowed || sessionStopped) return
+        isSessionOpen = false
+        sessionRecovery.cancel()
         invalidateLastSentFrame()
         val currentDevice = GlyphDeviceCatalog.currentOrNull()
         val actualMatrixProfile = when (currentDevice?.profile) {
@@ -281,9 +292,8 @@ class GlyphMatrixController(
         frameBuffer = IntArray(matrixLength * matrixLength)
         physicalFrameBuffer = IntArray(physicalMatrixLength * physicalMatrixLength)
 
-        val targetDeviceCode = currentDevice.matrixSpec?.sdkDeviceId ?: return
-        val registered = glyphMatrixManager.register(targetDeviceCode)
-        if (!registered) {
+        sessionRecovery.request(SystemClock.elapsedRealtime(), immediate = true)
+        if (!tryRegisterMatrixSession(SystemClock.elapsedRealtime(), "SDK connected")) {
             onStatusChanged(context.getString(R.string.status_glyph_matrix_registration_failed))
             return
         }
@@ -298,11 +308,6 @@ class GlyphMatrixController(
         silenceStartedAt = 0L
         matrixTurnedOffForSilence = false
         matrixReleasedForSilence = false
-        try {
-            glyphMatrixManager.setGlyphMatrixTimeout(true)
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed", error)
-        }
         onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
 
         val pending = pendingLevel
@@ -313,6 +318,8 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceDisconnected() {
+        AppLogger.w(TAG, "SDK disconnected: open=$isSessionOpen silenceReleased=$matrixReleasedForSilence failures=$failureCount")
+        sdkConnected = false
         resetTrackTitle()
         invalidateLastSentFrame()
         isSessionOpen = false
@@ -322,9 +329,15 @@ class GlyphMatrixController(
     override fun bind() {
         if (previewDeviceProfile != null) return
         bindRequested = true
+        val restarting = sessionStopped
+        sessionStopped = false
+        if (restarting) sessionRecovery.cancel()
         glyphOutputAllowed = NothingOsGlyphSettings.currentState(context).outputAllowed
         nothingOsGlyphSettingsMonitor.start()
         reconcileSdkBinding()
+        if (isBound && sdkConnected && !isSessionOpen && !sessionStopped && glyphOutputAllowed) {
+            sessionRecovery.request(SystemClock.elapsedRealtime(), immediate = true)
+        }
     }
 
     private fun reconcileSdkBinding() {
@@ -338,6 +351,7 @@ class GlyphMatrixController(
 
     private fun bindSdk() {
         if (isBound) return
+        AppLogger.i(TAG, "SDK binding requested")
         isBound = true
         glyphMatrixManager.init(callback)
         onStatusChanged(context.getString(R.string.status_glyph_matrix_connecting))
@@ -355,10 +369,16 @@ class GlyphMatrixController(
 
     private fun unbindSdk() {
         if (!isBound && !isSessionOpen) return
-        releaseSession()
+        // OS disable is temporary while bindRequested remains true. Preserve explicit-stop intent
+        // so enabling Glyph again can reconnect, without undoing a user's stopped capture.
+        if (!bindRequested) sessionStopped = true
+        sessionRecovery.cancel()
+        closeMatrixSession(if (bindRequested) "OS Glyph disabled" else "unbind")
         if (isBound) {
+            AppLogger.i(TAG, "SDK unbinding")
             glyphMatrixManager.unInit()
             isBound = false
+            sdkConnected = false
             isSessionOpen = false
         }
     }
@@ -420,6 +440,7 @@ class GlyphMatrixController(
     }
 
     private fun resetTrackTitle() {
+        if (trackTitleAnimation.active) AppLogger.i(TAG, "Track title cancelled: silence/session/settings reset")
         trackTitleDetector.reset()
         trackTitleAnimation.cancel()
         trackTitleRenderer?.clear()
@@ -427,11 +448,13 @@ class GlyphMatrixController(
     }
 
     private fun updateTrackTitle(snapshot: MediaSessionPlaybackGate.PlaybackSnapshot, nowMs: Long) {
+        val wasActive = trackTitleAnimation.active
         val changed = trackTitleDetector.observe(snapshot)
         if (!snapshot.activeForOpenReel) {
             trackTitleAnimation.cancel()
             trackTitleRenderer?.clear()
         } else if (changed) {
+            AppLogger.i(TAG, "Track changed: status=${snapshot.status} titleLength=${snapshot.title?.length ?: 0} replacing=$wasActive")
             try {
                 val renderer = trackTitleRenderer ?: MatrixTrackTitleRendererFactory.create(
                     context, physicalMatrixProfile, matrixProfile, matrixLength
@@ -441,8 +464,10 @@ class GlyphMatrixController(
                         it, snapshot.artist.takeIf { matrixTrackArtistEnabled }, matrixLength
                     )
                 } ?: 0
-                if (width > 0) trackTitleAnimation.start(nowMs, matrixLength, width, renderer.pixelsPerSecond)
-                else {
+                if (width > 0) {
+                    trackTitleAnimation.start(nowMs, matrixLength, width, renderer.pixelsPerSecond)
+                    AppLogger.i(TAG, "Track title started: renderer=${renderer.javaClass.simpleName} width=$width duration=${trackTitleAnimation.scrollDurationMs}ms")
+                } else {
                     trackTitleAnimation.cancel()
                     renderer.clear()
                 }
@@ -453,6 +478,9 @@ class GlyphMatrixController(
             }
         }
         trackTitleAnimation.advance(nowMs)
+        if (wasActive && !trackTitleAnimation.active) {
+            AppLogger.i(TAG, "Track title ended: status=${snapshot.status} changed=$changed")
+        }
     }
 
     private fun submitTrackTitleFrame() {
@@ -762,13 +790,18 @@ class GlyphMatrixController(
     }
 
     override fun updateLevel(level: Float) {
-        if (!isSessionOpen || matrixLength <= 0) {
+        val now = SystemClock.elapsedRealtime()
+        val activity = max(max(level.coerceIn(0f, 1f), max(leftLevel, rightLevel)), rawSpectrumPeak)
+        if (matrixLength <= 0 || sessionStopped ||
+            (!isSessionOpen && !sessionRecovery.pending && !matrixReleasedForSilence)) {
             pendingLevel = level
             return
         }
+        if (!isSessionOpen && !matrixReleasedForSilence) {
+            pendingLevel = level
+            if (activity < SILENCE_ACTIVITY_THRESHOLD || !tryRegisterMatrixSession(now, "output recovery")) return
+        }
         pendingLevel = -1f
-
-        val now = SystemClock.elapsedRealtime()
 
         val clamped = level.coerceIn(0f, 1f)
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode
@@ -782,8 +815,6 @@ class GlyphMatrixController(
         } else {
             normalizeLevelForMode(clamped, now)
         }
-        val maxBand = rawSpectrumPeak
-        val activity = max(max(clamped, max(leftLevel, rightLevel)), maxBand)
         val openReelPlayback = if (matrixTrackTitleEnabled || renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
             MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         } else {
@@ -859,32 +890,15 @@ class GlyphMatrixController(
             lastPreviewLevel = renderLevel
         }
         if (matrixTurnedOffForSilence && !isSilent) {
+            AppLogger.i(TAG, "Audio returned: silenceReleased=$matrixReleasedForSilence")
             matrixTurnedOffForSilence = false
             lastRenderSignature = Long.MIN_VALUE
             lastRenderedMode = null
         }
 
         if (matrixReleasedForSilence && !isSilent) {
-            val registered = try {
-                glyphMatrixManager.register(currentDeviceCode())
-            } catch (error: Throwable) {
-                AppLogger.w(TAG, "register during silence resume failed", error)
-                false
-            }
-            if (!registered) {
-                onStatusChanged(context.getString(R.string.status_glyph_matrix_resume_failed))
-                return
-            }
-            try {
-                glyphMatrixManager.setGlyphMatrixTimeout(true)
-            } catch (error: GlyphException) {
-                AppLogger.w(TAG, "setGlyphMatrixTimeout during silence resume failed", error)
-            }
-            matrixReleasedForSilence = false
-            matrixTurnedOffForSilence = false
-            invalidateLastSentFrame()
-            lastRenderSignature = Long.MIN_VALUE
-            lastRenderedMode = null
+            sessionRecovery.request(now, immediate = true)
+            if (!tryRegisterMatrixSession(now, "audio/media resume")) return
         }
 
         val frameIntervalMs = if (matrixSmoothMotionEnabled) {
@@ -1857,11 +1871,8 @@ class GlyphMatrixController(
 
     private fun deliverLastMatrixFrame() {
         if (lastSentFrameBuffer.isEmpty()) return
-        if (previewDeviceProfile != null) {
-            submitMatrixFrame(lastSentFrameBuffer)
-        } else {
-            mirrorMatrixPreviewFrame(lastSentFrameBuffer)
-        }
+        // Reuse remains cheap, but it must not suppress SDK output indefinitely.
+        submitMatrixFrame(lastSentFrameBuffer)
     }
 
     private fun submitMatrixFrame(deviceFrame: IntArray) {
@@ -1883,9 +1894,12 @@ class GlyphMatrixController(
             )
             return
         }
-        if (
-            lastSentFrameBuffer.size == deviceFrame.size &&
+        if (!isSessionOpen || matrixReleasedForSilence || sessionStopped || !glyphOutputAllowed) return
+        val now = SystemClock.elapsedRealtime()
+        val identical = lastSentFrameBuffer.size == deviceFrame.size &&
             lastSentFrameBuffer.contentEquals(deviceFrame)
+        if (
+            identical && now - lastSdkFrameAtMs < FRAME_REFRESH_MS
         ) {
             mirrorMatrixPreviewFrame(deviceFrame)
             return
@@ -1903,6 +1917,12 @@ class GlyphMatrixController(
             MatrixFrameBrightness.copyToSdk(deviceFrame, sdkOutputFrameBuffer,
                 physicalMatrixLength, sdkPhysicalColumnHeights)
             glyphMatrixManager.setAppMatrixFrame(sdkOutputFrameBuffer)
+            lastSdkFrameAtMs = now
+            if (now - lastFrameDiagnosticAtMs >= FRAME_DIAGNOSTIC_MS) {
+                lastFrameDiagnosticAtMs = now
+                // A returned SDK call is not an acknowledgement from the hardware.
+                AppLogger.i(TAG, "Matrix frame call returned: refresh=$identical max8=${deviceFrame.maxOrNull()} max12=${sdkOutputFrameBuffer.maxOrNull()} open=$isSessionOpen connected=$sdkConnected title=${trackTitleAnimation.active} failures=$failureCount")
+            }
             if (lastSentFrameBuffer.size != deviceFrame.size) {
                 lastSentFrameBuffer = deviceFrame.copyOf()
             } else {
@@ -1910,23 +1930,56 @@ class GlyphMatrixController(
             }
             mirrorMatrixPreviewFrame(deviceFrame)
             failureCount = 0
+            if (sessionRecovery.frameSucceeded(now)) AppLogger.i(TAG, "Matrix recovery stable for 10s; retry budget reset")
         } catch (error: GlyphException) {
-            invalidateLastSentFrame()
-            failureCount += 1
-            if (failureCount >= 3) {
-                AppLogger.e(TAG, "setAppMatrixFrame repeatedly failed. disabling matrix output", error)
-                releaseSession()
-                onStatusChanged(context.getString(R.string.status_glyph_matrix_update_failed))
-            }
+            handleMatrixFrameFailure(error)
         } catch (error: Throwable) {
-            invalidateLastSentFrame()
-            failureCount += 1
-            if (failureCount >= 3) {
-                AppLogger.e(TAG, "setAppMatrixFrame crashed repeatedly. disabling matrix output", error)
-                releaseSession()
-                onStatusChanged(context.getString(R.string.status_glyph_matrix_update_crashed))
-            }
+            handleMatrixFrameFailure(error)
         }
+    }
+
+    private fun handleMatrixFrameFailure(error: Throwable) {
+        invalidateLastSentFrame()
+        sessionRecovery.frameFailed()
+        failureCount++
+        AppLogger.w(TAG, "setAppMatrixFrame failed: consecutive=$failureCount open=$isSessionOpen connected=$sdkConnected", error)
+        if (failureCount < 3) return
+        // Keep the binding and recovery intent. Public releaseSession is an intentional stop.
+        closeMatrixSession("three consecutive frame failures")
+        sessionRecovery.request(SystemClock.elapsedRealtime())
+        AppLogger.w(TAG, "Matrix recovery pending: attempts=${sessionRecovery.attempts} next=${sessionRecovery.nextAttemptAtMs} exhausted=${sessionRecovery.exhausted}")
+        onStatusChanged(context.getString(R.string.status_glyph_matrix_update_failed))
+    }
+
+    private fun tryRegisterMatrixSession(nowMs: Long, reason: String): Boolean {
+        if (!bindRequested || !isBound || !sdkConnected || !glyphOutputAllowed || sessionStopped) return false
+        if (!sessionRecovery.takeAttempt(nowMs)) return false
+        AppLogger.i(TAG, "Matrix register: reason=$reason attempt=${sessionRecovery.attempts}/${MatrixSessionRecovery.MAX_ATTEMPTS}")
+        val registered = try {
+            glyphMatrixManager.register(currentDeviceCode())
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "Matrix register threw: reason=$reason", error)
+            false
+        }
+        if (!registered) {
+            AppLogger.w(TAG, "Matrix register failed: next=${sessionRecovery.nextAttemptAtMs} exhausted=${sessionRecovery.exhausted}")
+            onStatusChanged(context.getString(R.string.status_glyph_matrix_resume_failed))
+            return false
+        }
+        sessionRecovery.registered()
+        isSessionOpen = true
+        matrixReleasedForSilence = false
+        matrixTurnedOffForSilence = false
+        failureCount = 0
+        invalidateLastSentFrame()
+        try {
+            glyphMatrixManager.setGlyphMatrixTimeout(true)
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed: reason=$reason", error)
+        }
+        AppLogger.i(TAG, "Matrix registered: reason=$reason length=$physicalMatrixLength profile=$matrixProfile")
+        onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
+        return true
     }
 
     private fun invalidateLastSentFrame() {
@@ -1967,6 +2020,13 @@ class GlyphMatrixController(
     }
 
     override fun releaseSession() {
+        sessionStopped = true
+        sessionRecovery.cancel()
+        closeMatrixSession("intentional release")
+    }
+
+    private fun closeMatrixSession(reason: String) {
+        AppLogger.i(TAG, "Matrix session release: reason=$reason open=$isSessionOpen failures=$failureCount")
         turnOff()
         try {
             glyphMatrixManager.closeAppMatrix()
@@ -1979,10 +2039,15 @@ class GlyphMatrixController(
     }
 
     override fun suspendSession() {
-        releaseMatrixForSilence()
+        AppLogger.i(TAG, "Matrix session suspended by playback policy")
+        if (!sessionStopped && !matrixReleasedForSilence) releaseMatrixForSilence()
     }
 
     private fun releaseMatrixForSilence() {
+        AppLogger.i(TAG, "Matrix silence/policy release: elapsed=${SystemClock.elapsedRealtime() - silenceStartedAt}ms open=$isSessionOpen")
+        // A genuine silence/playback-policy suspension ends this output episode. Rapid, healthy
+        // track skips must not consume the retry budget for a continuous SDK failure episode.
+        sessionRecovery.cancel()
         resetTrackTitle()
         invalidateLastSentFrame()
         try {
@@ -1998,9 +2063,12 @@ class GlyphMatrixController(
         }
         matrixTurnedOffForSilence = true
         matrixReleasedForSilence = true
+        isSessionOpen = false
     }
 
     private fun blackoutMatrixForSilence() {
+        AppLogger.i(TAG, "Matrix silence blackout: elapsed=${SystemClock.elapsedRealtime() - silenceStartedAt}ms")
+        sessionRecovery.frameFailed()
         resetTrackTitle()
         invalidateLastSentFrame()
         try {
