@@ -23,6 +23,7 @@ import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaPlaybackActivityTracker
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.OutputMixVisualizer
+import jp.linkserver.glyphvisualizer.audio.VisualizerCaptureHealth
 import jp.linkserver.glyphvisualizer.audio.WaveformSampler
 import jp.linkserver.glyphvisualizer.glyph.GlyphAutoScaleStrategy
 import jp.linkserver.glyphvisualizer.glyph.GlyphAnalysisFrameStore
@@ -370,7 +371,11 @@ class GlyphVisualizerService : Service() {
     private val visualizerStartRequestId get() = captureSessionCoordinator.snapshot().requestId
     private val visualizerStartActionAtMs get() = captureSessionCoordinator.snapshot().startActionAtMs
     private val visualizerStartSource get() = captureSessionCoordinator.snapshot().startSource
-    private var pendingVisualizerCrashRetryRunnable: Runnable? = null
+    private var pendingVisualizerRecoveryRetryRunnable: Runnable? = null
+    private var pendingVisualizerRecoveryReason: VisualizerRecoveryReason? = null
+    private var pendingVisualizerRecoveryAtMs = 0L
+    private var recoverySpatialAudioWarningReported = false
+    private val visualizerRecoveryPolicy = VisualizerRecoveryPolicy()
     private lateinit var notificationController: CaptureNotificationController
     private var audioDeviceCallbackRegistered = false
     private var lastAudioRouteSignature: String? = null
@@ -477,13 +482,13 @@ class GlyphVisualizerService : Service() {
     private var gravitySensor: Sensor? = null
     private val restartVisualizerForRouteChangeRunnable = Runnable {
         if (!shouldRestartVisualizerForRouteChange()) return@Runnable
-        cancelPendingVisualizerCrashRetry()
+        cancelPendingVisualizerRecoveryRetry()
         val requestId = captureSessionCoordinator.invalidate().requestId
         AppLogger.i(
             TAG,
             "Restarting Visualizer(0) after route change. requestId=$requestId ${AudioRouteDiagnostics.snapshot(this)}"
         )
-        startVisualizerMode(requestId = requestId, attempt = 1)
+        startVisualizerMode(requestId = requestId, attempt = 1, recovering = true)
     }
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
@@ -576,7 +581,8 @@ class GlyphVisualizerService : Service() {
         when (val command = CaptureIntentCommandCodec.decode(intent, currentCaptureConfig())) {
             is CaptureCommand.StartVisualizer -> {
                 try {
-                    cancelPendingVisualizerCrashRetry()
+                    cancelPendingVisualizerRecoveryRetry()
+                    visualizerRecoveryPolicy.reset()
                     val actionReceivedAt = SystemClock.elapsedRealtime()
                     val session = captureSessionCoordinator.beginVisualizer(
                         source = command.source,
@@ -622,7 +628,7 @@ class GlyphVisualizerService : Service() {
             }
 
             is CaptureCommand.StartMediaProjection -> {
-                cancelPendingVisualizerCrashRetry()
+                cancelPendingVisualizerRecoveryRetry()
                 captureSessionCoordinator.invalidate()
                 applyCaptureConfig(command.config)
                 applyGlyphControllerSettings()
@@ -650,7 +656,7 @@ class GlyphVisualizerService : Service() {
             }
 
             CaptureCommand.Stop -> {
-                cancelPendingVisualizerCrashRetry()
+                cancelPendingVisualizerRecoveryRetry()
                 captureSessionCoordinator.invalidate()
                 try {
                     stopCapture(getString(R.string.status_capture_stopped_ready))
@@ -688,7 +694,7 @@ class GlyphVisualizerService : Service() {
         stopOpenReelMediaSessionWatchdog()
         cancelOpenReelPausedTimeout()
         clearOpenReelPausedTimeoutSuppression()
-        cancelPendingVisualizerCrashRetry()
+        cancelPendingVisualizerRecoveryRetry()
         captureSessionCoordinator.invalidate()
         try {
             stopCapture(CaptureUiStore.runtimeState.statusText)
@@ -823,7 +829,7 @@ class GlyphVisualizerService : Service() {
         matrixOutputThread = null
     }
 
-    private fun startVisualizerMode(requestId: Int, attempt: Int) {
+    private fun startVisualizerMode(requestId: Int, attempt: Int, recovering: Boolean = false) {
         if (requestId != visualizerStartRequestId) return
         val startAttemptAt = SystemClock.elapsedRealtime()
         suppressRouteRestartUntilMs = SystemClock.uptimeMillis() + visualizerRouteRestartSuppressionMs()
@@ -837,6 +843,13 @@ class GlyphVisualizerService : Service() {
             stopRunningCapture(clearStatus = false)
         } catch (error: Throwable) {
             AppLogger.w(TAG, "stopRunningCapture failed before visualizer start", error)
+        }
+        if (recovering) {
+            // The foreground session remains requested even if reinitialization takes time/fails.
+            // In particular, a settings update during recovery must not stop the service as idle.
+            CaptureUiStore.updateRuntime {
+                it.copy(isCapturing = true, activeMode = ACTIVE_MODE_VISUALIZER)
+            }
         }
         val started = outputMixVisualizer.start(
             sensitivityProvider = { sensitivity },
@@ -885,6 +898,21 @@ class GlyphVisualizerService : Service() {
                 )
             },
             onStartFailed = { failureReason ->
+                if (recovering) {
+                    if (requestId != visualizerStartRequestId) return@start
+                    val spatializerConflict = failureReason ==
+                        OutputMixVisualizer.StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
+                    if (spatializerConflict && !recoverySpatialAudioWarningReported) {
+                        publishSpatialAudioWarning()
+                        recoverySpatialAudioWarningReported = true
+                    }
+                    scheduleVisualizerRecoveryRetry(requestId, if (spatializerConflict) {
+                        VisualizerRecoveryReason.SPATIALIZER_CONFLICT
+                    } else {
+                        VisualizerRecoveryReason.START_FAILURE
+                    })
+                    return@start
+                }
                 val maxAttempts = visualizerStartMaxAttempts()
                 val unrecoverableSpatializerConflict =
                     failureReason == OutputMixVisualizer.StartFailureReason.UNRECOVERABLE_SPATIALIZER_CONFLICT
@@ -922,46 +950,23 @@ class GlyphVisualizerService : Service() {
                     )
                 }
             },
-            onSignalStalled = {
-                val maxAttempts = visualizerStartMaxAttempts()
-                if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
-                    val nextAttempt = attempt + 1
-                    val retryMs = visualizerRetryDelayMs(attempt)
-                    AppLogger.w(
-                        TAG,
-                        "Visualizer active-without-signal detected: requestId=$requestId attempt=$attempt retryInMs=$retryMs elapsedAttemptMs=${SystemClock.elapsedRealtime() - startAttemptAt}"
-                    )
-                    CaptureUiStore.updateRuntime {
-                        it.copy(statusText = getString(R.string.status_visualizer_retrying, nextAttempt, maxAttempts))
-                    }
-                    mainHandler.postDelayed(
-                        { startVisualizerMode(requestId = requestId, attempt = nextAttempt) },
-                        retryMs
-                    )
-                } else if (requestId == visualizerStartRequestId) {
-                    AppLogger.e(
-                        TAG,
-                        "Visualizer active-without-signal exhausted retries: requestId=$requestId attempts=$attempt elapsedSinceActionMs=${
-                            if (visualizerStartActionAtMs > 0L) SystemClock.elapsedRealtime() - visualizerStartActionAtMs else -1L
-                        }"
-                    )
-                    val msg = getString(R.string.status_visualizer_try_media_projection)
-                    CaptureUiStore.updateRuntime { it.copy(statusText = msg, logMessage = msg) }
-                    stopCapture(msg)
-                    safeStopForeground()
-                    stopSelf()
-                }
+            onCaptureHealthChanged = { health ->
+                handleVisualizerCaptureHealth(requestId, health)
             },
             onCrashed = {
                 // ワーカースレッドが予期せずクラッシュした場合、自動再起動
                 if (requestId == visualizerStartRequestId) {
                     AppLogger.w(TAG, "Visualizer worker crashed, auto-restarting")
                     val retryRequestId = captureSessionCoordinator.invalidate().requestId
-                    scheduleVisualizerCrashRetry(retryRequestId)
+                    scheduleVisualizerRecoveryRetry(retryRequestId, VisualizerRecoveryReason.WORKER_CRASH)
                 }
             }
         )
         if (!started) {
+            if (recovering) {
+                scheduleVisualizerRecoveryRetry(requestId, VisualizerRecoveryReason.START_FAILURE)
+                return
+            }
             val maxAttempts = visualizerStartMaxAttempts()
             if (requestId == visualizerStartRequestId && attempt < maxAttempts) {
                 val nextAttempt = attempt + 1
@@ -1620,22 +1625,65 @@ class GlyphVisualizerService : Service() {
         mainHandler.postDelayed(glyphWarmupResyncRunnable, GLYPH_WARMUP_RESYNC_DELAY_MS)
     }
 
-    private fun scheduleVisualizerCrashRetry(requestId: Int) {
-        cancelPendingVisualizerCrashRetry()
-        lateinit var retryRunnable: Runnable
-        retryRunnable = Runnable {
-            if (pendingVisualizerCrashRetryRunnable !== retryRunnable) return@Runnable
-            pendingVisualizerCrashRetryRunnable = null
-            if (!captureSessionCoordinator.isCurrent(requestId)) return@Runnable
-            startVisualizerMode(requestId = requestId, attempt = 1)
+    private fun handleVisualizerCaptureHealth(requestId: Int, health: VisualizerCaptureHealth) {
+        if (!captureSessionCoordinator.isCurrent(requestId)) return
+        visualizerRecoveryPolicy.observeHealth(health, SystemClock.elapsedRealtime())
+        when (health) {
+            VisualizerCaptureHealth.NO_SIGNAL ->
+                scheduleVisualizerRecoveryRetry(requestId, VisualizerRecoveryReason.NO_SIGNAL)
+            VisualizerCaptureHealth.API_ERROR ->
+                scheduleVisualizerRecoveryRetry(requestId, VisualizerRecoveryReason.API_ERROR)
+            // An unsuccessful read is not evidence of recovery. Keep the original deadline.
+            VisualizerCaptureHealth.API_PENDING -> Unit
+            else -> cancelPendingVisualizerRecoveryRetry()
         }
-        pendingVisualizerCrashRetryRunnable = retryRunnable
-        mainHandler.postDelayed(retryRunnable, 200L)
     }
 
-    private fun cancelPendingVisualizerCrashRetry() {
-        pendingVisualizerCrashRetryRunnable?.let(mainHandler::removeCallbacks)
-        pendingVisualizerCrashRetryRunnable = null
+    private fun scheduleVisualizerRecoveryRetry(requestId: Int, reason: VisualizerRecoveryReason) {
+        if (!captureSessionCoordinator.isCurrent(requestId)) return
+        if (pendingVisualizerRecoveryRetryRunnable != null &&
+            (reason == pendingVisualizerRecoveryReason || reason == VisualizerRecoveryReason.NO_SIGNAL)
+        ) return
+        val previousDueAtMs = pendingVisualizerRecoveryRetryRunnable?.let { pendingVisualizerRecoveryAtMs }
+        cancelPendingVisualizerRecoveryRetry()
+        if (reason == VisualizerRecoveryReason.WORKER_CRASH ||
+            reason == VisualizerRecoveryReason.START_FAILURE ||
+            reason == VisualizerRecoveryReason.SPATIALIZER_CONFLICT
+        ) {
+            visualizerRecoveryPolicy.observeHealth(VisualizerCaptureHealth.WAITING, SystemClock.elapsedRealtime())
+        }
+        val retryMs = visualizerRecoveryPolicy.retryDelayMs(
+            silent = reason == VisualizerRecoveryReason.NO_SIGNAL,
+            bluetoothOutputActive = AudioRouteDiagnostics.isBluetoothOutputLikelyConnected(this),
+            musicActive = AudioRouteDiagnostics.isMusicActive(this)
+        )
+        val nowMs = SystemClock.uptimeMillis()
+        val dueAtMs = minOf(nowMs + retryMs, previousDueAtMs ?: Long.MAX_VALUE)
+        val remainingMs = (dueAtMs - nowMs).coerceAtLeast(0L)
+        AppLogger.w(TAG, "Visualizer recovery scheduled: requestId=$requestId reason=$reason retryInMs=$remainingMs; capture will not be stopped for silence/retry exhaustion")
+        lateinit var retryRunnable: Runnable
+        retryRunnable = Runnable {
+            if (pendingVisualizerRecoveryRetryRunnable !== retryRunnable) return@Runnable
+            cancelPendingVisualizerRecoveryRetry()
+            if (!captureSessionCoordinator.isCurrent(requestId)) return@Runnable
+            if ((reason == VisualizerRecoveryReason.NO_SIGNAL || reason == VisualizerRecoveryReason.API_ERROR) &&
+                !outputMixVisualizer.claimRecoveryRestart()
+            ) return@Runnable
+            // Invalidate callbacks from the capture being replaced as well as old service retries.
+            val nextRequestId = captureSessionCoordinator.invalidate().requestId
+            startVisualizerMode(requestId = nextRequestId, attempt = 1, recovering = true)
+        }
+        pendingVisualizerRecoveryRetryRunnable = retryRunnable
+        pendingVisualizerRecoveryReason = reason
+        pendingVisualizerRecoveryAtMs = dueAtMs
+        mainHandler.postDelayed(retryRunnable, remainingMs)
+    }
+
+    private fun cancelPendingVisualizerRecoveryRetry() {
+        pendingVisualizerRecoveryRetryRunnable?.let(mainHandler::removeCallbacks)
+        pendingVisualizerRecoveryRetryRunnable = null
+        pendingVisualizerRecoveryReason = null
+        pendingVisualizerRecoveryAtMs = 0L
     }
 
     private fun updateBackDownSensorState() {
@@ -1656,6 +1704,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun stopCapture(status: String) {
+        cancelPendingVisualizerRecoveryRetry()
         try {
             stopRunningCapture(clearStatus = false, releaseGlyphSession = true)
         } catch (error: Throwable) {
@@ -1665,42 +1714,39 @@ class GlyphVisualizerService : Service() {
         notifyTile()
     }
 
-    private fun finishVisualizerStartFailure(showSpatialAudioWarning: Boolean) {
-        val productName = if (showSpatialAudioWarning) {
-            AudioRouteDiagnostics.nothingOrCmfBluetoothOutputProductName(this)
+    private fun publishSpatialAudioWarning(): String {
+        val productName = AudioRouteDiagnostics.nothingOrCmfBluetoothOutputProductName(this)
+        val message = spatialAudioWarningMessage(productName)
+        val showInApp =
+            visualizerStartSource == VisualizerStartSource.APP && CaptureUiStore.isUiVisible()
+        val notificationShown = if (showInApp) {
+            false
         } else {
-            null
+            showSpatialAudioWarningNotification(productName)
         }
+        CaptureUiStore.updateRuntime {
+            it.copy(
+                logMessage = message,
+                pendingSpatialAudioWarning = if (showInApp || !notificationShown) {
+                    SpatialAudioWarning(nothingOrCmfProductName = productName)
+                } else {
+                    null
+                }
+            )
+        }
+        AppLogger.w(
+            TAG,
+            "Framework Spatializer warning dispatched after unrecoverable Visualizer(0) creation failure: nothingOrCmfProductName=$productName source=$visualizerStartSource notificationShown=$notificationShown"
+        )
+        return message
+    }
+
+    private fun finishVisualizerStartFailure(showSpatialAudioWarning: Boolean) {
         val message = if (showSpatialAudioWarning) {
-            spatialAudioWarningMessage(productName)
+            publishSpatialAudioWarning()
         } else {
             getString(R.string.status_visualizer_try_media_projection)
         }
-
-        if (showSpatialAudioWarning) {
-            val showInApp =
-                visualizerStartSource == VisualizerStartSource.APP && CaptureUiStore.isUiVisible()
-            val notificationShown = if (showInApp) {
-                false
-            } else {
-                showSpatialAudioWarningNotification(productName)
-            }
-            CaptureUiStore.updateRuntime {
-                it.copy(
-                    logMessage = message,
-                    pendingSpatialAudioWarning = if (showInApp || !notificationShown) {
-                        SpatialAudioWarning(nothingOrCmfProductName = productName)
-                    } else {
-                        null
-                    }
-                )
-            }
-            AppLogger.w(
-                TAG,
-                "Framework Spatializer warning dispatched after unrecoverable Visualizer(0) creation failure: nothingOrCmfProductName=$productName source=$visualizerStartSource notificationShown=$notificationShown"
-            )
-        }
-
         AppLogger.e(TAG, message)
         stopCapture(message)
         safeStopForeground()
@@ -1708,6 +1754,7 @@ class GlyphVisualizerService : Service() {
     }
 
     private fun clearSpatialAudioWarning() {
+        recoverySpatialAudioWarningReported = false
         CaptureUiStore.updateRuntime { it.copy(pendingSpatialAudioWarning = null) }
         notificationController.cancelSpatialAudioWarning()
     }

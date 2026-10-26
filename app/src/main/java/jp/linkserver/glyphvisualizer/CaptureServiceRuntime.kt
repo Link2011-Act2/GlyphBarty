@@ -1,5 +1,7 @@
 package jp.linkserver.glyphvisualizer
 
+import jp.linkserver.glyphvisualizer.audio.VisualizerCaptureHealth
+
 /**
  * Keep the Bluetooth startup stabilization path available for a future return, while the
  * current builds treat the removed setting as permanently disabled.
@@ -125,6 +127,47 @@ internal object CaptureRetryPolicy {
         musicActive: Boolean
     ): Long {
         return if (bluetoothOutputActive && musicActive) 4_000L else 1_500L
+    }
+}
+
+internal enum class VisualizerRecoveryReason {
+    NO_SIGNAL,
+    API_ERROR,
+    WORKER_CRASH,
+    START_FAILURE,
+    SPATIALIZER_CONFLICT
+}
+
+/** Lives across worker generations; only an explicit start or sustained signal resets backoff. */
+internal class VisualizerRecoveryPolicy {
+    private var attempts = 0
+    private var healthySinceMs: Long? = null
+
+    fun reset() {
+        attempts = 0
+        healthySinceMs = null
+    }
+
+    fun observeHealth(health: VisualizerCaptureHealth, nowMs: Long) {
+        if (health == VisualizerCaptureHealth.SIGNAL) {
+            if (healthySinceMs == null) healthySinceMs = nowMs
+        } else {
+            if (healthySinceMs?.let { nowMs - it >= 10_000L } == true) attempts = 0
+            healthySinceMs = null
+        }
+    }
+
+    fun retryDelayMs(silent: Boolean, bluetoothOutputActive: Boolean, musicActive: Boolean): Long {
+        // Saturate the counter as well as the delay, including during indefinite silence/errors.
+        attempts = (attempts + 1).coerceAtMost(16)
+        if (silent) return (30_000L shl (attempts - 1).coerceAtMost(4)).coerceAtMost(300_000L)
+        val maxAttempts = CaptureRetryPolicy.maxAttempts(bluetoothOutputActive, musicActive)
+        return if (attempts <= maxAttempts) {
+            CaptureRetryPolicy.retryDelayMs(attempts, bluetoothOutputActive, musicActive)
+        } else {
+            // Exhausting fast retries enters cooldown, never a terminal capture failure.
+            60_000L
+        }
     }
 }
 

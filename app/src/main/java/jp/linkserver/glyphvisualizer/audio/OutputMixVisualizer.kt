@@ -39,8 +39,6 @@ class OutputMixVisualizer(
         private const val EXPERIMENTAL_BT_STABLE_MS = 450L
         private const val EXPERIMENTAL_REMOTE_SUBMIX_STABLE_MS = 900L
         private const val EXPERIMENTAL_ROUTE_STABILITY_TIMEOUT_MS = 2200L
-        private const val STARTUP_SIGNAL_GRACE_MS = 1_800L
-        private const val RUNNING_SIGNAL_STALL_MS = 5_000L
         private const val STARTUP_SIGNAL_MIN_LEVEL = 0.0015f
         private const val WORKER_STOP_JOIN_TIMEOUT_MS = 150L
     }
@@ -60,6 +58,24 @@ class OutputMixVisualizer(
         var workerThread: Thread? = null
 
         private var visualizer: Visualizer? = null
+        // Access only under the generation's lock, including the decision to stop its worker.
+        private var captureHealth = VisualizerCaptureHealth.WAITING
+
+        fun publishCaptureHealth(health: VisualizerCaptureHealth): Boolean =
+            generation.runIfRunningCurrent { captureHealth = health }
+
+        fun claimRecoveryRestart(): Boolean {
+            var claimed = false
+            generation.runIfRunningCurrent {
+                if (captureHealth == VisualizerCaptureHealth.NO_SIGNAL ||
+                    captureHealth == VisualizerCaptureHealth.API_PENDING ||
+                    captureHealth == VisualizerCaptureHealth.API_ERROR
+                ) {
+                    claimed = generation.stopWorkerIfCurrent()
+                }
+            }
+            return claimed
+        }
 
         fun attachVisualizer(candidate: Visualizer): Boolean = synchronized(resourceLock) {
             if (!generation.shouldRun()) {
@@ -113,7 +129,7 @@ class OutputMixVisualizer(
         onStateChanged: (String) -> Unit,
         onLevelChanged: AudioLevelCallback,
         onStartFailed: (reason: StartFailureReason) -> Unit = {},
-        onSignalStalled: () -> Unit = {},
+        onCaptureHealthChanged: (VisualizerCaptureHealth) -> Unit = {},
         onCrashed: () -> Unit = {}
     ): Boolean {
         // Keep the old parameter and implementation path for a future return, but gate it off
@@ -263,11 +279,8 @@ class OutputMixVisualizer(
                         "Visualizer configured: captureSize=$captureSize samplingHz=$samplingHz spectrumSampleRate=$spectrumSampleRate totalStartMs=${SystemClock.elapsedRealtime() - startAt}"
                     )
                     activeStarted = true
-                    val activeSinceMs = SystemClock.elapsedRealtime()
-                    var lastSignalSeenAtMs = activeSinceMs
-                    var firstSignalSeen = false
-                    var startupStallReported = false
-                    var runningStallReported = false
+                    val signalWatchdog = VisualizerSignalWatchdog(SystemClock.elapsedRealtime())
+                    var lastCaptureHealth = VisualizerCaptureHealth.WAITING
                     mainHandler.post {
                         generation.runIfRunningCurrent {
                             onStateChanged(context.getString(R.string.status_output_mix_listening))
@@ -310,9 +323,13 @@ class OutputMixVisualizer(
                             waveformRms = sqrt(squareSum / waveform.size).toFloat()
                             lowEnergy = (lowEnergy / waveform.size).coerceIn(0f, 1f)
                             highEnergy = (highEnergy / waveform.size).coerceIn(0f, 1f)
-                        } else if (!waveformErrorLogged) {
-                            AppLogger.w(TAG, "Visualizer.getWaveForm returned status=$waveformStatus")
-                            waveformErrorLogged = true
+                        } else {
+                            // Failed reads must not feed the previous frame into spectrum/waveform output.
+                            monoSamples.fill(0f)
+                            if (!waveformErrorLogged) {
+                                AppLogger.w(TAG, "Visualizer.getWaveForm returned status=$waveformStatus")
+                                waveformErrorLogged = true
+                            }
                         }
 
                         var measurementPeak = 0f
@@ -337,48 +354,24 @@ class OutputMixVisualizer(
                                 measurementPeak > STARTUP_SIGNAL_MIN_LEVEL ||
                                 lowEnergy > STARTUP_SIGNAL_MIN_LEVEL ||
                                 highEnergy > STARTUP_SIGNAL_MIN_LEVEL
-                        if (hasSignal) {
-                            firstSignalSeen = true
-                            lastSignalSeenAtMs = SystemClock.elapsedRealtime()
-                            runningStallReported = false
-                        }
-                        if (
-                            !firstSignalSeen &&
+                        val captureHealth = signalWatchdog.observe(
+                            nowMs = SystemClock.elapsedRealtime(),
+                            waveformSucceeded = waveformStatus == Visualizer.SUCCESS,
+                            measurementSucceeded = measurementStatus == Visualizer.SUCCESS,
+                            hasSignal = hasSignal,
+                            musicActive = !hasSignal &&
+                                waveformStatus == Visualizer.SUCCESS &&
+                                measurementStatus == Visualizer.SUCCESS &&
                                 experimentalVisualizerSignalWatchdogEnabled &&
-                                !startupStallReported &&
-                                SystemClock.elapsedRealtime() - activeSinceMs >= STARTUP_SIGNAL_GRACE_MS &&
-                                AudioRouteDiagnostics.isMusicActive(context)
-                        ) {
-                            startupStallReported = true
-                            AppLogger.w(
-                                TAG,
-                                "Visualizer reached active state but produced no signal; requesting startup retry. ${AudioRouteDiagnostics.snapshot(context)}"
-                            )
-                            if (generation.stopWorkerIfCurrent()) {
-                                mainHandler.post {
-                                    generation.runIfCurrent { onSignalStalled() }
-                                }
+                                AudioRouteDiagnostics.isMusicActive(context),
+                            signalWatchdogEnabled = experimentalVisualizerSignalWatchdogEnabled
+                        )
+                        if (!session.publishCaptureHealth(captureHealth)) break
+                        if (captureHealth != lastCaptureHealth) {
+                            lastCaptureHealth = captureHealth
+                            mainHandler.post {
+                                generation.runIfRunningCurrent { onCaptureHealthChanged(captureHealth) }
                             }
-                            break
-                        }
-                        if (
-                            firstSignalSeen &&
-                                experimentalVisualizerSignalWatchdogEnabled &&
-                                !runningStallReported &&
-                                SystemClock.elapsedRealtime() - lastSignalSeenAtMs >= RUNNING_SIGNAL_STALL_MS &&
-                                AudioRouteDiagnostics.isMusicActive(context)
-                        ) {
-                            runningStallReported = true
-                            AppLogger.w(
-                                TAG,
-                                "Visualizer signal disappeared while music is active; requesting restart. ${AudioRouteDiagnostics.snapshot(context)}"
-                            )
-                            if (generation.stopWorkerIfCurrent()) {
-                                mainHandler.post {
-                                    generation.runIfCurrent { onSignalStalled() }
-                                }
-                            }
-                            break
                         }
                         val envelope = levelEnvelopeProcessor.process(
                             LevelEnvelopeInput(
@@ -509,6 +502,12 @@ class OutputMixVisualizer(
             }
         }
         sessionToStop?.stopAndRelease()
+    }
+
+    /** Linearizes recovery against worker health publication without holding a lock during join. */
+    internal fun claimRecoveryRestart(): Boolean {
+        val session = synchronized(stateLock) { activeSession } ?: return false
+        return session.claimRecoveryRestart()
     }
 
     private data class RouteProbe(
