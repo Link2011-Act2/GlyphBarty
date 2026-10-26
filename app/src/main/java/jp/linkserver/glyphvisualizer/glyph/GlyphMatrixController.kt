@@ -13,6 +13,7 @@ import com.nothing.ketchum.GlyphMatrixManager
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.GlyphDeviceCatalog
 import jp.linkserver.glyphvisualizer.R
+import jp.linkserver.glyphvisualizer.audio.AudioRouteDiagnostics
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import jp.linkserver.glyphvisualizer.audio.MediaTrackTitleChangeDetector
 import kotlin.math.abs
@@ -48,7 +49,8 @@ class GlyphMatrixController(
     private val initialPhone4aProEmulationEnabled: Boolean = false,
     private val ownerHandler: Handler? = null,
     private val previewDeviceProfile: GlyphDeviceProfile? = null,
-    private val previewFrameListener: ((GlyphPreviewFrame.Matrix) -> Unit)? = null
+    private val previewFrameListener: ((GlyphPreviewFrame.Matrix) -> Unit)? = null,
+    private val mediaPlaybackOnlyProvider: (() -> Boolean)? = null
 ) : GlyphOutputController {
 
     companion object {
@@ -71,6 +73,7 @@ class GlyphMatrixController(
         private const val FRAME_INTERVAL_REDUCED_MS = 33L // ~30fps
         private const val FRAME_REFRESH_MS = 1_000L
         private const val FRAME_DIAGNOSTIC_MS = 30_000L
+        private const val PLAYBACK_CHECK_INTERVAL_MS = 250L
         private const val SPECTROGRAM_REFERENCE_MATRIX_LENGTH = 25
         private const val SPECTROGRAM_REFERENCE_SHIFT_INTERVAL_MS = FRAME_INTERVAL_REDUCED_MS
         private const val SIGNATURE_EDGE_BRIGHTNESS_STEP = 32
@@ -118,6 +121,12 @@ class GlyphMatrixController(
     private var normalMediaPlaybackOnly = false
     private var normalPlaybackSnapshot: MediaSessionPlaybackGate.PlaybackSnapshot? = null
     private var lastNormalPlaybackDecision: MatrixPlaybackSessionPolicy.Decision? = null
+    private val playbackCheckHandler = ownerHandler ?: Handler(Looper.myLooper() ?: Looper.getMainLooper())
+    private var normalPlaybackCheck: Runnable? = null
+    private var normalPlaybackCheckAtMs = 0L
+    private var normalPlaybackGeneration = 0L
+    private var lastNormalAudioFrameAtMs: Long? = null
+    private var lastNormalAudioActivity = 0f
     private val spectrumSignalGate = MatrixSpectrumSignalGate()
     private var hasSpectrumAnalysis = false
     private val trackTitleDetector = MediaTrackTitleChangeDetector()
@@ -255,6 +264,7 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceConnected() {
+        cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "SDK connected: bound=$isBound requested=$bindRequested stopped=$sessionStopped allowed=$glyphOutputAllowed")
         sdkConnected = true
         resetTrackTitle()
@@ -324,6 +334,7 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceDisconnected() {
+        cancelNormalPlaybackCheck()
         AppLogger.w(TAG, "SDK disconnected: open=$isSessionOpen silenceReleased=$matrixReleasedForSilence failures=$failureCount")
         sdkConnected = false
         resetTrackTitle()
@@ -374,6 +385,7 @@ class GlyphMatrixController(
     }
 
     private fun unbindSdk() {
+        cancelNormalPlaybackCheck()
         if (!isBound && !isSessionOpen) return
         // OS disable is temporary while bindRequested remains true. Preserve explicit-stop intent
         // so enabling Glyph again can reconnect, without undoing a user's stopped capture.
@@ -399,6 +411,7 @@ class GlyphMatrixController(
 
     override fun setGlyphMode(mode: String) {
         if (glyphMode != mode) {
+            cancelNormalPlaybackCheck()
             normalPlaybackPolicy.reset()
             lastNormalPlaybackDecision = null
             glyphMode = mode
@@ -410,6 +423,7 @@ class GlyphMatrixController(
             resetSpectrumScaleTracking()
             resetAllBrightnessScaleTracking()
             resetPatternVisualState()
+            scheduleNormalPlaybackCheck(SystemClock.elapsedRealtime())
         }
     }
 
@@ -501,19 +515,103 @@ class GlyphMatrixController(
     internal fun isNormalMatrixPlaybackOutputAllowed(mediaPlaybackOnly: Boolean, activity: Float): Boolean {
         normalMediaPlaybackOnly = mediaPlaybackOnly
         if (sessionStopped) return false
-        return evaluateNormalPlayback(SystemClock.elapsedRealtime(), activity).allowOutput
+        val decision = evaluateNormalPlayback(SystemClock.elapsedRealtime(), activity)
+        // The service only calls suspendSession when entering suppression. Apply this on every
+        // observation so confirmation can expire into a genuine pause/stop without another edge.
+        if (!decision.allowOutput) suppressNormalMatrixOutput(decision)
+        return decision.allowOutput
     }
 
-    private fun evaluateNormalPlayback(nowMs: Long, activity: Float): MatrixPlaybackSessionPolicy.Decision {
-        val snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
+    private fun evaluateNormalPlayback(nowMs: Long, activity: Float, fromDeadline: Boolean = false,
+        silenceReleasePossible: Boolean = false): MatrixPlaybackSessionPolicy.Decision {
+        if (!fromDeadline) {
+            lastNormalAudioFrameAtMs = nowMs
+            lastNormalAudioActivity = activity
+        }
+        var snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = fromDeadline)
+        val audioActive = activity >= SILENCE_ACTIVITY_THRESHOLD
+        var evaluation = normalPlaybackPolicy.prepare(snapshot, nowMs, audioActive, normalMediaPlaybackOnly)
+        if (!fromDeadline && isSessionOpen && !evaluation.decision.retainSession &&
+            (!evaluation.decision.allowOutput || silenceReleasePossible)
+        ) {
+            // Refresh before committing a release candidate. The rejected proposal has never
+            // mutated the policy, so a returning PLAYING session keeps its confirmed history.
+            snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = true)
+            evaluation = normalPlaybackPolicy.prepare(snapshot, nowMs, audioActive, normalMediaPlaybackOnly)
+        }
         normalPlaybackSnapshot = snapshot
-        val decision = normalPlaybackPolicy.evaluate(snapshot, nowMs,
-            activity >= SILENCE_ACTIVITY_THRESHOLD, normalMediaPlaybackOnly)
+        val decision = normalPlaybackPolicy.commit(evaluation)
         if (decision != lastNormalPlaybackDecision) {
-            AppLogger.i(TAG, "Normal Matrix playback: status=${snapshot.status} raw=${snapshot.rawState} access=${snapshot.sessionAccessAvailable} decision=$decision musicOnly=$normalMediaPlaybackOnly")
+            AppLogger.i(TAG, "Normal Matrix playback: status=${snapshot.status} raw=${snapshot.rawState} access=${snapshot.sessionAccessAvailable} decision=$decision retainSession=${decision.retainSession} allowOutput=${decision.allowOutput} musicOnly=$normalMediaPlaybackOnly")
             lastNormalPlaybackDecision = decision
         }
+        scheduleNormalPlaybackCheck(nowMs)
         return decision
+    }
+
+    private fun canCheckNormalPlayback(): Boolean = previewDeviceProfile == null &&
+        GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
+        isSessionOpen && isBound && bindRequested && sdkConnected && glyphOutputAllowed && !sessionStopped
+
+    private fun cancelNormalPlaybackCheck() {
+        normalPlaybackGeneration++
+        normalPlaybackCheck?.let(playbackCheckHandler::removeCallbacks)
+        normalPlaybackCheck = null
+        normalPlaybackCheckAtMs = 0L
+    }
+
+    private fun scheduleNormalPlaybackCheck(nowMs: Long) {
+        if (!canCheckNormalPlayback()) {
+            cancelNormalPlaybackCheck()
+            return
+        }
+        // Frames evaluate playback themselves. Keep an idle-frame check as well as exact
+        // grace deadlines, without forcing a second MediaSession read during healthy capture.
+        val lastFrameAt = lastNormalAudioFrameAtMs
+        val pollAt = if (lastFrameAt != null && nowMs - lastFrameAt < PLAYBACK_CHECK_INTERVAL_MS) {
+            lastFrameAt + PLAYBACK_CHECK_INTERVAL_MS
+        } else nowMs + PLAYBACK_CHECK_INTERVAL_MS
+        val dueAt = minOf(pollAt,
+            normalPlaybackPolicy.nextEvaluationAtMs ?: Long.MAX_VALUE)
+        if (normalPlaybackCheck != null && normalPlaybackCheckAtMs <= dueAt) return
+        cancelNormalPlaybackCheck()
+        val generation = normalPlaybackGeneration
+        lateinit var check: Runnable
+        check = Runnable {
+            if (normalPlaybackCheck !== check || generation != normalPlaybackGeneration) return@Runnable
+            normalPlaybackCheck = null
+            normalPlaybackCheckAtMs = 0L
+            if (!canCheckNormalPlayback()) return@Runnable
+            val now = SystemClock.elapsedRealtime()
+            val frameAge = lastNormalAudioFrameAtMs?.let { now - it } ?: Long.MAX_VALUE
+            val deadlineDue = normalPlaybackPolicy.nextEvaluationAtMs?.let { now >= it } == true
+            if (frameAge < PLAYBACK_CHECK_INTERVAL_MS && !deadlineDue) {
+                scheduleNormalPlaybackCheck(now)
+                return@Runnable
+            }
+            normalMediaPlaybackOnly = mediaPlaybackOnlyProvider?.invoke() ?: normalMediaPlaybackOnly
+            // Old envelopes are not evidence that audio is still playing after capture stops.
+            val activity = max(
+                if (frameAge < PLAYBACK_CHECK_INTERVAL_MS) lastNormalAudioActivity else 0f,
+                if (AudioRouteDiagnostics.isMusicActive(context)) SILENCE_ACTIVITY_THRESHOLD else 0f
+            )
+            val decision = evaluateNormalPlayback(now, activity, fromDeadline = true)
+            if (!decision.allowOutput) {
+                suppressNormalMatrixOutput(decision)
+            } else if (!decision.retainSession && activity < SILENCE_ACTIVITY_THRESHOLD &&
+                frameAge >= MatrixAudioSilencePolicy.RELEASE_MS
+            ) {
+                // AUDIO_FALLBACK permits future frames, but cannot retain a silent, stalled
+                // capture forever. Never register or replay an old lit frame from this timer.
+                releaseMatrixForSilence()
+            }
+        }
+        normalPlaybackCheck = check
+        normalPlaybackCheckAtMs = dueAt
+        // Snapshot reads can take time; convert the absolute deadline at enqueue time.
+        if (!playbackCheckHandler.postDelayed(check, (dueAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L))) {
+            cancelNormalPlaybackCheck()
+        }
     }
 
     private fun submitTrackTitleFrame() {
@@ -861,15 +959,25 @@ class GlyphMatrixController(
             return
         }
         val renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode ?: GlyphPatternRenderMode.MATRIX_BAR
+        val spectrumQuiet = renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
+            hasSpectrumAnalysis && spectrumSignalGate.quiet &&
+            GlyphPatternRegistry.kindOf(glyphMode) == GlyphPatternKind.SPECTRUM
+        val visualActivity = if (spectrumQuiet) 0f else activity
         // Smoothed UI/RMS envelopes can outlive the signal. Do not mistake their tails for a
         // different audio source when deciding whether a stopped MediaSession may fall back.
         val mediaActivity = if (hasSpectrumAnalysis) max(rawSpectrumPeak, max(lowEnergy, highEnergy)) else activity
-        val normalPlayback = if (renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL) evaluateNormalPlayback(now, mediaActivity) else null
+        val silenceReleasePossible = visualActivity < SILENCE_ACTIVITY_THRESHOLD && (
+            (silenceStartedAt > 0L && now - silenceStartedAt >= MatrixAudioSilencePolicy.RELEASE_MS) ||
+                renderMode == GlyphPatternRenderMode.MATRIX_RAIN ||
+                renderMode == GlyphPatternRenderMode.MATRIX_SPECTROGRAM ||
+                renderMode == GlyphPatternRenderMode.MATRIX_RIPPLE)
+        val normalPlayback = if (renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL) {
+            evaluateNormalPlayback(now, mediaActivity, silenceReleasePossible = silenceReleasePossible)
+        } else null
         val retainSession = normalPlayback?.retainSession == true
         if (normalPlayback?.cancelTitle == true && trackTitleAnimation.active) resetTrackTitle()
         if (normalPlayback?.allowOutput == false) {
-            if (previewDeviceProfile != null) turnOff()
-            else if (!matrixReleasedForSilence) releaseMatrixForSilence()
+            suppressNormalMatrixOutput(normalPlayback)
             return
         }
         if (!isSessionOpen && !sessionRecovery.pending && !matrixReleasedForSilence) {
@@ -883,8 +991,6 @@ class GlyphMatrixController(
         pendingLevel = -1f
 
         val clamped = level.coerceIn(0f, 1f)
-        val spectrumQuiet = normalPlayback != null && hasSpectrumAnalysis && spectrumSignalGate.quiet &&
-            GlyphPatternRegistry.kindOf(glyphMode) == GlyphPatternKind.SPECTRUM
         var renderLevel = if (spectrumQuiet) 0f else if (renderMode == GlyphPatternRenderMode.ALL_BRIGHTNESS) {
             if (isAllBrightnessOff(clamped, allBrightnessAutoScaleEnabled, autoScaleStrategy)) {
                 0f
@@ -900,7 +1006,6 @@ class GlyphMatrixController(
         val openReelPlayback = if (normalPlayback != null) normalPlaybackSnapshot
             else MediaSessionPlaybackGate.currentPlaybackSnapshot(context)
         if (matrixTrackTitleEnabled && openReelPlayback != null) updateTrackTitle(openReelPlayback, now, retainSession)
-        val visualActivity = if (spectrumQuiet) 0f else activity
         val holdOpenReelFrameForPause =
             openReelPlayback?.motionPaused == true
         var silenceDecision = MatrixAudioSilencePolicy.evaluate(
@@ -2071,6 +2176,7 @@ class GlyphMatrixController(
             AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed: reason=$reason", error)
         }
         AppLogger.i(TAG, "Matrix registered: reason=$reason length=$physicalMatrixLength profile=$matrixProfile")
+        scheduleNormalPlaybackCheck(nowMs)
         onStatusChanged(context.getString(R.string.status_glyph_matrix_session_ready, Build.MODEL))
         return true
     }
@@ -2113,6 +2219,9 @@ class GlyphMatrixController(
     }
 
     override fun releaseSession() {
+        cancelNormalPlaybackCheck()
+        lastNormalAudioFrameAtMs = null
+        lastNormalAudioActivity = 0f
         normalPlaybackPolicy.reset()
         lastNormalPlaybackDecision = null
         sessionStopped = true
@@ -2121,6 +2230,7 @@ class GlyphMatrixController(
     }
 
     private fun closeMatrixSession(reason: String) {
+        cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "Matrix session release: reason=$reason open=$isSessionOpen failures=$failureCount")
         turnOff()
         try {
@@ -2134,11 +2244,41 @@ class GlyphMatrixController(
     }
 
     override fun suspendSession() {
+        val decision = lastNormalPlaybackDecision
+        if (GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL &&
+            decision != null && !decision.allowOutput && decision.retainSession
+        ) {
+            suppressNormalMatrixOutput(decision)
+            return
+        }
         AppLogger.i(TAG, "Matrix session suspended by playback policy")
         if (!sessionStopped && !matrixReleasedForSilence) releaseMatrixForSilence()
     }
 
+    private fun suppressNormalMatrixOutput(decision: MatrixPlaybackSessionPolicy.Decision) {
+        if (decision.cancelTitle) resetTrackTitle()
+        if (!decision.retainSession) {
+            if (previewDeviceProfile != null) turnOff()
+            else if (!matrixReleasedForSilence && !sessionStopped) releaseMatrixForSilence()
+            return
+        }
+        lastPreviewLevel = 0f
+        if (matrixLength <= 0) return
+        if (frameBuffer.size != matrixLength * matrixLength) {
+            frameBuffer = IntArray(matrixLength * matrixLength)
+        } else {
+            frameBuffer.fill(COLOR_OFF)
+        }
+        lastRenderSignature = Long.MIN_VALUE
+        lastRenderedMode = null
+        lastFrameHadTrackTitle = false
+        // Use the normal frame path and its deduplication; neither turnOff nor close/register.
+        // If disconnected/already closed, submitMatrixFrame's guards keep it closed.
+        submitMatrixFrame(frameForPhysicalDevice())
+    }
+
     private fun releaseMatrixForSilence() {
+        cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "Matrix silence/policy release: elapsed=${SystemClock.elapsedRealtime() - silenceStartedAt}ms open=$isSessionOpen")
         // A genuine silence/playback-policy suspension ends this output episode. Rapid, healthy
         // track skips must not consume the retry budget for a continuous SDK failure episode.

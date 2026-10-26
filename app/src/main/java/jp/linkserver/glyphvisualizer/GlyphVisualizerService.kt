@@ -549,7 +549,8 @@ class GlyphVisualizerService : Service() {
                 initialPhone4aProEmulationEnabled =
                     actualDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX &&
                         outputDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
-                ownerHandler = matrixOutputHandler
+                ownerHandler = matrixOutputHandler,
+                mediaPlaybackOnlyProvider = { mediaPlaybackOnlyEnabled }
             )
         } else {
             GlyphLightController(

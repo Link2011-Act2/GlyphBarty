@@ -14,21 +14,39 @@ import org.robolectric.shadows.ShadowSystemClock
 import java.lang.reflect.Proxy
 import java.time.Duration
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
+import android.media.AudioManager
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 import android.content.ComponentName
 import android.media.MediaMetadata
 import android.media.session.MediaSession
+import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.provider.Settings
 import jp.linkserver.glyphvisualizer.MediaSessionNotificationListenerService
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.LooperMode
+import org.robolectric.annotation.Implements
+import org.robolectric.annotation.Implementation
+import org.robolectric.shadows.ShadowMediaSessionManager
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class MatrixTrackTitleOutputTest {
+    @Implements(MediaSessionManager::class)
+    class CountingMediaSessionManager : ShadowMediaSessionManager() {
+        var reads = 0
+        @Implementation
+        public override fun getActiveSessions(listener: ComponentName?): List<MediaController> {
+            reads++
+            return super.getActiveSessions(listener)
+        }
+    }
+
     private class PlaybackFixture(private val output: OutputFixture) : AutoCloseable {
         val session = MediaSession(output.context, "normal-matrix-test")
         var musicOnly: Boolean? = null
@@ -46,9 +64,9 @@ class MatrixTrackTitleOutputTest {
         fun state(state: Int) {
             shadowOf(session.controller).setPlaybackState(PlaybackState.Builder().setState(state, 0, 1f).build())
         }
-        fun tick(ms: Long, level: Float = 0f) {
+        fun tick(ms: Long, level: Float = 0f, refreshSnapshot: Boolean = true) {
             ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
-            MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+            if (refreshSnapshot) MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
             val allowed = musicOnly?.let { output.controller.isNormalMatrixPlaybackOutputAllowed(it, level) } ?: true
             if (!allowed) {
                 if (!suppressed) output.controller.suspendSession()
@@ -67,7 +85,8 @@ class MatrixTrackTitleOutputTest {
             shadowOf(output.context.getSystemService(MediaSessionManager::class.java)).clearControllers()
         }
     }
-    private class OutputFixture(val profile: GlyphDeviceProfile, val emulate: Boolean = false) : AutoCloseable {
+    private class OutputFixture(val profile: GlyphDeviceProfile, val emulate: Boolean = false,
+        mediaPlaybackOnlyProvider: (() -> Boolean)? = null) : AutoCloseable {
         val context = RuntimeEnvironment.getApplication()
         val length = if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 25 else 13
         val logicalProfile = if (emulate) GlyphDeviceProfile.PHONE4A_PRO_MATRIX else profile
@@ -138,7 +157,8 @@ class MatrixTrackTitleOutputTest {
                 }
             }
             field.set(manager, service)
-            controller = GlyphMatrixController(context, {})
+            controller = GlyphMatrixController(context, {}, ownerHandler = Handler(Looper.getMainLooper()),
+                mediaPlaybackOnlyProvider = mediaPlaybackOnlyProvider)
             // Simulate an established SDK session; use the real render and SDK send methods.
             setControllerField("physicalMatrixProfile", profile)
             setControllerField("matrixProfile", logicalProfile)
@@ -155,6 +175,17 @@ class MatrixTrackTitleOutputTest {
         fun setControllerField(name: String, value: Any) {
             GlyphMatrixController::class.java.getDeclaredField(name).apply { isAccessible = true }.set(controller, value)
         }
+
+        fun callback(name: String) = GlyphMatrixController::class.java.getDeclaredMethod(name)
+            .apply { isAccessible = true }.invoke(controller)
+
+        fun sessionOpen() = GlyphMatrixController::class.java.getDeclaredField("isSessionOpen")
+            .apply { isAccessible = true }.getBoolean(controller)
+
+        fun pendingPlaybackCheck() = GlyphMatrixController::class.java.getDeclaredField("normalPlaybackCheck")
+            .apply { isAccessible = true }.get(controller) as Runnable?
+
+        fun idleWithoutFrames(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
 
         fun send(frame: IntArray) { submit.invoke(controller, frame) }
         fun updateAfter(ms: Long, level: Float = 0.5f) {
@@ -187,6 +218,7 @@ class MatrixTrackTitleOutputTest {
         }
 
         override fun close() {
+            controller.releaseSession()
             field.set(manager, original)
             executorField.set(manager, originalExecutor)
             taskField.set(manager, originalTask)
@@ -313,6 +345,527 @@ class MatrixTrackTitleOutputTest {
                     playback.tick(50)
                     assertEquals(closes + 2, output.closeCount)
                 }
+            }
+        }
+    }
+
+    @Test fun sdkRegistrationSurvivesInitialPlayingConfirmationWithBlackFramesOnBothDevices() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            OutputFixture(profile).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                    playback.musicOnly = true
+                    output.callback("handleServiceConnected")
+                    assertEquals(1, output.registrationTimes.size)
+                    playback.tick(1000, 0.5f)
+                    playback.tick(999, 0.5f)
+                    assertTrue(output.sessionOpen())
+                    assertEquals(0, output.closeCount)
+                    assertEquals(0, output.blackoutCount)
+                    assertEquals(1, output.registrationTimes.size)
+                    assertTrue(output.sent.isNotEmpty())
+                    assertTrue(output.sent.all { frame -> frame.size == output.length * output.length && frame.all { it == 0 } })
+                    playback.tick(1, 0.5f)
+                    assertEquals(1, output.registrationTimes.size)
+                    assertEquals(0, output.closeCount)
+                    assertTrue(output.sent.last().any { it > 0 })
+                    output.assertEncoding()
+                }
+            }
+        }
+    }
+
+    @Test fun directControllerConfirmationAlsoSuppressesPixelsWithoutClosingSession() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.setControllerField("normalMediaPlaybackOnly", true)
+                output.callback("handleServiceConnected")
+                playback.tick(1000, 0.5f) // Call updateLevel directly, without the service gate.
+                assertTrue(output.sessionOpen())
+                assertTrue(output.sent.last().all { it == 0 })
+                assertEquals(0, output.closeCount)
+                assertEquals(0, output.blackoutCount)
+                playback.tick(1000, 0.5f)
+                assertEquals(1, output.registrationTimes.size)
+                assertTrue(output.sent.last().any { it > 0 })
+            }
+        }
+    }
+
+    @Test fun briefPauseBufferingAndMissingSessionKeepTheSameSdkRegistration() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            OutputFixture(profile).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = true
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                    output.callback("handleServiceConnected")
+                    playback.tick(1000, 0.5f)
+                    playback.tick(1000, 0.5f)
+                    repeat(5) {
+                        for ((state, duration) in listOf(PlaybackState.STATE_PAUSED to 399L,
+                            PlaybackState.STATE_BUFFERING to 2999L, PlaybackState.STATE_NONE to 749L)) {
+                            playback.state(state)
+                            playback.tick(1)
+                            playback.tick(duration)
+                            playback.state(PlaybackState.STATE_PLAYING)
+                            playback.tick(1, 0.5f)
+                            assertEquals(1, output.registrationTimes.size)
+                            assertEquals(0, output.closeCount)
+                            assertEquals(0, output.blackoutCount)
+                            assertTrue(output.sessionOpen())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun confirmationCanBecomeConfirmedPauseWithoutAnotherServiceSuppressionEdge() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.callback("handleServiceConnected")
+                playback.tick(1000, 0.5f)
+                playback.state(PlaybackState.STATE_PAUSED)
+                playback.tick(100, 0.5f)
+                playback.tick(399, 0.5f)
+                assertEquals(0, output.closeCount)
+                assertTrue(output.sent.last().all { it == 0 })
+                playback.tick(1, 0.5f)
+                assertEquals(1, output.closeCount)
+                assertFalse(output.sessionOpen())
+                playback.tick(1000, 0.5f)
+                assertEquals(1, output.closeCount)
+                playback.state(PlaybackState.STATE_PLAYING)
+                playback.tick(100, 0.5f)
+                assertEquals(1, output.registrationTimes.size) // Closed sessions stay closed during confirmation.
+                playback.tick(1000, 0.5f)
+                assertEquals(2, output.registrationTimes.size)
+                assertTrue(output.sessionOpen())
+            }
+        }
+    }
+
+    @Test fun missingControllerDuringConfirmationKeepsBlackSessionUntilPlayingIsConfirmedAgain() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.callback("handleServiceConnected")
+                playback.tick(1000, 0.5f)
+                val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java))
+                manager.clearControllers()
+                playback.tick(100, 0.5f)
+                playback.tick(749, 0.5f)
+                assertTrue(output.sessionOpen())
+                assertEquals(0, output.closeCount)
+                assertTrue(output.sent.last().all { it == 0 })
+                manager.addController(playback.session.controller)
+                playback.tick(1, 0.5f)
+                playback.tick(999, 0.5f)
+                assertTrue(output.sent.last().all { it == 0 })
+                playback.tick(1, 0.5f)
+                assertEquals(1, output.registrationTimes.size)
+                assertEquals(0, output.closeCount)
+                assertEquals(0, output.blackoutCount)
+                assertTrue(output.sent.last().any { it > 0 })
+            }
+        }
+    }
+
+    @Test fun explicitReleaseGlyphOffAndDisconnectStillInvalidateAConfirmingSession() {
+        for (end in listOf("stop", "glyph-off", "disconnect")) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                    playback.musicOnly = true
+                    output.callback("handleServiceConnected")
+                    playback.tick(1000, 0.5f)
+                    assertTrue(output.sessionOpen())
+                    when (end) {
+                        "stop" -> output.controller.releaseSession()
+                        "glyph-off" -> {
+                            output.setControllerField("isBound", false) // No Android service was bound in this fixture.
+                            output.setControllerField("glyphOutputAllowed", false)
+                            output.callback("reconcileSdkBinding")
+                        }
+                        "disconnect" -> output.callback("handleServiceDisconnected")
+                    }
+                    assertFalse(output.sessionOpen())
+                    assertEquals(if (end == "disconnect") 0 else 1, output.closeCount)
+                    val frames = output.sent.size
+                    playback.tick(2000, 0.5f)
+                    playback.tick(60_000, 0.5f)
+                    assertEquals(1, output.registrationTimes.size)
+                    assertEquals(frames, output.sent.size)
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun staleReleaseCandidatesKeepReturningPlaybackInEitherFrameTimerOrder() {
+        for (confirming in listOf(false, true)) {
+            for ((state, grace, removeController) in listOf(
+                Triple(PlaybackState.STATE_PAUSED, 400L, false),
+                Triple(PlaybackState.STATE_BUFFERING, 3000L, false),
+                Triple(PlaybackState.STATE_NONE, 750L, false),
+                Triple(PlaybackState.STATE_NONE, 750L, true))) {
+                for (first in listOf("service-frame", "controller-frame", "timer")) {
+                    OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                        PlaybackFixture(output).use { playback ->
+                            playback.musicOnly = true
+                            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                            playback.tick(1000)
+                            if (!confirming) playback.tick(1000)
+                            val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java))
+                            if (removeController) manager.clearControllers() else playback.state(state)
+                            playback.tick(1)
+                            output.idleWithoutFrames(grace - 1)
+                            // Preserve a cache younger than 250ms while the real session resumes.
+                            MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+                            playback.state(PlaybackState.STATE_PLAYING)
+                            if (removeController) manager.addController(playback.session.controller)
+                            val queued = requireNotNull(output.pendingPlaybackCheck())
+                            ShadowSystemClock.advanceBy(Duration.ofMillis(1))
+                            when (first) {
+                                "timer" -> {
+                                    queued.run()
+                                    playback.tick(0, 0.5f, refreshSnapshot = false)
+                                }
+                                "service-frame" -> {
+                                    playback.tick(0, 0.5f, refreshSnapshot = false)
+                                    queued.run()
+                                }
+                                "controller-frame" -> {
+                                    output.controller.updateLevel(0.5f)
+                                    queued.run()
+                                }
+                            }
+                            assertEquals("Unexpected close: $state $first confirming=$confirming", 0, output.closeCount)
+                            assertTrue(output.registrationTimes.isEmpty())
+                            assertTrue(output.sessionOpen())
+                            // Discarding the expired proposal must retain confirmed history, or
+                            // require a fresh whole second if the original resume was unconfirmed.
+                            assertEquals(!confirming, output.controller.isNormalMatrixPlaybackOutputAllowed(true, 0.5f))
+                            output.idleWithoutFrames(1000)
+                            assertEquals(0, output.closeCount)
+                            assertTrue(output.controller.isNormalMatrixPlaybackOutputAllowed(true, 0.5f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    @Config(shadows = [CountingMediaSessionManager::class])
+    fun healthyFramesAvoidDuplicateReadsAndIdleMonitoringStillObservesPause() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java)) as CountingMediaSessionManager
+                playback.musicOnly = false
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                playback.tick(1000, 0.5f, refreshSnapshot = false)
+                val start = manager.reads
+                repeat(100) {
+                    playback.tick(20, 0.5f, refreshSnapshot = false)
+                    val beforeTimer = manager.reads
+                    output.idleWithoutFrames(0)
+                    assertEquals("Timer duplicated a fresh frame's snapshot read", beforeTimer, manager.reads)
+                }
+                assertTrue("Normal 250ms cache cadence was exceeded", manager.reads - start <= 8)
+                val reads = manager.reads
+                playback.state(PlaybackState.STATE_PAUSED) // Stop frames; the monitor must take over.
+                output.idleWithoutFrames(249)
+                assertEquals(reads, manager.reads)
+                output.idleWithoutFrames(1)
+                assertTrue(manager.reads > reads)
+                output.idleWithoutFrames(399)
+                assertEquals(0, output.closeCount)
+                output.idleWithoutFrames(1)
+                assertEquals(1, output.closeCount)
+                assertNull(output.pendingPlaybackCheck())
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    @Config(shadows = [CountingMediaSessionManager::class])
+    fun activeAudioFallbackDoesNotForceEveryFrameToReadTheSession() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java)) as CountingMediaSessionManager
+                playback.musicOnly = false
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                playback.state(PlaybackState.STATE_STOPPED)
+                playback.tick(1000, 0.8f, refreshSnapshot = false)
+                val start = manager.reads
+                repeat(100) {
+                    playback.tick(20, 0.8f, refreshSnapshot = false)
+                    val beforeTimer = manager.reads
+                    output.idleWithoutFrames(0)
+                    assertEquals(beforeTimer, manager.reads)
+                }
+                assertTrue(manager.reads - start <= 8)
+                assertEquals(0, output.closeCount)
+                assertTrue(output.registrationTimes.isEmpty())
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun silentAudioFallbackRefreshesBeforeItsSilenceRelease() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = false
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                playback.tick(1000, 0.8f)
+                val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java))
+                manager.clearControllers()
+                playback.tick(1)
+                output.idleWithoutFrames(749)
+                MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+                manager.addController(playback.session.controller)
+                // Music Only is off: NONE can allow output while relinquishing retention.
+                // updateLevel's audio-silence release must also see the returning PLAYING state.
+                playback.tick(1, refreshSnapshot = false)
+                assertEquals(0, output.closeCount)
+                assertTrue(output.sessionOpen())
+                assertTrue(output.registrationTimes.isEmpty())
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun pausedBufferingAndMissingDeadlinesReleaseWithoutAudioFramesOnBothDevices() {
+        for (profile in listOf(GlyphDeviceProfile.PHONE3_MATRIX, GlyphDeviceProfile.PHONE4A_PRO_MATRIX)) {
+            for (confirming in listOf(false, true)) {
+                for ((state, grace) in listOf(PlaybackState.STATE_PAUSED to 400L,
+                    PlaybackState.STATE_BUFFERING to 3000L, PlaybackState.STATE_NONE to 750L)) {
+                    OutputFixture(profile).use { output ->
+                        PlaybackFixture(output).use { playback ->
+                            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                            playback.musicOnly = true
+                            playback.tick(1000)
+                            if (!confirming) playback.tick(1000)
+                            playback.state(state)
+                            playback.tick(1)
+                            output.idleWithoutFrames(grace - 1)
+                            assertTrue("Released early: $state confirming=$confirming", output.sessionOpen())
+                            output.idleWithoutFrames(1)
+                            assertFalse("Held past deadline: $state confirming=$confirming", output.sessionOpen())
+                            assertEquals(1, output.closeCount)
+                            assertNull(output.pendingPlaybackCheck())
+                            output.idleWithoutFrames(60_000)
+                            assertEquals(1, output.closeCount)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun timerObservesPauseThatBeginsAfterTheLastAudioFrame() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                playback.tick(1000)
+                playback.tick(1000)
+                output.idleWithoutFrames(250)
+                playback.state(PlaybackState.STATE_PAUSED) // No audio frame observes this change.
+                output.idleWithoutFrames(250 + 399)
+                assertTrue(output.sessionOpen())
+                output.idleWithoutFrames(1)
+                assertEquals(1, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun deadlineRefreshesCachedMediaStateImmediatelyBeforeRelease() {
+        for (confirming in listOf(false, true)) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = true
+                    playback.tick(1000)
+                    if (!confirming) playback.tick(1000)
+                    playback.state(PlaybackState.STATE_PAUSED)
+                    playback.tick(1)
+                    output.idleWithoutFrames(399)
+                    // Cache the old PAUSED state just before dispatch; the callback must force a read.
+                    MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+                    playback.state(PlaybackState.STATE_PLAYING)
+                    output.idleWithoutFrames(1)
+                    assertTrue(output.sessionOpen())
+                    assertEquals(0, output.closeCount)
+                    output.idleWithoutFrames(1000)
+                    assertEquals(0, output.closeCount)
+                    assertTrue(output.registrationTimes.isEmpty())
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun overdueCallbackUsesStateAtDispatchInsteadOfTheExpiredDecision() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                playback.tick(1000)
+                playback.state(PlaybackState.STATE_PAUSED)
+                playback.tick(1)
+                val queued = requireNotNull(output.pendingPlaybackCheck())
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(10)) // Ready but not dispatched.
+                MediaSessionPlaybackGate.currentPlaybackSnapshot(output.context, forceRefresh = true)
+                playback.state(PlaybackState.STATE_PLAYING)
+                queued.run()
+                assertEquals(0, output.closeCount)
+                assertTrue(output.sessionOpen())
+                assertTrue(output.sent.all { frame -> frame.all { it == 0 } })
+                output.idleWithoutFrames(1000)
+                assertEquals(0, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun stoppedDisconnectedDisabledAndReplacedGenerationsRejectOldCallbacks() {
+        for (end in listOf("stop-restart", "glyph-off", "disconnect", "mode")) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = true
+                    playback.tick(1000)
+                    playback.state(PlaybackState.STATE_PAUSED)
+                    playback.tick(1)
+                    val old = requireNotNull(output.pendingPlaybackCheck())
+                    when (end) {
+                        "stop-restart" -> {
+                            output.controller.releaseSession()
+                            output.controller.bind()
+                            playback.state(PlaybackState.STATE_PLAYING)
+                            playback.tick(1)
+                            playback.tick(1000)
+                        }
+                        "glyph-off" -> {
+                            output.setControllerField("isBound", false)
+                            output.setControllerField("glyphOutputAllowed", false)
+                            output.callback("reconcileSdkBinding")
+                        }
+                        "disconnect" -> output.callback("handleServiceDisconnected")
+                        "mode" -> output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_OPEN_REEL)
+                    }
+                    val closes = output.closeCount
+                    val registrations = output.registrationTimes.size
+                    val frames = output.sent.size
+                    val replacement = output.pendingPlaybackCheck()
+                    ShadowSystemClock.advanceBy(Duration.ofSeconds(10))
+                    old.run() // Simulate a removed callback already dequeued before invalidation.
+                    assertEquals(closes, output.closeCount)
+                    assertEquals(registrations, output.registrationTimes.size)
+                    assertEquals(frames, output.sent.size)
+                    assertSame(replacement, output.pendingPlaybackCheck())
+                    if (end != "stop-restart") assertNull(replacement)
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun fallbackRechecksCurrentAudioAndNeverUsesAStaleLoudFrameForever() {
+        for (state in listOf(PlaybackState.STATE_PAUSED, PlaybackState.STATE_BUFFERING, PlaybackState.STATE_NONE)) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = false
+                    playback.tick(1000, 0.8f)
+                    playback.state(state)
+                    playback.tick(1, 0.8f)
+                    val audio = shadowOf(output.context.getSystemService(AudioManager::class.java))
+                    audio.setIsMusicActive(true)
+                    output.idleWithoutFrames(4000)
+                    assertTrue(output.sessionOpen())
+                    assertEquals(0, output.closeCount)
+                    audio.setIsMusicActive(false)
+                    output.idleWithoutFrames(250)
+                    assertEquals(1, output.closeCount)
+                    assertNull(output.pendingPlaybackCheck())
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun deadlineUsesUpdatedMusicOnlySettingWithoutAnotherFrame() {
+        var musicOnly = true
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, mediaPlaybackOnlyProvider = { musicOnly }).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                playback.tick(1000)
+                playback.state(PlaybackState.STATE_PAUSED)
+                playback.tick(1)
+                shadowOf(output.context.getSystemService(AudioManager::class.java)).setIsMusicActive(true)
+                musicOnly = false
+                output.idleWithoutFrames(4000)
+                assertEquals(0, output.closeCount)
+                assertTrue(output.sessionOpen())
+                musicOnly = true
+                output.idleWithoutFrames(250)
+                assertEquals(1, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun playingSilentVideoKeepsItsSessionWithoutFramesAndNeverReplaysOldPixels() {
+        for (musicOnly in listOf(false, true)) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+                PlaybackFixture(output).use { playback ->
+                    playback.musicOnly = musicOnly
+                    playback.tick(1000)
+                    val frames = output.sent.size
+                    output.idleWithoutFrames(600_000)
+                    assertEquals(0, output.closeCount)
+                    assertTrue(output.registrationTimes.isEmpty())
+                    assertTrue(output.sessionOpen())
+                    assertEquals(frames, output.sent.size)
+                    assertNotNull(output.pendingPlaybackCheck())
+                }
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun mixedTransientStatesDoNotExtendTheIndependentBufferingDeadline() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                playback.musicOnly = true
+                playback.tick(1000)
+                playback.state(PlaybackState.STATE_BUFFERING)
+                playback.tick(1)
+                output.idleWithoutFrames(2250)
+                playback.state(PlaybackState.STATE_NONE)
+                output.idleWithoutFrames(250)
+                playback.state(PlaybackState.STATE_BUFFERING)
+                output.idleWithoutFrames(499)
+                assertEquals(0, output.closeCount)
+                output.idleWithoutFrames(1)
+                assertEquals(1, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun openReelNeverStartsTheNormalMatrixDeadlineMonitor() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX).use { output ->
+            PlaybackFixture(output).use { playback ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_OPEN_REEL)
+                playback.tick(1000)
+                assertNull(output.pendingPlaybackCheck())
+                output.idleWithoutFrames(60_000)
+                assertEquals(0, output.closeCount)
             }
         }
     }
