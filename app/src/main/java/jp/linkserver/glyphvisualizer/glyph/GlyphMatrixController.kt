@@ -459,12 +459,15 @@ class GlyphMatrixController(
         val wasActive = trackTitleAnimation.active
         val holdMissingSession = !snapshot.activeForOpenReel && keepMissingSession
         // A missing/NONE snapshot must not erase the identity used to deduplicate the returning song.
-        val changed = if (holdMissingSession) false else trackTitleDetector.observe(snapshot)
-        if (!snapshot.activeForOpenReel && !holdMissingSession) {
+        val changed = if (holdMissingSession) {
+            trackTitleDetector.clearPending()
+            false
+        } else trackTitleDetector.observe(snapshot, nowMs)
+        if ((!snapshot.activeForOpenReel && !holdMissingSession) || trackTitleDetector.awaitingBrowserTitle) {
             trackTitleAnimation.cancel()
             trackTitleRenderer?.clear()
         } else if (changed) {
-            AppLogger.i(TAG, "Track changed: status=${snapshot.status} titleLength=${snapshot.title?.length ?: 0} replacing=$wasActive")
+            AppLogger.i(TAG, "Track changed: status=${snapshot.status} package=${snapshot.packageName} titleLength=${snapshot.title?.length ?: 0} replacing=$wasActive")
             try {
                 val renderer = trackTitleRenderer ?: MatrixTrackTitleRendererFactory.create(
                     context, physicalMatrixProfile, matrixProfile, matrixLength

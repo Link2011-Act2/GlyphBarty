@@ -76,6 +76,138 @@ class MatrixTrackTitleIntegrationTest {
     private fun animation() = GlyphMatrixController::class.java.getDeclaredField("trackTitleAnimation")
         .apply { isAccessible = true }.get(controller) as MatrixTrackTitleAnimation
 
+    private fun titleRenderer() = GlyphMatrixController::class.java.getDeclaredField("trackTitleRenderer")
+        .apply { isAccessible = true }.get(controller) as MatrixCanvasTrackTitleRenderer?
+
+    private fun seedBrowser() {
+        shadowOf(session.controller).setPackageName("com.brave.browser")
+        track("a", "Initial")
+        renderAfter(1000)
+    }
+
+    @Test fun browserTemporarySevenCharacterTitleNeverScrollsBeforeFormalTitleArrives() {
+        seedBrowser()
+        track("b", "pending")
+        renderAfter(100)
+        assertFalse(animation().active)
+        assertNull(titleRenderer())
+        val formal = "Formal " + "i".repeat(60)
+        assertEquals(67, formal.length)
+        track("b", formal)
+        renderAfter(780)
+        assertFalse(animation().active)
+        renderAfter(1199)
+        assertFalse(animation().active)
+        assertNull(titleRenderer())
+        renderAfter(1)
+        assertTrue(animation().active)
+        assertEquals(formal, titleRenderer()?.preparedText)
+        assertTrue(renderAfter(700).pixels.any { it == 127 })
+    }
+
+    @Test fun rapidBrowserVideoChangesOnlyScrollTheLastStableTitle() {
+        seedBrowser()
+        for (id in listOf("b", "c", "d")) {
+            track(id, "Video $id")
+            renderAfter(400)
+            assertFalse(animation().active)
+            assertNull(titleRenderer())
+        }
+        renderAfter(1200)
+        assertTrue(animation().active)
+        assertEquals("Video d", titleRenderer()?.preparedText)
+        renderAfter(21_000)
+        assertFalse(animation().active)
+        renderAfter(1200)
+        assertFalse(animation().active)
+    }
+
+    @Test fun browserMetadataLossAndMissingSessionDiscardOnlyPendingTitle() {
+        seedBrowser()
+        track("b", "Pending")
+        renderAfter(100)
+        shadowOf(session.controller).setMetadata(null)
+        renderAfter(800)
+        track("b", "Final")
+        renderAfter(100)
+        playback(null)
+        renderAfter(100)
+        playback(PlaybackState.STATE_PLAYING)
+        renderAfter(100)
+        assertFalse(animation().active)
+        renderAfter(1199)
+        assertFalse(animation().active)
+        renderAfter(1)
+        assertTrue(animation().active)
+        assertEquals("Final", titleRenderer()?.preparedText)
+    }
+
+    @Test fun browserReplacementDuringScrollClearsOldPixelsAndWaitsForStableText() {
+        seedBrowser()
+        track("b", "First formal title")
+        renderAfter(100)
+        renderAfter(1200)
+        renderAfter(700)
+        assertTrue(animation().active)
+        val firstBitmap = requireNotNull(titleRenderer()?.cachedBitmap)
+        track("c", "pending")
+        renderAfter(100)
+        assertFalse(animation().active)
+        assertNull(titleRenderer()?.preparedText)
+        assertTrue(firstBitmap.isRecycled)
+        track("c", "Second formal title")
+        renderAfter(780)
+        assertFalse(animation().active)
+        assertNull(titleRenderer()?.preparedText)
+        renderAfter(1200)
+        assertEquals("Second formal title", titleRenderer()?.preparedText)
+        assertTrue(firstBitmap.isRecycled)
+        assertTrue(animation().active)
+        assertNull(animation().textX)
+        assertTrue(renderAfter(700).pixels.any { it == 127 })
+    }
+
+    @Test fun browserPauseResumeAndStopDoNotReplayOrCommitStaleCandidates() {
+        seedBrowser()
+        track("b", "Final")
+        renderAfter(100)
+        playback(PlaybackState.STATE_PAUSED)
+        renderAfter(100)
+        playback(PlaybackState.STATE_PLAYING)
+        renderAfter(100)
+        assertFalse(animation().active)
+        renderAfter(1200)
+        assertTrue(animation().active)
+        renderAfter(21_000)
+        playback(PlaybackState.STATE_PAUSED)
+        renderAfter(100)
+        playback(PlaybackState.STATE_PLAYING)
+        renderAfter(1200)
+        assertFalse(animation().active)
+        track("c", "Unconfirmed")
+        renderAfter(100)
+        playback(PlaybackState.STATE_STOPPED)
+        renderAfter(100)
+        assertFalse(animation().active)
+        playback(PlaybackState.STATE_PLAYING)
+        renderAfter(100)
+        renderAfter(1500)
+        assertFalse(animation().active)
+    }
+
+    @Test fun nativeMusicAppsStillStartTitleAnimationImmediately() {
+        for (app in listOf("com.spotify.music", "com.apple.android.music", "com.soundcloud.android")) {
+            controller.turnOff()
+            shadowOf(session.controller).setPackageName(app)
+            track("$app-a", "Initial")
+            renderAfter(1000)
+            track("$app-b", "Next song")
+            renderAfter(1)
+            assertTrue(app, animation().active)
+            assertEquals("Next song", titleRenderer()?.preparedText)
+        }
+    }
+
     @Test fun playingSilenceDoesNotInterruptTitleAt1003005001000OrOverTwoSeconds() {
         for (duration in listOf(100L, 300L, 500L, 1000L, 2500L)) {
             controller.turnOff()
