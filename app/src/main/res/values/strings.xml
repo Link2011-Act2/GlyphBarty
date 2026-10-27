@@ -627,4 +627,14 @@
     <string name="glyph_inspector_test_title">Test track title</string>
     <string name="glyph_inspector_test_artist">Artist (optional)</string>
     <string name="glyph_inspector_test_title_play">Play / replay title</string>
+    <string name="settings_matrix_recovery_test_group">Experimental settings — Matrix recovery test</string>
+    <string name="settings_matrix_recovery_test_title">Recovery test method</string>
+    <string name="settings_matrix_recovery_test_a_title">A: Standard behavior</string>
+    <string name="settings_matrix_recovery_test_a_desc">Use the current turnOff() and closeAppMatrix() behavior.</string>
+    <string name="settings_matrix_recovery_test_b_title">B: Keep the session</string>
+    <string name="settings_matrix_recovery_test_b_desc">Send only black frames during silence. Keep the session without calling either API.</string>
+    <string name="settings_matrix_recovery_test_c_title">C: turnOff only</string>
+    <string name="settings_matrix_recovery_test_c_desc">Call turnOff() during silence and keep the session without calling closeAppMatrix().</string>
+    <string name="settings_matrix_recovery_test_d_title">D: closeAppMatrix only</string>
+    <string name="settings_matrix_recovery_test_d_desc">Send a black frame at blackout, then release with closeAppMatrix() at the standard release deadline, without turnOff(). Pixels may remain visible if the SDK does not clear them. Explicit Stop uses the standard full release.</string>
 </resources>

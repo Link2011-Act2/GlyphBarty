@@ -627,4 +627,14 @@
     <string name="glyph_inspector_test_title">テスト用曲名</string>
     <string name="glyph_inspector_test_artist">アーティスト名（任意）</string>
     <string name="glyph_inspector_test_title_play">曲名スクロールを再生・再実行</string>
+    <string name="settings_matrix_recovery_test_group">実験的な設定 — Matrix復帰テスト</string>
+    <string name="settings_matrix_recovery_test_title">復帰テストの方式</string>
+    <string name="settings_matrix_recovery_test_a_title">A：標準動作</string>
+    <string name="settings_matrix_recovery_test_a_desc">現行のturnOff()とcloseAppMatrix()を使用します。</string>
+    <string name="settings_matrix_recovery_test_b_title">B：セッション維持</string>
+    <string name="settings_matrix_recovery_test_b_desc">無音時は黒フレームだけを送信し、両APIを呼ばずにセッションを保持します。</string>
+    <string name="settings_matrix_recovery_test_c_title">C：turnOffのみ</string>
+    <string name="settings_matrix_recovery_test_c_desc">無音時にturnOff()を呼び、closeAppMatrix()を呼ばずにセッションを保持します。</string>
+    <string name="settings_matrix_recovery_test_d_title">D：closeAppMatrixのみ</string>
+    <string name="settings_matrix_recovery_test_d_desc">消灯時は黒フレームを送信し、標準の解放期限にcloseAppMatrix()で解放します。turnOff()は呼びません。SDKが消灯を反映しない場合は表示が残る可能性があります。明示的な停止では標準の完全解放を行います。</string>
 </resources>

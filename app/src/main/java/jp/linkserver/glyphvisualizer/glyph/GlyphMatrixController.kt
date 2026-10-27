@@ -2,6 +2,7 @@ package jp.linkserver.glyphvisualizer.glyph
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -127,6 +128,13 @@ class GlyphMatrixController(
     private var normalPlaybackGeneration = 0L
     private var lastNormalAudioFrameAtMs: Long? = null
     private var lastNormalAudioActivity = 0f
+    private var recoveryTestMode = MatrixRecoveryTestSettings.load(context)
+    private var recoveryTestSettingsObserved = false
+    private var recoveryTestSessionHeld = false
+    private var recoveryTestFrameLogPending = true
+    private val recoveryTestSettingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        runOnOwnerThread { refreshRecoveryTestMode() }
+    }
     private val spectrumSignalGate = MatrixSpectrumSignalGate()
     private var hasSpectrumAnalysis = false
     private val trackTitleDetector = MediaTrackTitleChangeDetector()
@@ -265,8 +273,10 @@ class GlyphMatrixController(
 
     private fun handleServiceConnected() {
         cancelNormalPlaybackCheck()
+        recoveryTestSessionHeld = false
         AppLogger.i(TAG, "SDK connected: bound=$isBound requested=$bindRequested stopped=$sessionStopped allowed=$glyphOutputAllowed")
         sdkConnected = true
+        logRecoveryTest("sdk-connected")
         resetTrackTitle()
         trackTitleRenderer = null // Select again after the actual device/profile is known.
         if (!isBound || !bindRequested || !glyphOutputAllowed || sessionStopped) return
@@ -335,16 +345,23 @@ class GlyphMatrixController(
 
     private fun handleServiceDisconnected() {
         cancelNormalPlaybackCheck()
+        recoveryTestSessionHeld = false
         AppLogger.w(TAG, "SDK disconnected: open=$isSessionOpen silenceReleased=$matrixReleasedForSilence failures=$failureCount")
         sdkConnected = false
         resetTrackTitle()
         invalidateLastSentFrame()
         isSessionOpen = false
+        logRecoveryTest("sdk-disconnected", detail = "local session invalidated; no SDK call after disconnect")
         onStatusChanged(context.getString(R.string.status_glyph_matrix_service_disconnected))
     }
 
     override fun bind() {
         if (previewDeviceProfile != null) return
+        refreshRecoveryTestMode()
+        if (!recoveryTestSettingsObserved && MatrixRecoveryTestSettings.isAvailable()) {
+            MatrixRecoveryTestSettings.register(context, recoveryTestSettingsListener)
+            recoveryTestSettingsObserved = true
+        }
         bindRequested = true
         val restarting = sessionStopped
         sessionStopped = false
@@ -371,10 +388,12 @@ class GlyphMatrixController(
         AppLogger.i(TAG, "SDK binding requested")
         isBound = true
         glyphMatrixManager.init(callback)
+        logRecoveryTest("init-returned", "init", "connection is asynchronous; LED=unverified")
         onStatusChanged(context.getString(R.string.status_glyph_matrix_connecting))
     }
 
     override fun unbind() {
+        stopRecoveryTestSettingsObserver()
         if (previewDeviceProfile != null) {
             turnOff()
             return
@@ -395,6 +414,7 @@ class GlyphMatrixController(
         if (isBound) {
             AppLogger.i(TAG, "SDK unbinding")
             glyphMatrixManager.unInit()
+            logRecoveryTest("uninit-returned", "unInit", "LED=unverified")
             isBound = false
             sdkConnected = false
             isSessionOpen = false
@@ -411,6 +431,17 @@ class GlyphMatrixController(
 
     override fun setGlyphMode(mode: String) {
         if (glyphMode != mode) {
+            val diagnosticBlackoutOpen = previewDeviceProfile == null && MatrixRecoveryTestSettings.isAvailable() &&
+                physicalMatrixProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX && isSessionOpen &&
+                matrixTurnedOffForSilence &&
+                GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL
+            if (recoveryTestSessionHeld || diagnosticBlackoutOpen) {
+                closeMatrixSession("mode change ends diagnostic hold")
+                sessionRecovery.cancel()
+                if (bindRequested && isBound && sdkConnected && glyphOutputAllowed && !sessionStopped) {
+                    sessionRecovery.request(SystemClock.elapsedRealtime(), immediate = true)
+                }
+            }
             cancelNormalPlaybackCheck()
             normalPlaybackPolicy.reset()
             lastNormalPlaybackDecision = null
@@ -524,6 +555,8 @@ class GlyphMatrixController(
 
     private fun evaluateNormalPlayback(nowMs: Long, activity: Float, fromDeadline: Boolean = false,
         silenceReleasePossible: Boolean = false): MatrixPlaybackSessionPolicy.Decision {
+        val previousFrameAt = lastNormalAudioFrameAtMs
+        val previousAudioActive = lastNormalAudioActivity >= SILENCE_ACTIVITY_THRESHOLD
         if (!fromDeadline) {
             lastNormalAudioFrameAtMs = nowMs
             lastNormalAudioActivity = activity
@@ -531,7 +564,7 @@ class GlyphMatrixController(
         var snapshot = MediaSessionPlaybackGate.currentPlaybackSnapshot(context, forceRefresh = fromDeadline)
         val audioActive = activity >= SILENCE_ACTIVITY_THRESHOLD
         var evaluation = normalPlaybackPolicy.prepare(snapshot, nowMs, audioActive, normalMediaPlaybackOnly)
-        if (!fromDeadline && isSessionOpen && !evaluation.decision.retainSession &&
+        if (!fromDeadline && isSessionOpen && !recoveryTestSessionHeld && !evaluation.decision.retainSession &&
             (!evaluation.decision.allowOutput || silenceReleasePossible)
         ) {
             // Refresh before committing a release candidate. The rejected proposal has never
@@ -541,7 +574,11 @@ class GlyphMatrixController(
         }
         normalPlaybackSnapshot = snapshot
         val decision = normalPlaybackPolicy.commit(evaluation)
+        if (!fromDeadline && (previousFrameAt == null || previousAudioActive != audioActive)) {
+            logRecoveryTest(if (audioActive) "signal-returned" else "silence-start", detail = "captureActivity=$activity")
+        }
         if (decision != lastNormalPlaybackDecision) {
+            recoveryTestFrameLogPending = true
             AppLogger.i(TAG, "Normal Matrix playback: status=${snapshot.status} raw=${snapshot.rawState} access=${snapshot.sessionAccessAvailable} decision=$decision retainSession=${decision.retainSession} allowOutput=${decision.allowOutput} musicOnly=$normalMediaPlaybackOnly")
             lastNormalPlaybackDecision = decision
         }
@@ -1031,7 +1068,9 @@ class GlyphMatrixController(
             spectrumVisualDynamicsState.reset()
         }
         val silenceElapsedMs = if (isSilent) {
-            if (silenceStartedAt <= 0L) silenceStartedAt = now
+            if (silenceStartedAt <= 0L) {
+                silenceStartedAt = now
+            }
             now - silenceStartedAt
         } else {
             0L
@@ -1076,6 +1115,9 @@ class GlyphMatrixController(
             lastPreviewLevel = renderLevel
         }
         if (matrixTurnedOffForSilence && (!isSilent || retainSession)) {
+            recoveryTestSessionHeld = false
+            recoveryTestFrameLogPending = true
+            logRecoveryTest("resume", detail = "next normal frame uses current session; LED unverified")
             AppLogger.i(TAG, "Matrix output resumed: mediaRetained=$retainSession silenceReleased=$matrixReleasedForSilence")
             matrixTurnedOffForSilence = false
             lastRenderSignature = Long.MIN_VALUE
@@ -2116,6 +2158,10 @@ class GlyphMatrixController(
                 physicalMatrixLength, sdkPhysicalColumnHeights)
             glyphMatrixManager.setAppMatrixFrame(sdkOutputFrameBuffer)
             lastSdkFrameAtMs = now
+            if (recoveryTestFrameLogPending || now - lastFrameDiagnosticAtMs >= FRAME_DIAGNOSTIC_MS) {
+                logRecoveryTest("frame-returned", "setAppMatrixFrame", "max8=${deviceFrame.maxOrNull()} max12=${sdkOutputFrameBuffer.maxOrNull()} refresh=$identical LED=unverified")
+                recoveryTestFrameLogPending = false
+            }
             if (now - lastFrameDiagnosticAtMs >= FRAME_DIAGNOSTIC_MS) {
                 lastFrameDiagnosticAtMs = now
                 // A returned SDK call is not an acknowledgement from the hardware.
@@ -2141,6 +2187,7 @@ class GlyphMatrixController(
         sessionRecovery.frameFailed()
         failureCount++
         AppLogger.w(TAG, "setAppMatrixFrame failed: consecutive=$failureCount open=$isSessionOpen connected=$sdkConnected", error)
+        logRecoveryTest("frame-failed", "setAppMatrixFrame", "consecutive=$failureCount error=${error.javaClass.simpleName} LED=unverified")
         if (failureCount < 3) return
         // Keep the binding and recovery intent. Public releaseSession is an intentional stop.
         closeMatrixSession("three consecutive frame failures")
@@ -2159,7 +2206,9 @@ class GlyphMatrixController(
             AppLogger.w(TAG, "Matrix register threw: reason=$reason", error)
             false
         }
+        recoveryTestFrameLogPending = true
         if (!registered) {
+            logRecoveryTest("register-result", "register", "result=false reason=$reason attempt=${sessionRecovery.attempts} LED=unverified")
             AppLogger.w(TAG, "Matrix register failed: next=${sessionRecovery.nextAttemptAtMs} exhausted=${sessionRecovery.exhausted}")
             onStatusChanged(context.getString(R.string.status_glyph_matrix_resume_failed))
             return false
@@ -2169,11 +2218,14 @@ class GlyphMatrixController(
         matrixReleasedForSilence = false
         matrixTurnedOffForSilence = false
         failureCount = 0
+        logRecoveryTest("register-result", "register", "result=true reason=$reason attempt=${sessionRecovery.attempts} LED=unverified")
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.setGlyphMatrixTimeout(true)
+            logRecoveryTest("timeout-setting-returned", "setGlyphMatrixTimeout", "value=true LED=unverified")
         } catch (error: Throwable) {
             AppLogger.w(TAG, "setGlyphMatrixTimeout(true) failed: reason=$reason", error)
+            logRecoveryTest("timeout-setting-failed", "setGlyphMatrixTimeout", error.javaClass.simpleName)
         }
         AppLogger.i(TAG, "Matrix registered: reason=$reason length=$physicalMatrixLength profile=$matrixProfile")
         scheduleNormalPlaybackCheck(nowMs)
@@ -2190,6 +2242,28 @@ class GlyphMatrixController(
     }
 
     override fun turnOff() {
+        when (val mode = effectiveRecoveryTestMode()) {
+            MatrixRecoveryTestMode.KEEP_SESSION, MatrixRecoveryTestMode.TURN_OFF_ONLY -> {
+                // Capture restart and back-down suppression also use this non-final entry point.
+                // Keep the chosen experiment intact; final lifecycle release bypasses it below.
+                resetPatternVisualState()
+                silenceStartedAt = 0L
+                logRecoveryTest("display-off-request", detail = "non-final controller turnOff")
+                holdRecoveryTestSession(mode)
+                return
+            }
+            MatrixRecoveryTestMode.CLOSE_ONLY -> {
+                resetPatternVisualState()
+                silenceStartedAt = 0L
+                logRecoveryTest("display-off-request", detail = "non-final controller turnOff")
+                if (isSessionOpen && sdkConnected) blackoutMatrixForSilence()
+                return
+            }
+            MatrixRecoveryTestMode.STANDARD -> turnOffStandard()
+        }
+    }
+
+    private fun turnOffStandard() {
         resetTrackTitle()
         invalidateLastSentFrame()
         lastPreviewLevel = 0f
@@ -2212,6 +2286,7 @@ class GlyphMatrixController(
         }
         try {
             glyphMatrixManager.turnOff()
+            logRecoveryTest("turn-off-returned", "turnOff", "asynchronous clear requested; LED=unverified")
             mirrorOffMatrixPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff ignored", error)
@@ -2219,6 +2294,7 @@ class GlyphMatrixController(
     }
 
     override fun releaseSession() {
+        stopRecoveryTestSettingsObserver()
         cancelNormalPlaybackCheck()
         lastNormalAudioFrameAtMs = null
         lastNormalAudioActivity = 0f
@@ -2232,15 +2308,18 @@ class GlyphMatrixController(
     private fun closeMatrixSession(reason: String) {
         cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "Matrix session release: reason=$reason open=$isSessionOpen failures=$failureCount")
-        turnOff()
+        turnOffStandard() // Explicit stop, OS disable, mode change and SDK failure always fully release.
         try {
             glyphMatrixManager.closeAppMatrix()
+            logRecoveryTest("full-release-returned", "closeAppMatrix", "reason=$reason LED=unverified")
         } catch (error: Throwable) {
             AppLogger.w(TAG, "closeAppMatrix during session release failed", error)
         }
         isSessionOpen = false
+        recoveryTestSessionHeld = false
         matrixTurnedOffForSilence = false
         matrixReleasedForSilence = false
+        logRecoveryTest("full-session-closed", detail = "reason=$reason LED=unverified")
     }
 
     override fun suspendSession() {
@@ -2262,6 +2341,10 @@ class GlyphMatrixController(
             else if (!matrixReleasedForSilence && !sessionStopped) releaseMatrixForSilence()
             return
         }
+        sendBlackMatrixFrame()
+    }
+
+    private fun sendBlackMatrixFrame() {
         lastPreviewLevel = 0f
         if (matrixLength <= 0) return
         if (frameBuffer.size != matrixLength * matrixLength) {
@@ -2278,41 +2361,154 @@ class GlyphMatrixController(
     }
 
     private fun releaseMatrixForSilence() {
+        val testMode = effectiveRecoveryTestMode()
+        if (testMode == MatrixRecoveryTestMode.KEEP_SESSION || testMode == MatrixRecoveryTestMode.TURN_OFF_ONLY) {
+            holdRecoveryTestSession(testMode)
+            return
+        }
         cancelNormalPlaybackCheck()
+        logRecoveryTest("release-request", detail = if (testMode == MatrixRecoveryTestMode.CLOSE_ONLY) "close only; residual pixels possible" else "standard release")
         AppLogger.i(TAG, "Matrix silence/policy release: elapsed=${SystemClock.elapsedRealtime() - silenceStartedAt}ms open=$isSessionOpen")
         // A genuine silence/playback-policy suspension ends this output episode. Rapid, healthy
         // track skips must not consume the retry budget for a continuous SDK failure episode.
         sessionRecovery.cancel()
         resetTrackTitle()
         invalidateLastSentFrame()
-        try {
-            glyphMatrixManager.turnOff()
-            mirrorOffMatrixPreviewFrame()
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "turnOff during silence release failed", error)
+        if (testMode != MatrixRecoveryTestMode.CLOSE_ONLY) {
+            try {
+                glyphMatrixManager.turnOff()
+                logRecoveryTest("silence-turn-off-returned", "turnOff", "asynchronous clear requested; LED=unverified")
+                mirrorOffMatrixPreviewFrame()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "turnOff during silence release failed", error)
+                logRecoveryTest("silence-turn-off-failed", "turnOff", error.javaClass.simpleName)
+            }
         }
         try {
             glyphMatrixManager.closeAppMatrix()
+            logRecoveryTest("silence-close-returned", "closeAppMatrix", "LED=unverified")
         } catch (error: Throwable) {
             AppLogger.w(TAG, "closeAppMatrix during silence release failed", error)
+            logRecoveryTest("silence-close-failed", "closeAppMatrix", error.javaClass.simpleName)
         }
+        if (testMode == MatrixRecoveryTestMode.CLOSE_ONLY) mirrorOffMatrixPreviewFrame()
         matrixTurnedOffForSilence = true
         matrixReleasedForSilence = true
         isSessionOpen = false
+        logRecoveryTest("session-released", detail = "LED=unverified")
     }
 
     private fun blackoutMatrixForSilence() {
+        logRecoveryTest("blackout-request")
+        when (val testMode = effectiveRecoveryTestMode()) {
+            MatrixRecoveryTestMode.KEEP_SESSION, MatrixRecoveryTestMode.TURN_OFF_ONLY -> {
+                holdRecoveryTestSession(testMode)
+                return
+            }
+            MatrixRecoveryTestMode.CLOSE_ONLY -> {
+                // Keep A's blackout/release timing. Only the existing silence or playback
+                // policy may release the session; a display-off request only sends black.
+                sessionRecovery.frameFailed()
+                resetTrackTitle()
+                invalidateLastSentFrame()
+                recoveryTestFrameLogPending = true
+                sendBlackMatrixFrame()
+                matrixTurnedOffForSilence = true
+                return
+            }
+            MatrixRecoveryTestMode.STANDARD -> Unit
+        }
         AppLogger.i(TAG, "Matrix silence blackout: elapsed=${SystemClock.elapsedRealtime() - silenceStartedAt}ms")
         sessionRecovery.frameFailed()
         resetTrackTitle()
         invalidateLastSentFrame()
         try {
             glyphMatrixManager.turnOff()
+            logRecoveryTest("blackout-turn-off-returned", "turnOff", "asynchronous clear requested; LED=unverified")
             mirrorOffMatrixPreviewFrame()
         } catch (error: Throwable) {
             AppLogger.w(TAG, "turnOff during silence blackout failed", error)
         }
         matrixTurnedOffForSilence = true
+    }
+
+    private fun effectiveRecoveryTestMode(): MatrixRecoveryTestMode =
+        if (previewDeviceProfile == null && MatrixRecoveryTestSettings.isAvailable() &&
+            physicalMatrixProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX &&
+            GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL
+        ) recoveryTestMode else MatrixRecoveryTestMode.STANDARD
+
+    private fun logRecoveryTest(event: String, sdk: String = "none", detail: String = "") {
+        if (previewDeviceProfile != null || !MatrixRecoveryTestSettings.isAvailable() ||
+            GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
+        ) return
+        AppLogger.i(TAG, "Matrix recovery test: t=${SystemClock.elapsedRealtime()} selected=${recoveryTestMode.code} effective=${effectiveRecoveryTestMode().code} event=$event sdk=$sdk status=${normalPlaybackSnapshot?.status} raw=${normalPlaybackSnapshot?.rawState} musicOnly=$normalMediaPlaybackOnly connected=$sdkConnected open=$isSessionOpen held=$recoveryTestSessionHeld released=$matrixReleasedForSilence generation=$normalPlaybackGeneration $detail")
+    }
+
+    private fun holdRecoveryTestSession(mode: MatrixRecoveryTestMode) {
+        // A missing/failed SDK session must stay closed and retain its existing recovery intent.
+        if (!isSessionOpen || !sdkConnected || sessionStopped || !glyphOutputAllowed || !bindRequested) return
+        val firstHold = !recoveryTestSessionHeld
+        recoveryTestSessionHeld = true
+        lastPreviewLevel = 0f
+        matrixTurnedOffForSilence = true
+        if (firstHold) {
+            sessionRecovery.frameFailed()
+            resetTrackTitle()
+            invalidateLastSentFrame()
+            recoveryTestFrameLogPending = true
+            logRecoveryTest("session-held", detail = "SDK session retained after silence/playback deadline")
+        }
+        if (mode == MatrixRecoveryTestMode.KEEP_SESSION) {
+            sendBlackMatrixFrame() // Deduplicates repeated zero frames; refreshes at the normal rate.
+        } else if (firstHold) {
+            try {
+                glyphMatrixManager.turnOff()
+                logRecoveryTest("held-turn-off-returned", "turnOff", "asynchronous clear requested; LED=unverified")
+                mirrorOffMatrixPreviewFrame()
+            } catch (error: Throwable) {
+                AppLogger.w(TAG, "turnOff during diagnostic hold failed", error)
+                logRecoveryTest("held-turn-off-failed", "turnOff", error.javaClass.simpleName)
+            }
+        }
+        scheduleNormalPlaybackCheck(SystemClock.elapsedRealtime())
+    }
+
+    private fun refreshRecoveryTestMode() {
+        val selected = MatrixRecoveryTestSettings.load(context)
+        if (selected == recoveryTestMode) return
+        val wasHeld = recoveryTestSessionHeld
+        recoveryTestMode = selected
+        recoveryTestFrameLogPending = true
+        logRecoveryTest("setting-changed", detail = "no SDK reinitialization")
+        if (!wasHeld || !canCheckNormalPlayback()) return
+        cancelNormalPlaybackCheck()
+        recoveryTestSessionHeld = false
+        val now = SystemClock.elapsedRealtime()
+        normalMediaPlaybackOnly = mediaPlaybackOnlyProvider?.invoke() ?: normalMediaPlaybackOnly
+        val activity = max(
+            if (lastNormalAudioFrameAtMs?.let { now - it < PLAYBACK_CHECK_INTERVAL_MS } == true) lastNormalAudioActivity else 0f,
+            if (AudioRouteDiagnostics.isMusicActive(context)) SILENCE_ACTIVITY_THRESHOLD else 0f
+        )
+        val decision = evaluateNormalPlayback(now, activity, fromDeadline = true)
+        if (!decision.retainSession && (!decision.allowOutput || activity < SILENCE_ACTIVITY_THRESHOLD)) {
+            // A B/C hold can start at blackout, before the silence release deadline. Switching
+            // to D must not turn that early hold into a close; playback-policy stops still use
+            // their own already-expired deadline, just as A does.
+            val waitingForSilenceRelease = selected == MatrixRecoveryTestMode.CLOSE_ONLY && decision.allowOutput &&
+                !MatrixAudioSilencePolicy.evaluate(
+                    renderMode = GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode ?: GlyphPatternRenderMode.MATRIX_BAR,
+                    activity = activity,
+                    silenceElapsedMs = if (silenceStartedAt > 0L) now - silenceStartedAt else 0L,
+                ).releaseDue
+            if (waitingForSilenceRelease) blackoutMatrixForSilence() else releaseMatrixForSilence()
+        } else if (!decision.allowOutput) suppressNormalMatrixOutput(decision)
+    }
+
+    private fun stopRecoveryTestSettingsObserver() {
+        if (!recoveryTestSettingsObserved) return
+        MatrixRecoveryTestSettings.unregister(context, recoveryTestSettingsListener)
+        recoveryTestSettingsObserved = false
     }
 
     private fun mirrorMatrixPreviewFrame(deviceFrame: IntArray, force: Boolean = false) {

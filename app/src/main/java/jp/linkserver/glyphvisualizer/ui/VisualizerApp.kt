@@ -525,6 +525,7 @@ internal fun GlyphVisualizerApp(
                         }
                     )
                     Screen.SETTINGS -> SettingsScreen(
+                        uiDeviceProfile = deviceProfile,
                         matrixSupported = actualDeviceProfile == GlyphDeviceProfile.PHONE3_MATRIX ||
                             actualDeviceProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
                         matrixTrackTitleEnabled = matrixTrackTitleEnabled,

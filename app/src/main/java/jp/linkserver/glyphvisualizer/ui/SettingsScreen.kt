@@ -46,11 +46,31 @@ import androidx.lifecycle.LifecycleEventObserver
 import jp.linkserver.glyphvisualizer.BLUETOOTH_STARTUP_STABILIZATION_ENABLED
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.audio.MediaSessionPlaybackGate
+import jp.linkserver.glyphvisualizer.glyph.MatrixRecoveryTestMode
+import jp.linkserver.glyphvisualizer.glyph.MatrixRecoveryTestSettings
+import jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.isUpdateCheckIntervalIgnoredForTesting
 import jp.linkserver.glyphvisualizer.update.setShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.setUpdateCheckIntervalIgnoredForTesting
+
+private fun matrixRecoveryTestTitle(mode: MatrixRecoveryTestMode): Int = when (mode) {
+    MatrixRecoveryTestMode.STANDARD -> R.string.settings_matrix_recovery_test_a_title
+    MatrixRecoveryTestMode.KEEP_SESSION -> R.string.settings_matrix_recovery_test_b_title
+    MatrixRecoveryTestMode.TURN_OFF_ONLY -> R.string.settings_matrix_recovery_test_c_title
+    MatrixRecoveryTestMode.CLOSE_ONLY -> R.string.settings_matrix_recovery_test_d_title
+}
+
+private fun matrixRecoveryTestDescription(mode: MatrixRecoveryTestMode): Int = when (mode) {
+    MatrixRecoveryTestMode.STANDARD -> R.string.settings_matrix_recovery_test_a_desc
+    MatrixRecoveryTestMode.KEEP_SESSION -> R.string.settings_matrix_recovery_test_b_desc
+    MatrixRecoveryTestMode.TURN_OFF_ONLY -> R.string.settings_matrix_recovery_test_c_desc
+    MatrixRecoveryTestMode.CLOSE_ONLY -> R.string.settings_matrix_recovery_test_d_desc
+}
 
 private enum class MeterStyleMode {
     HIDDEN,
@@ -67,6 +87,7 @@ private const val NATIVE_METER_VIEW_SETTING_VISIBLE = false
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    uiDeviceProfile: GlyphDeviceProfile,
     matrixSupported: Boolean,
     matrixTrackTitleEnabled: Boolean,
     onMatrixTrackTitleEnabledChanged: (Boolean) -> Unit,
@@ -135,6 +156,9 @@ fun SettingsScreen(
     var showUiModeDialog by rememberSaveable { mutableStateOf(false) }
     var showHomeScreenDialog by rememberSaveable { mutableStateOf(false) }
     var showMeterStyleDialog by rememberSaveable { mutableStateOf(false) }
+    var showMatrixRecoveryTestDialog by rememberSaveable { mutableStateOf(false) }
+    var matrixRecoveryTestMode by remember { mutableStateOf(MatrixRecoveryTestSettings.load(context)) }
+    val matrixRecoveryTestAvailable = MatrixRecoveryTestSettings.isVisible(uiDeviceProfile)
     val meterStyleMode = when {
         !meterVisibleEnabled -> MeterStyleMode.HIDDEN
         lightweightMeterEnabled -> MeterStyleMode.LIGHTWEIGHT
@@ -171,6 +195,7 @@ fun SettingsScreen(
     DisposableEffect(lifecycleOwner, context, intDevBuild) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                matrixRecoveryTestMode = MatrixRecoveryTestSettings.load(context)
                 appNotificationsEnabled = areAppNotificationsEnabled(context)
                 if (intDevBuild) {
                     notificationAccessGranted = MediaSessionPlaybackGate.hasNotificationAccess(context)
@@ -220,6 +245,39 @@ fun SettingsScreen(
         )
     }
 
+    if (matrixRecoveryTestAvailable && showMatrixRecoveryTestDialog) {
+        AlertDialog(
+            onDismissRequest = { showMatrixRecoveryTestDialog = false },
+            title = { Text(stringResource(R.string.settings_matrix_recovery_test_title)) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()).selectableGroup(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MatrixRecoveryTestMode.entries.forEach { mode ->
+                        MeterStyleOption(
+                            title = stringResource(matrixRecoveryTestTitle(mode)),
+                            description = stringResource(matrixRecoveryTestDescription(mode)),
+                            selected = matrixRecoveryTestMode == mode,
+                            selectableRow = true,
+                            onClick = {
+                                MatrixRecoveryTestSettings.save(context, mode)
+                                matrixRecoveryTestMode = mode
+                                showMatrixRecoveryTestDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMatrixRecoveryTestDialog = false }) {
+                    Text(stringResource(R.string.dialog_cancel))
+                }
+            }
+        )
+    }
+
     GlyphScreenScaffold(stringResource(R.string.settings_screen_title), onBack) { padding ->
         Column(
             modifier = Modifier
@@ -229,6 +287,17 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
+            if (matrixRecoveryTestAvailable) {
+                SettingsCategory(title = stringResource(R.string.settings_matrix_recovery_test_group)) {
+                    item("matrix_recovery_test_mode") {
+                        SettingsNavigationItem(
+                            title = stringResource(R.string.settings_matrix_recovery_test_title),
+                            summary = stringResource(matrixRecoveryTestTitle(matrixRecoveryTestMode)),
+                            onClick = { showMatrixRecoveryTestDialog = true }
+                        )
+                    }
+                }
+            }
             SettingsCategory(
                 title = stringResource(R.string.settings_category_general)
             ) {
@@ -614,15 +683,19 @@ private fun MeterStyleOption(
     title: String,
     description: String,
     selected: Boolean,
+    selectableRow: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (selectableRow) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            else Modifier
+        ),
         verticalAlignment = Alignment.Top
     ) {
         RadioButton(
             selected = selected,
-            onClick = onClick
+            onClick = if (selectableRow) null else onClick
         )
         Column(
             modifier = Modifier.padding(top = 10.dp)
