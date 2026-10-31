@@ -20,7 +20,7 @@ val buildNumberFiles = (
 ).sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
 
 val appCodeName = "Epica" // 0.x.0のxが変わるたびに更新したいね トリッカルの使徒から取る
-val appVersionName = "2.2.0-IntDev_rev2"
+val appVersionName = "2.2.0-IntDev_rev3"
 
 // Keep Major.Minor as text: 2.10 must never become the decimal value 2.1.
 fun rollVersionPersonality(versionName: String): Pair<String, Int> {
@@ -67,7 +67,7 @@ android {
         applicationId = "jp.linkserver.glyphvisualizer"
         minSdk = 33
         targetSdk = 36
-        versionCode = 17
+        versionCode = 18
         versionName = appVersionName
         buildConfigField("String", "BUILD_NUMBER", "\"$generatedBuildNumber\"")
         buildConfigField("String", "CODE_NAME", "\"$appCodeName\"")
