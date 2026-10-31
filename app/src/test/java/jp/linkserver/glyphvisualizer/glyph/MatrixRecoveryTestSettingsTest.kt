@@ -34,10 +34,10 @@ class MatrixRecoveryTestSettingsTest {
     @Test fun onlyTheActualIntDevPhone4aProIsEligible() {
         for (profile in GlyphDeviceProfile.entries) {
             assertEquals(profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
-                MatrixRecoveryTestSettings.isAvailable(intDevBuild = true, actualProfile = profile))
-            assertFalse(MatrixRecoveryTestSettings.isAvailable(intDevBuild = false, actualProfile = profile))
+                MatrixRecoveryTestSettings.isAvailable(intDevBuild = true, actualProfile = profile, diagnosticsEnabled = true))
+            assertFalse(MatrixRecoveryTestSettings.isAvailable(intDevBuild = false, actualProfile = profile, diagnosticsEnabled = true))
         }
-        assertFalse(MatrixRecoveryTestSettings.isAvailable(intDevBuild = true, actualProfile = null))
+        assertFalse(MatrixRecoveryTestSettings.isAvailable(intDevBuild = true, actualProfile = null, diagnosticsEnabled = true))
     }
 
     @Test fun phone4aProUiEmulationOnlyExtendsVisibilityAndNeverSdkEligibility() {
@@ -46,9 +46,9 @@ class MatrixRecoveryTestSettingsTest {
                 for (intDev in listOf(false, true)) {
                     assertEquals(intDev && (actual == GlyphDeviceProfile.PHONE4A_PRO_MATRIX ||
                         ui == GlyphDeviceProfile.PHONE4A_PRO_MATRIX),
-                        MatrixRecoveryTestSettings.isVisible(ui, intDev, actual))
+                        MatrixRecoveryTestSettings.isVisible(ui, intDev, actual, diagnosticsEnabled = true))
                     assertEquals(intDev && actual == GlyphDeviceProfile.PHONE4A_PRO_MATRIX,
-                        MatrixRecoveryTestSettings.isAvailable(intDev, actual))
+                        MatrixRecoveryTestSettings.isAvailable(intDev, actual, diagnosticsEnabled = true))
                 }
             }
         }
@@ -70,6 +70,54 @@ class MatrixRecoveryTestSettingsTest {
             assertEquals(MatrixRecoveryTestMode.CLOSE_ONLY, MatrixRecoveryTestSettings.load(context))
         } finally {
             SettingsPreferences.unregisterPreferenceChangeListener(context, listener)
+        }
+    }
+
+    @Test fun disabledDiagnosticsHideTheSelectorEvenOnAnEmulatedPhone4aProUi() {
+        for (actual in GlyphDeviceProfile.entries + listOf(null)) {
+            for (ui in GlyphDeviceProfile.entries + listOf(null)) {
+                for (intDev in listOf(false, true)) {
+                    assertFalse(MatrixRecoveryTestSettings.isVisible(ui, intDev, actual, diagnosticsEnabled = false))
+                    assertFalse(MatrixRecoveryTestSettings.isAvailable(intDev, actual, diagnosticsEnabled = false))
+                    assertEquals(ENABLE_MATRIX_RECOVERY_DIAGNOSTICS && intDev &&
+                        (actual == GlyphDeviceProfile.PHONE4A_PRO_MATRIX || ui == GlyphDeviceProfile.PHONE4A_PRO_MATRIX),
+                        MatrixRecoveryTestSettings.isVisible(ui, intDev, actual))
+                }
+            }
+        }
+    }
+
+    @Test fun disabledDiagnosticsIgnoreEverySavedMethodOnBothBuildChannels() {
+        for (selected in MatrixRecoveryTestMode.entries) {
+            MatrixRecoveryTestSettings.save(context, selected)
+            for (intDev in listOf(false, true)) {
+                for (profile in GlyphDeviceProfile.entries + listOf(null)) {
+                    for (normal in listOf(false, true)) {
+                        assertEquals(if (normal && profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX)
+                            MatrixRecoveryTestMode.CLOSE_ONLY else MatrixRecoveryTestMode.STANDARD,
+                            MatrixRecoveryTestSettings.effectiveMode(MatrixRecoveryTestSettings.load(context),
+                                profile, normal, diagnosticsEnabled = false, intDevBuild = intDev))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun enabledDiagnosticsRestoreAllMethodsWithoutChangingOtherHardware() {
+        for (selected in MatrixRecoveryTestMode.entries) {
+            for (profile in GlyphDeviceProfile.entries + listOf(null)) {
+                for (intDev in listOf(false, true)) {
+                    val expected = when {
+                        profile != GlyphDeviceProfile.PHONE4A_PRO_MATRIX -> MatrixRecoveryTestMode.STANDARD
+                        intDev -> selected
+                        else -> MatrixRecoveryTestMode.CLOSE_ONLY
+                    }
+                    assertEquals(expected, MatrixRecoveryTestSettings.effectiveMode(selected, profile,
+                        normalMatrix = true, diagnosticsEnabled = true, intDevBuild = intDev))
+                    assertEquals(MatrixRecoveryTestMode.STANDARD, MatrixRecoveryTestSettings.effectiveMode(
+                        selected, profile, normalMatrix = false, diagnosticsEnabled = true, intDevBuild = intDev))
+                }
+            }
         }
     }
 }

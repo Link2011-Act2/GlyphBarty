@@ -87,7 +87,8 @@ class MatrixTrackTitleOutputTest {
     }
     private class OutputFixture(val profile: GlyphDeviceProfile, val emulate: Boolean = false,
         mediaPlaybackOnlyProvider: (() -> Boolean)? = null,
-        recoveryTestMode: MatrixRecoveryTestMode = MatrixRecoveryTestMode.STANDARD) : AutoCloseable {
+        recoveryTestMode: MatrixRecoveryTestMode = MatrixRecoveryTestMode.STANDARD,
+        diagnosticsEnabled: Boolean = true) : AutoCloseable {
         val context = RuntimeEnvironment.getApplication()
         val length = if (profile == GlyphDeviceProfile.PHONE3_MATRIX) 25 else 13
         val logicalProfile = if (emulate) GlyphDeviceProfile.PHONE4A_PRO_MATRIX else profile
@@ -101,6 +102,7 @@ class MatrixTrackTitleOutputTest {
         val sent = mutableListOf<IntArray>()
         val sdkCalls = mutableListOf<String>()
         var framesToFail = 0
+        var frameAttempts = 0
         var registrationsToFail = 0
         val registrationTimes = mutableListOf<Long>()
         var closeCount = 0
@@ -136,6 +138,7 @@ class MatrixTrackTitleOutputTest {
                 arrayOf(IGlyphService::class.java)) { _, method, arguments ->
                 when (method.name) {
                     "setAppMatrixColors" -> {
+                        frameAttempts++
                         if (framesToFail > 0) {
                             framesToFail--
                             throw IllegalStateException("fake SDK frame failure")
@@ -164,7 +167,8 @@ class MatrixTrackTitleOutputTest {
             }
             field.set(manager, service)
             controller = GlyphMatrixController(context, {}, ownerHandler = Handler(Looper.getMainLooper()),
-                mediaPlaybackOnlyProvider = mediaPlaybackOnlyProvider)
+                mediaPlaybackOnlyProvider = mediaPlaybackOnlyProvider,
+                matrixRecoveryDiagnosticsEnabled = diagnosticsEnabled)
             // Simulate an established SDK session; use the real render and SDK send methods.
             setControllerField("physicalMatrixProfile", profile)
             setControllerField("matrixProfile", logicalProfile)
@@ -524,6 +528,219 @@ class MatrixTrackTitleOutputTest {
     }
 
     @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProIgnoresSavedDiagnosticsAndUsesTheExistingDTiming() {
+        for (saved in MatrixRecoveryTestMode.entries) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, recoveryTestMode = saved, diagnosticsEnabled = false).use { output ->
+                output.controller.bind()
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.updateAfter(1000, 0.8f)
+                output.sdkCalls.clear()
+                MatrixRecoveryTestMode.entries.forEach { MatrixRecoveryTestSettings.save(output.context, it) }
+                output.idleWithoutFrames(0)
+                assertTrue(output.sdkCalls.isEmpty())
+                output.updateAfter(1, 0f)
+                output.updateAfter(MatrixAudioSilencePolicy.BLACKOUT_MS - 1, 0f)
+                assertTrue(output.sdkCalls.isEmpty())
+                output.updateAfter(1, 0.8f)
+                assertEquals(0, output.closeCount)
+                output.sdkCalls.clear()
+                output.updateAfter(1, 0f)
+                output.updateAfter(MatrixAudioSilencePolicy.BLACKOUT_MS, 0f)
+                assertEquals(listOf("frame:0"), output.sdkCalls)
+                assertTrue(output.sessionOpen())
+                output.updateAfter(MatrixAudioSilencePolicy.RELEASE_MS - MatrixAudioSilencePolicy.BLACKOUT_MS - 1, 0f)
+                assertEquals(0, output.closeCount)
+                output.updateAfter(1, 0f)
+                assertEquals(listOf("frame:0", "closeAppMatrix"), output.sdkCalls)
+                output.updateAfter(1, 0.8f)
+                assertEquals(1, output.registrationTimes.size)
+                assertTrue(output.sent.last().any { it > 0 })
+                assertEquals(0, output.blackoutCount)
+                output.assertFrameRegistrationOrder()
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProCleanupUsesBlackAndCloseAndInvalidatesOldCallbacks() {
+        for (end in listOf("stop", "unbind", "glyph-off", "normal-mode", "open-reel", "disconnect")) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.updateAfter(1000, 0.8f)
+                output.updateAfter(1, 0f)
+                output.updateAfter(MatrixAudioSilencePolicy.BLACKOUT_MS, 0f)
+                val old = output.pendingPlaybackCheck()
+                output.sdkCalls.clear()
+                when (end) {
+                    "stop" -> output.controller.releaseSession()
+                    "unbind" -> output.controller.unbind()
+                    "glyph-off" -> {
+                        // The fixture has no real Android service binding to unbind.
+                        output.setControllerField("isBound", false)
+                        output.setControllerField("glyphOutputAllowed", false)
+                        output.callback("reconcileSdkBinding")
+                    }
+                    "normal-mode" -> output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_ALL_BRIGHTNESS)
+                    "open-reel" -> output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_OPEN_REEL)
+                    "disconnect" -> output.callback("handleServiceDisconnected")
+                }
+                val expected = when (end) {
+                    "disconnect" -> emptyList()
+                    "glyph-off" -> listOf("closeAppMatrix")
+                    else -> listOf("frame:0", "closeAppMatrix")
+                }
+                assertEquals("Cleanup calls: $end", expected, output.sdkCalls)
+                assertFalse(output.sessionOpen())
+                assertEquals(0, output.blackoutCount)
+                assertNull(output.pendingPlaybackCheck())
+                old?.run()
+                output.idleWithoutFrames(60_000)
+                assertEquals(expected, output.sdkCalls)
+                assertTrue(output.registrationTimes.isEmpty())
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProSkipsCleanupFramesWhenTheSessionCannotSend() {
+        for (guard in listOf("sdkConnected", "isSessionOpen", "glyphOutputAllowed", "isBound", "length", "matrixReleasedForSilence")) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.updateAfter(1000, 0.8f)
+                when (guard) {
+                    "length" -> {
+                        output.setControllerField("physicalMatrixLength", 0)
+                        output.setControllerField("physicalMatrixProfile", GlyphDeviceProfile.PHONE3_MATRIX)
+                    }
+                    "matrixReleasedForSilence" -> output.setControllerField(guard, true)
+                    else -> output.setControllerField(guard, false)
+                }
+                val attempts = output.frameAttempts
+                output.sdkCalls.clear()
+                output.controller.releaseSession()
+                assertEquals("Unsafe cleanup frame: $guard", attempts, output.frameAttempts)
+                assertEquals(if (guard == "sdkConnected" || guard == "isSessionOpen") emptyList<String>()
+                    else listOf("closeAppMatrix"), output.sdkCalls)
+                assertFalse(output.sessionOpen())
+                assertNull(output.pendingPlaybackCheck())
+                assertEquals(0, output.blackoutCount)
+                output.controller.releaseSession()
+                assertEquals(if (guard == "sdkConnected" || guard == "isSessionOpen") 0 else 1, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProClosesOnceEvenIfItsCleanupBlackFrameFails() {
+        for (end in listOf("stop", "unbind")) {
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                output.updateAfter(1000, 0.8f)
+                output.framesToFail = 100
+                val attempts = output.frameAttempts
+                output.sdkCalls.clear()
+                if (end == "stop") output.controller.releaseSession() else output.controller.unbind()
+                assertEquals(attempts + 1, output.frameAttempts)
+                assertEquals(listOf("closeAppMatrix"), output.sdkCalls)
+                assertFalse(output.sessionOpen())
+                output.controller.releaseSession()
+                output.idleWithoutFrames(60_000)
+                assertEquals(attempts + 1, output.frameAttempts)
+                assertEquals(1, output.closeCount)
+                assertTrue(output.registrationTimes.isEmpty())
+                assertEquals(0, output.blackoutCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProFrameFailureKeepsBackoffWithoutRecursiveCleanupOrTurnOff() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            output.framesToFail = 100
+            val attempts = output.frameAttempts
+            repeat(3) { output.send(IntArray(169) { 128 }) }
+            assertEquals(attempts + 4, output.frameAttempts) // Three failures and one best-effort clear.
+            assertEquals(1, output.closeCount)
+            assertFalse(output.sessionOpen())
+            output.registrationsToFail = 1
+            output.updateAfter(499, 0.8f)
+            assertTrue(output.registrationTimes.isEmpty())
+            output.updateAfter(1, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            assertEquals(attempts + 4, output.frameAttempts)
+            output.updateAfter(499, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            output.framesToFail = 0
+            output.updateAfter(1, 0.8f)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+            assertTrue(output.sent.last().any { it > 0 })
+            assertEquals(0, output.blackoutCount)
+            output.assertFrameRegistrationOrder()
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun productionPhone4aProCaptureSuppressionAndRestartNeverUseTurnOff() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, recoveryTestMode = MatrixRecoveryTestMode.TURN_OFF_ONLY,
+            diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            output.sdkCalls.clear()
+            output.controller.turnOff() // Visualizer restart/back-down suppression entry point.
+            assertEquals(listOf("frame:0"), output.sdkCalls)
+            output.updateAfter(1, 0.8f)
+            assertTrue(output.sessionOpen())
+            assertTrue(output.registrationTimes.isEmpty())
+            output.controller.releaseSession()
+            val oldCalls = output.sdkCalls.size
+            output.updateAfter(60_000, 0.8f)
+            assertEquals(oldCalls, output.sdkCalls.size)
+            output.controller.bind()
+            output.updateAfter(1, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            assertTrue(output.sent.last().any { it > 0 })
+            output.callback("handleServiceDisconnected")
+            output.updateAfter(60_000, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            output.callback("handleServiceConnected")
+            output.updateAfter(1, 0.8f)
+            assertEquals(2, output.registrationTimes.size)
+            assertEquals(0, output.blackoutCount)
+            output.assertFrameRegistrationOrder()
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun disabledDiagnosticsPreservePhone3EmulationAndOpenReelTurnOff() {
+        for (saved in MatrixRecoveryTestMode.entries) {
+            for (emulate in listOf(false, true)) {
+                OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX, emulate = emulate, recoveryTestMode = saved,
+                    diagnosticsEnabled = false).use { output ->
+                    output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+                    output.updateAfter(1000, 0.8f)
+                    output.updateAfter(1, 0f)
+                    output.updateAfter(MatrixAudioSilencePolicy.RELEASE_MS, 0f)
+                    assertEquals(2, output.blackoutCount)
+                    assertEquals(1, output.closeCount)
+                }
+            }
+            OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, recoveryTestMode = saved, diagnosticsEnabled = false).use { output ->
+                output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_OPEN_REEL)
+                output.updateAfter(1000, 0.8f)
+                output.updateAfter(1, 0f)
+                output.updateAfter(MatrixAudioSilencePolicy.OPEN_REEL_SILENCE_BLACKOUT_MS, 0f)
+                assertEquals(1, output.blackoutCount)
+                output.updateAfter(MatrixAudioSilencePolicy.OPEN_REEL_SILENCE_RELEASE_MS - MatrixAudioSilencePolicy.OPEN_REEL_SILENCE_BLACKOUT_MS, 0f)
+                assertEquals(2, output.blackoutCount)
+                assertEquals(1, output.closeCount)
+            }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
     fun recoveryMethodsHaveDistinctSdkSequencesAndResumeWithValidRegistration() {
         for (mode in MatrixRecoveryTestMode.entries) {
             OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, recoveryTestMode = mode).use { output ->
@@ -827,9 +1044,10 @@ class MatrixTrackTitleOutputTest {
                         assertFalse(output.sessionOpen())
                         assertNull(output.pendingPlaybackCheck())
                         if (end != "disconnect") {
-                            val releases = if (end == "glyph-off" && !openBeforeEnd) 0 else 1
+                            val withoutTurnOff = mode == MatrixRecoveryTestMode.KEEP_SESSION || mode == MatrixRecoveryTestMode.CLOSE_ONLY
+                            val releases = if ((withoutTurnOff || end == "glyph-off") && !openBeforeEnd) 0 else 1
                             assertEquals(closes + releases, output.closeCount)
-                            assertEquals(off + releases, output.blackoutCount)
+                            assertEquals(off + if (withoutTurnOff) 0 else releases, output.blackoutCount)
                         }
                         val calls = output.sdkCalls.size
                         old?.run()
@@ -944,7 +1162,8 @@ class MatrixTrackTitleOutputTest {
                 }
                 output.sdkCalls.clear()
                 output.controller.releaseSession()
-                assertEquals(listOf("turnOff", "closeAppMatrix"), output.sdkCalls)
+                assertEquals(if (mode == MatrixRecoveryTestMode.STANDARD || mode == MatrixRecoveryTestMode.TURN_OFF_ONLY)
+                    listOf("turnOff", "closeAppMatrix") else listOf("frame:0", "closeAppMatrix"), output.sdkCalls)
                 assertFalse(output.sessionOpen())
                 assertNull(output.pendingPlaybackCheck())
             }

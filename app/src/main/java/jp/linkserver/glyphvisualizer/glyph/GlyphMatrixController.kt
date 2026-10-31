@@ -51,7 +51,8 @@ class GlyphMatrixController(
     private val ownerHandler: Handler? = null,
     private val previewDeviceProfile: GlyphDeviceProfile? = null,
     private val previewFrameListener: ((GlyphPreviewFrame.Matrix) -> Unit)? = null,
-    private val mediaPlaybackOnlyProvider: (() -> Boolean)? = null
+    private val mediaPlaybackOnlyProvider: (() -> Boolean)? = null,
+    private val matrixRecoveryDiagnosticsEnabled: Boolean = ENABLE_MATRIX_RECOVERY_DIAGNOSTICS,
 ) : GlyphOutputController {
 
     companion object {
@@ -358,7 +359,7 @@ class GlyphMatrixController(
     override fun bind() {
         if (previewDeviceProfile != null) return
         refreshRecoveryTestMode()
-        if (!recoveryTestSettingsObserved && MatrixRecoveryTestSettings.isAvailable()) {
+        if (!recoveryTestSettingsObserved && MatrixRecoveryTestSettings.isAvailable(diagnosticsEnabled = matrixRecoveryDiagnosticsEnabled)) {
             MatrixRecoveryTestSettings.register(context, recoveryTestSettingsListener)
             recoveryTestSettingsObserved = true
         }
@@ -431,8 +432,8 @@ class GlyphMatrixController(
 
     override fun setGlyphMode(mode: String) {
         if (glyphMode != mode) {
-            val diagnosticBlackoutOpen = previewDeviceProfile == null && MatrixRecoveryTestSettings.isAvailable() &&
-                physicalMatrixProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX && isSessionOpen &&
+            val diagnosticBlackoutOpen = previewDeviceProfile == null &&
+                GlyphDeviceCatalog.currentOrNull()?.profile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX && isSessionOpen &&
                 matrixTurnedOffForSilence &&
                 GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL
             if (recoveryTestSessionHeld || diagnosticBlackoutOpen) {
@@ -2284,6 +2285,10 @@ class GlyphMatrixController(
             )
             return
         }
+        if (avoidsSdkTurnOff()) {
+            sendBlackFrameBeforeRelease()
+            return
+        }
         try {
             glyphMatrixManager.turnOff()
             logRecoveryTest("turn-off-returned", "turnOff", "asynchronous clear requested; LED=unverified")
@@ -2308,10 +2313,13 @@ class GlyphMatrixController(
     private fun closeMatrixSession(reason: String) {
         cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "Matrix session release: reason=$reason open=$isSessionOpen failures=$failureCount")
-        turnOffStandard() // Explicit stop, OS disable, mode change and SDK failure always fully release.
+        val withoutTurnOff = avoidsSdkTurnOff()
+        turnOffStandard() // 4a Pro B/D use a best-effort black frame even during explicit stop.
         try {
-            glyphMatrixManager.closeAppMatrix()
-            logRecoveryTest("full-release-returned", "closeAppMatrix", "reason=$reason LED=unverified")
+            if (!withoutTurnOff || (sdkConnected && isSessionOpen)) {
+                glyphMatrixManager.closeAppMatrix()
+                logRecoveryTest("full-release-returned", "closeAppMatrix", "reason=$reason LED=unverified")
+            }
         } catch (error: Throwable) {
             AppLogger.w(TAG, "closeAppMatrix during session release failed", error)
         }
@@ -2374,6 +2382,10 @@ class GlyphMatrixController(
         sessionRecovery.cancel()
         resetTrackTitle()
         invalidateLastSentFrame()
+        if (testMode == MatrixRecoveryTestMode.CLOSE_ONLY && !matrixTurnedOffForSilence) {
+            // A playback-policy deadline can arrive without an audio blackout frame first.
+            sendBlackFrameBeforeRelease()
+        }
         if (testMode != MatrixRecoveryTestMode.CLOSE_ONLY) {
             try {
                 glyphMatrixManager.turnOff()
@@ -2432,14 +2444,37 @@ class GlyphMatrixController(
         matrixTurnedOffForSilence = true
     }
 
-    private fun effectiveRecoveryTestMode(): MatrixRecoveryTestMode =
-        if (previewDeviceProfile == null && MatrixRecoveryTestSettings.isAvailable() &&
-            physicalMatrixProfile == GlyphDeviceProfile.PHONE4A_PRO_MATRIX &&
-            GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL
-        ) recoveryTestMode else MatrixRecoveryTestMode.STANDARD
+    private fun effectiveRecoveryTestMode(): MatrixRecoveryTestMode = MatrixRecoveryTestSettings.effectiveMode(
+        selected = recoveryTestMode,
+        actualProfile = GlyphDeviceCatalog.currentOrNull()?.profile,
+        normalMatrix = previewDeviceProfile == null &&
+            GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode != GlyphPatternRenderMode.MATRIX_OPEN_REEL,
+        diagnosticsEnabled = matrixRecoveryDiagnosticsEnabled,
+    )
+
+    private fun avoidsSdkTurnOff(): Boolean = when (effectiveRecoveryTestMode()) {
+        MatrixRecoveryTestMode.KEEP_SESSION, MatrixRecoveryTestMode.CLOSE_ONLY -> true
+        else -> false
+    }
+
+    /** Owner thread only. Never enter submitMatrixFrame's failure/re-registration path here. */
+    private fun sendBlackFrameBeforeRelease() {
+        if (previewDeviceProfile != null || !sdkConnected || !isBound || !isSessionOpen ||
+            !glyphOutputAllowed || matrixReleasedForSilence || physicalMatrixLength <= 0) return
+        try {
+            // Zero is also zero in the SDK's brightness space; no conversion or render needed.
+            glyphMatrixManager.setAppMatrixFrame(IntArray(physicalMatrixLength * physicalMatrixLength))
+            logRecoveryTest("release-black-returned", "setAppMatrixFrame", "max12=0 LED=unverified")
+            mirrorOffMatrixPreviewFrame()
+        } catch (error: Throwable) {
+            // One attempt only. A failing clear must not recurse into closeMatrixSession or
+            // consume/reset the normal registration retry budget. Always continue to close.
+            AppLogger.w(TAG, "Black frame before Matrix release failed; continuing release", error)
+        }
+    }
 
     private fun logRecoveryTest(event: String, sdk: String = "none", detail: String = "") {
-        if (previewDeviceProfile != null || !MatrixRecoveryTestSettings.isAvailable() ||
+        if (previewDeviceProfile != null || !MatrixRecoveryTestSettings.isAvailable(diagnosticsEnabled = matrixRecoveryDiagnosticsEnabled) ||
             GlyphPatternRegistry.recipeFor(glyphMode)?.renderMode == GlyphPatternRenderMode.MATRIX_OPEN_REEL
         ) return
         AppLogger.i(TAG, "Matrix recovery test: t=${SystemClock.elapsedRealtime()} selected=${recoveryTestMode.code} effective=${effectiveRecoveryTestMode().code} event=$event sdk=$sdk status=${normalPlaybackSnapshot?.status} raw=${normalPlaybackSnapshot?.rawState} musicOnly=$normalMediaPlaybackOnly connected=$sdkConnected open=$isSessionOpen held=$recoveryTestSessionHeld released=$matrixReleasedForSilence generation=$normalPlaybackGeneration $detail")
@@ -2475,6 +2510,7 @@ class GlyphMatrixController(
     }
 
     private fun refreshRecoveryTestMode() {
+        if (!MatrixRecoveryTestSettings.isAvailable(diagnosticsEnabled = matrixRecoveryDiagnosticsEnabled)) return
         val selected = MatrixRecoveryTestSettings.load(context)
         if (selected == recoveryTestMode) return
         val wasHeld = recoveryTestSessionHeld
