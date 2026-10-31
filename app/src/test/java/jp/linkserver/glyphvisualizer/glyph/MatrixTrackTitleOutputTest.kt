@@ -97,13 +97,20 @@ class MatrixTrackTitleOutputTest {
         val original: Any?
         private val executorField = GlyphMatrixManager::class.java.getDeclaredField("mExecutor").apply { isAccessible = true }
         private val taskField = GlyphMatrixManager::class.java.getDeclaredField("mTask").apply { isAccessible = true }
+        private val callbackField = GlyphMatrixManager::class.java.getDeclaredField("mCallback").apply { isAccessible = true }
         private val originalExecutor: Any?
         private val originalTask: Any?
+        private val originalCallback: Any?
+        private var actualBindingCreated = false
         val sent = mutableListOf<IntArray>()
         val sdkCalls = mutableListOf<String>()
+        val sdkMethodOrder = mutableListOf<String>()
         var framesToFail = 0
         var frameAttempts = 0
         var registrationsToFail = 0
+        var closesToFail = 0
+        var closeAttempts = 0
+        var onClose: (() -> Unit)? = null
         val registrationTimes = mutableListOf<Long>()
         var closeCount = 0
         var blackoutCount = 0
@@ -113,6 +120,9 @@ class MatrixTrackTitleOutputTest {
             IntArray::class.java).apply { isAccessible = true }
 
         init {
+            // Android unbind does not itself emit onServiceDisconnected. Drive SDK
+            // notifications explicitly, instead of Robolectric's synthetic null-name event.
+            shadowOf(context).setUnbindServiceCallsOnServiceDisconnected(false)
             ShadowBuild.setModel(if (length == 25) Glyph.DEVICE_23112 else Glyph.DEVICE_25111p)
             MatrixRecoveryTestSettings.save(context, recoveryTestMode)
             // Default fixture explicitly exercises audio fallback. Media tests opt into a session
@@ -123,6 +133,7 @@ class MatrixTrackTitleOutputTest {
             original = field.get(manager)
             originalExecutor = executorField.get(manager)
             originalTask = taskField.get(manager)
+            originalCallback = callbackField.get(manager)
             taskField.set(manager, null)
             // SDK turnOff normally queues a global clear. Execute it synchronously in this fake
             // so lifecycle assertions cannot race an unrelated executor thread.
@@ -136,6 +147,7 @@ class MatrixTrackTitleOutputTest {
             })
             val service = Proxy.newProxyInstance(IGlyphService::class.java.classLoader,
                 arrayOf(IGlyphService::class.java)) { _, method, arguments ->
+                sdkMethodOrder += method.name
                 when (method.name) {
                     "setAppMatrixColors" -> {
                         frameAttempts++
@@ -156,7 +168,16 @@ class MatrixTrackTitleOutputTest {
                         }
                         sdkCalls += "register:true"
                     }
-                    "closeAppMatrix" -> { sdkCalls += "closeAppMatrix"; closeCount++; visible = false }
+                    "closeAppMatrix" -> {
+                        closeAttempts++
+                        onClose?.invoke()
+                        if (closesToFail > 0) {
+                            closesToFail--
+                            sdkCalls += "close:false"
+                            throw IllegalStateException("fake SDK close failure")
+                        }
+                        sdkCalls += "closeAppMatrix"; closeCount++; visible = false
+                    }
                     "setMatrixColors" -> { sdkCalls += "turnOff"; blackoutCount++; visible = false }
                 }
                 when (method.returnType) {
@@ -166,6 +187,10 @@ class MatrixTrackTitleOutputTest {
                 }
             }
             field.set(manager, service)
+            shadowOf(context).setComponentNameAndServiceForBindService(
+                ComponentName("com.nothing", "GlyphService"), android.os.Binder().apply {
+                    attachInterface(service as android.os.IInterface, "com.nothing.thirdparty.IGlyphService")
+                })
             controller = GlyphMatrixController(context, {}, ownerHandler = Handler(Looper.getMainLooper()),
                 mediaPlaybackOnlyProvider = mediaPlaybackOnlyProvider,
                 matrixRecoveryDiagnosticsEnabled = diagnosticsEnabled)
@@ -189,6 +214,26 @@ class MatrixTrackTitleOutputTest {
         fun callback(name: String) = GlyphMatrixController::class.java.getDeclaredMethod(name)
             .apply { isAccessible = true }.invoke(controller)
 
+        fun initialConnection() {
+            // Legacy rendering tests start with a fabricated registered slot. Replace it with
+            // the first actual connection notification when testing initial registration.
+            setControllerField("sdkConnected", false)
+            callback("handleServiceConnected")
+        }
+
+        fun beginSdkBinding(): GlyphMatrixManager.Callback {
+            controller.unbind()
+            controller.bind()
+            actualBindingCreated = true
+            return callbackField.get(manager) as GlyphMatrixManager.Callback
+        }
+
+        fun notifyConnected(callback: GlyphMatrixManager.Callback) =
+            callback.onServiceConnected(ComponentName("com.nothing", "GlyphService"))
+
+        fun notifyDisconnected(callback: GlyphMatrixManager.Callback) =
+            callback.onServiceDisconnected(ComponentName("com.nothing", "GlyphService"))
+
         fun sessionOpen() = GlyphMatrixController::class.java.getDeclaredField("isSessionOpen")
             .apply { isAccessible = true }.getBoolean(controller)
 
@@ -201,7 +246,7 @@ class MatrixTrackTitleOutputTest {
             var registered = true // The fixture begins with an established session.
             sdkCalls.forEach { call ->
                 when (call) {
-                    "closeAppMatrix", "register:false" -> registered = false
+                    "closeAppMatrix", "close:false", "register:false" -> registered = false
                     "register:true" -> registered = true
                     else -> if (call.startsWith("frame:")) assertTrue("Frame after close without register: $sdkCalls", registered)
                 }
@@ -239,11 +284,15 @@ class MatrixTrackTitleOutputTest {
         }
 
         override fun close() {
+            closesToFail = 0
+            onClose = null
             controller.releaseSession()
+            if (actualBindingCreated) controller.unbind()
             MatrixRecoveryTestSettings.save(context, MatrixRecoveryTestMode.STANDARD)
             field.set(manager, original)
             executorField.set(manager, originalExecutor)
             taskField.set(manager, originalTask)
+            callbackField.set(manager, originalCallback)
             val monitor = GlyphMatrixController::class.java.getDeclaredField("nothingOsGlyphSettingsMonitor")
                 .apply { isAccessible = true }.get(controller) as NothingOsGlyphSettingsMonitor
             monitor.stop()
@@ -377,7 +426,7 @@ class MatrixTrackTitleOutputTest {
                 PlaybackFixture(output).use { playback ->
                     output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
                     playback.musicOnly = true
-                    output.callback("handleServiceConnected")
+                    output.initialConnection()
                     assertEquals(1, output.registrationTimes.size)
                     playback.tick(1000, 0.5f)
                     playback.tick(999, 0.5f)
@@ -402,7 +451,7 @@ class MatrixTrackTitleOutputTest {
             PlaybackFixture(output).use { playback ->
                 output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
                 output.setControllerField("normalMediaPlaybackOnly", true)
-                output.callback("handleServiceConnected")
+                output.initialConnection()
                 playback.tick(1000, 0.5f) // Call updateLevel directly, without the service gate.
                 assertTrue(output.sessionOpen())
                 assertTrue(output.sent.last().all { it == 0 })
@@ -421,7 +470,7 @@ class MatrixTrackTitleOutputTest {
                 PlaybackFixture(output).use { playback ->
                     playback.musicOnly = true
                     output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
-                    output.callback("handleServiceConnected")
+                    output.initialConnection()
                     playback.tick(1000, 0.5f)
                     playback.tick(1000, 0.5f)
                     repeat(5) {
@@ -448,7 +497,7 @@ class MatrixTrackTitleOutputTest {
             PlaybackFixture(output).use { playback ->
                 playback.musicOnly = true
                 output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
-                output.callback("handleServiceConnected")
+                output.initialConnection()
                 playback.tick(1000, 0.5f)
                 playback.state(PlaybackState.STATE_PAUSED)
                 playback.tick(100, 0.5f)
@@ -475,7 +524,7 @@ class MatrixTrackTitleOutputTest {
             PlaybackFixture(output).use { playback ->
                 playback.musicOnly = true
                 output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
-                output.callback("handleServiceConnected")
+                output.initialConnection()
                 playback.tick(1000, 0.5f)
                 val manager = shadowOf(output.context.getSystemService(MediaSessionManager::class.java))
                 manager.clearControllers()
@@ -503,7 +552,7 @@ class MatrixTrackTitleOutputTest {
                 PlaybackFixture(output).use { playback ->
                     output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
                     playback.musicOnly = true
-                    output.callback("handleServiceConnected")
+                    output.initialConnection()
                     playback.tick(1000, 0.5f)
                     assertTrue(output.sessionOpen())
                     when (end) {
@@ -524,6 +573,314 @@ class MatrixTrackTitleOutputTest {
                     assertEquals(frames, output.sent.size)
                 }
             }
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun failedCloseIsRetriedByExplicitReleaseWithoutSendingAnyMoreFrames() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            val old = output.pendingPlaybackCheck()
+            output.sdkCalls.clear()
+            output.closesToFail = 1
+            output.controller.releaseSession()
+            assertEquals(listOf("frame:0", "close:false"), output.sdkCalls)
+            assertFalse(output.sessionOpen())
+            val attempts = output.frameAttempts
+            old?.run()
+            output.send(IntArray(169) { 128 })
+            output.updateAfter(60_000, 0.8f)
+            assertEquals(attempts, output.frameAttempts)
+            output.controller.releaseSession()
+            assertEquals(listOf("frame:0", "close:false", "closeAppMatrix"), output.sdkCalls)
+            output.controller.releaseSession()
+            assertEquals(2, output.closeAttempts)
+            assertEquals(1, output.closeCount)
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun failedCloseIsRetriedByUnbindAndCannotLeakIntoANewBinding() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.notifyConnected(output.beginSdkBinding())
+            output.updateAfter(1000, 0.8f)
+            val attempts = output.closeAttempts
+            output.closesToFail = 1
+            output.sdkCalls.clear()
+            output.controller.releaseSession()
+            output.controller.unbind()
+            assertEquals(listOf("frame:0", "close:false", "closeAppMatrix"), output.sdkCalls)
+            assertEquals(attempts + 2, output.closeAttempts)
+            val next = output.beginSdkBinding()
+            output.notifyConnected(next)
+            output.updateAfter(1000, 0.8f)
+            assertEquals(attempts + 2, output.closeAttempts)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+            assertEquals(listOf("registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(3))
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun failedCloseIsInvalidatedByDisconnectAndDoesNotCloseTheReconnectedSession() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val callback = output.beginSdkBinding()
+            output.notifyConnected(callback)
+            output.closesToFail = 1
+            output.controller.releaseSession()
+            val attempts = output.closeAttempts
+            output.notifyDisconnected(callback)
+            output.controller.releaseSession()
+            assertEquals(attempts, output.closeAttempts)
+            output.notifyConnected(callback) // Still explicitly stopped; transport only.
+            assertEquals(1, output.registrationTimes.size)
+            output.controller.bind()
+            output.updateAfter(1000, 0.8f)
+            assertEquals(attempts, output.closeAttempts)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+            assertTrue(output.sent.last().any { it > 0 })
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun overlappingBlackAndCloseFailuresDoNotRecurseOrRunUnrequestedRetries() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            val frames = output.frameAttempts
+            output.framesToFail = 100
+            output.closesToFail = 100
+            output.sdkCalls.clear()
+            output.controller.releaseSession()
+            assertEquals(frames + 1, output.frameAttempts)
+            assertEquals(1, output.closeAttempts)
+            output.send(IntArray(169) { 128 })
+            output.idleWithoutFrames(600_000)
+            assertEquals(1, output.closeAttempts)
+            output.controller.unbind()
+            assertEquals(frames + 1, output.frameAttempts)
+            assertEquals(listOf("close:false", "close:false"), output.sdkCalls)
+            output.closesToFail = 0
+            output.framesToFail = 0
+            output.notifyConnected(output.beginSdkBinding())
+            output.updateAfter(1000, 0.8f)
+            assertEquals(2, output.closeAttempts) // Old failure cannot close the new slot.
+            assertEquals(1, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun registrationWaitsForAnUnconfirmedCloseUsingTheExistingBackoff() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            output.closesToFail = 2
+            output.controller.releaseSession()
+            val frames = output.frameAttempts
+            output.controller.bind() // Reuse the same SDK connection.
+            output.updateAfter(1, 0.8f)
+            assertEquals(2, output.closeAttempts)
+            assertTrue(output.registrationTimes.isEmpty())
+            assertEquals(frames, output.frameAttempts)
+            output.updateAfter(499, 0.8f)
+            assertEquals(2, output.closeAttempts)
+            output.updateAfter(1, 0.8f)
+            assertEquals(3, output.closeAttempts)
+            assertEquals(1, output.registrationTimes.size)
+            assertEquals(listOf("closeAppMatrix", "registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(4))
+            assertTrue(output.sessionOpen())
+            assertEquals(0, output.blackoutCount)
+            output.assertFrameRegistrationOrder()
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun failedSilenceCloseSurvivesDuplicateConnectedAndFinishesBeforeRegister() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val callback = output.beginSdkBinding()
+            output.notifyConnected(callback)
+            output.updateAfter(1000, 0.8f)
+            output.closesToFail = 1
+            output.updateAfter(1, 0f)
+            output.updateAfter(MatrixAudioSilencePolicy.RELEASE_MS, 0f)
+            assertFalse(output.sessionOpen())
+            val attempts = output.closeAttempts
+            output.notifyConnected(callback)
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(1, 0.8f)
+            assertEquals(attempts + 1, output.closeAttempts)
+            assertEquals(2, output.registrationTimes.size)
+            assertEquals(listOf("closeAppMatrix", "registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(4))
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun unconfirmedCloseRecoveryRemainsBoundedButExplicitReleaseCanStillRetry() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            output.updateAfter(1000, 0.8f)
+            output.closesToFail = 100
+            output.controller.releaseSession()
+            output.controller.bind()
+            output.updateAfter(1, 0.8f)
+            repeat(4) { output.updateAfter(500L shl it, 0.8f) }
+            assertEquals(6, output.closeAttempts) // One explicit + five bounded recovery attempts.
+            repeat(100) { output.updateAfter(1000, 0.8f) }
+            assertEquals(6, output.closeAttempts)
+            assertTrue(output.registrationTimes.isEmpty())
+            assertFalse(output.sessionOpen())
+            output.closesToFail = 0
+            output.controller.releaseSession()
+            assertEquals(7, output.closeAttempts)
+            assertEquals(1, output.closeCount)
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun bindingCallbacksRegisterOnceAndReconnectWithinTheSameBinding() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val callback = output.beginSdkBinding()
+            output.sdkMethodOrder.clear()
+            output.notifyConnected(callback)
+            output.updateAfter(1000, 0.8f)
+            assertEquals(listOf("registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"), output.sdkMethodOrder)
+            val old = output.pendingPlaybackCheck()
+            repeat(3) { output.notifyConnected(callback) }
+            assertEquals(1, output.registrationTimes.size)
+            assertSame(old, output.pendingPlaybackCheck())
+            output.notifyDisconnected(callback)
+            assertFalse(output.sessionOpen())
+            output.notifyConnected(callback)
+            output.updateAfter(1000, 0.8f)
+            assertEquals(2, output.registrationTimes.size)
+            assertEquals(listOf("registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(3))
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun oldBindingCallbacksAreIgnoredAfterTheNewBindingHasConnected() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val old = output.beginSdkBinding()
+            output.notifyConnected(old)
+            val next = output.beginSdkBinding()
+            assertNotSame(old, next)
+            output.notifyConnected(next)
+            val calls = output.sdkCalls.toList()
+            val worker = Thread {
+                output.notifyConnected(old)
+                output.notifyDisconnected(old)
+            }
+            worker.start(); worker.join(1000)
+            assertFalse(worker.isAlive)
+            output.idleWithoutFrames(0)
+            assertEquals(calls, output.sdkCalls)
+            assertTrue(output.sessionOpen())
+            output.updateAfter(1000, 0.8f)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.sent.last().any { it > 0 })
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun queuedSdkCallbacksKeepTheirOldGenerationAcrossUnbindAndRebind() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            val old = output.beginSdkBinding()
+            output.notifyConnected(old)
+            val worker = Thread {
+                output.notifyConnected(old)
+                output.notifyDisconnected(old)
+            }
+            worker.start(); worker.join(1000) // Notifications are queued on the paused owner looper.
+            assertFalse(worker.isAlive)
+            val next = output.beginSdkBinding()
+            output.notifyConnected(next)
+            val calls = output.sdkCalls.toList()
+            output.idleWithoutFrames(0)
+            assertEquals(calls, output.sdkCalls)
+            assertEquals(2, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun callbacksDuringOrAfterUnbindCannotReopenTheSession() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            val old = output.beginSdkBinding()
+            output.notifyConnected(old)
+            output.onClose = {
+                output.notifyConnected(old)
+                output.notifyDisconnected(old)
+            }
+            output.controller.unbind()
+            output.onClose = null
+            val calls = output.sdkCalls.toList()
+            output.notifyConnected(old)
+            output.notifyDisconnected(old)
+            output.idleWithoutFrames(1000)
+            assertEquals(calls, output.sdkCalls)
+            assertFalse(output.sessionOpen())
+            val next = output.beginSdkBinding()
+            output.notifyConnected(next)
+            assertTrue(output.sessionOpen())
+            assertEquals(2, output.registrationTimes.size)
+            assertEquals(0, output.blackoutCount)
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun duplicateConnectedNotificationsDoNotBypassRegistrationBackoff() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val callback = output.beginSdkBinding()
+            output.registrationsToFail = 1
+            output.notifyConnected(callback)
+            repeat(5) { output.notifyConnected(callback) }
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(499, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            output.updateAfter(1, 0.8f)
+            assertEquals(2, output.registrationTimes.size)
+            assertEquals(listOf("registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(3))
+        }
+    }
+
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun connectionArrivingWhileStoppedCanBeReusedOnlyAfterManualRestart() {
+        OutputFixture(GlyphDeviceProfile.PHONE4A_PRO_MATRIX, diagnosticsEnabled = false).use { output ->
+            output.controller.setGlyphMode(GlyphPatternRegistry.P3_MATRIX_BAR)
+            val callback = output.beginSdkBinding()
+            output.controller.releaseSession()
+            output.notifyConnected(callback)
+            output.updateAfter(1000, 0.8f)
+            assertTrue(output.registrationTimes.isEmpty())
+            output.controller.bind()
+            output.updateAfter(1000, 0.8f)
+            assertEquals(1, output.registrationTimes.size)
+            assertTrue(output.sessionOpen())
+            assertEquals(listOf("registerMatrixSDK", "setGlyphMatrixTimeout", "setAppMatrixColors"),
+                output.sdkMethodOrder.takeLast(3))
+            assertEquals(0, output.blackoutCount)
         }
     }
 
@@ -1768,8 +2125,7 @@ class MatrixTrackTitleOutputTest {
     @Test fun failedInitialRegistrationIsRetriedFromActiveAudioOnly() {
         OutputFixture(GlyphDeviceProfile.PHONE3_MATRIX).use { output ->
             output.registrationsToFail = 1
-            GlyphMatrixController::class.java.getDeclaredMethod("handleServiceConnected")
-                .apply { isAccessible = true }.invoke(output.controller)
+            output.initialConnection()
             assertEquals(1, output.registrationTimes.size)
             output.updateAfter(2000, 0f)
             assertEquals(1, output.registrationTimes.size)
@@ -1933,6 +2289,7 @@ class MatrixTrackTitleOutputTest {
                 var previousBitmap: android.graphics.Bitmap? = null
                 for ((index, emulate) in listOf(false, true, false).withIndex()) {
                     output.setControllerField("initialPhone4aProEmulationEnabled", emulate)
+                    output.callback("handleServiceDisconnected")
                     reconnect.invoke(output.controller)
                     previousBitmap?.let { assertTrue(it.isRecycled) }
                     playback.tick(1000) // Reconnect seeds the current track without replaying it.

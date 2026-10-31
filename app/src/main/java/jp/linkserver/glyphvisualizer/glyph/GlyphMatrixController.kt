@@ -94,6 +94,10 @@ class GlyphMatrixController(
     private var isSessionOpen = false
     private var bindRequested = false
     private var sdkConnected = false
+    private var sdkBindingGeneration = 0L
+    private var sdkConnectionGeneration = 0L
+    // Rendering is disabled after any release attempt, even if the SDK close is unconfirmed.
+    private var pendingCloseConnection: Long? = null
     private var sessionStopped = false
     private val sessionRecovery = MatrixSessionRecovery()
     private var lastSdkFrameAtMs = 0L
@@ -232,14 +236,24 @@ class GlyphMatrixController(
     private var lastOpenReelMotionFrame: OpenReelMotionFrame? = null
     private var pulseGridSeed = 0
     private val renderEngine = MatrixRenderEngine()
-    private val callback = object : GlyphMatrixManager.Callback {
+    private fun callbackForBinding(generation: Long) = object : GlyphMatrixManager.Callback {
         override fun onServiceConnected(componentName: ComponentName) {
-            runOnOwnerThread { handleServiceConnected() }
+            runOnOwnerThread {
+                if (isCurrentSdkBinding(generation)) handleServiceConnected()
+            }
         }
 
         override fun onServiceDisconnected(componentName: ComponentName) {
-            runOnOwnerThread { handleServiceDisconnected() }
+            runOnOwnerThread {
+                if (isCurrentSdkBinding(generation)) handleServiceDisconnected()
+            }
         }
+    }
+
+    private fun isCurrentSdkBinding(generation: Long): Boolean {
+        if (generation == sdkBindingGeneration && isBound) return true
+        AppLogger.i(TAG, "Ignoring stale SDK callback: binding=$generation current=$sdkBindingGeneration bound=$isBound")
+        return false
     }
 
     init {
@@ -273,14 +287,21 @@ class GlyphMatrixController(
     }
 
     private fun handleServiceConnected() {
+        if (!isBound || !bindRequested || !glyphOutputAllowed) return
+        if (sdkConnected) {
+            AppLogger.i(TAG, "Ignoring duplicate SDK connected: binding=$sdkBindingGeneration open=$isSessionOpen")
+            return
+        }
         cancelNormalPlaybackCheck()
         recoveryTestSessionHeld = false
         AppLogger.i(TAG, "SDK connected: bound=$isBound requested=$bindRequested stopped=$sessionStopped allowed=$glyphOutputAllowed")
         sdkConnected = true
+        sdkConnectionGeneration++
+        pendingCloseConnection = null // A new transport must never inherit a previous close.
         logRecoveryTest("sdk-connected")
         resetTrackTitle()
         trackTitleRenderer = null // Select again after the actual device/profile is known.
-        if (!isBound || !bindRequested || !glyphOutputAllowed || sessionStopped) return
+        if (sessionStopped) return
         isSessionOpen = false
         sessionRecovery.cancel()
         invalidateLastSentFrame()
@@ -349,6 +370,8 @@ class GlyphMatrixController(
         recoveryTestSessionHeld = false
         AppLogger.w(TAG, "SDK disconnected: open=$isSessionOpen silenceReleased=$matrixReleasedForSilence failures=$failureCount")
         sdkConnected = false
+        sdkConnectionGeneration++
+        pendingCloseConnection = null
         resetTrackTitle()
         invalidateLastSentFrame()
         isSessionOpen = false
@@ -387,8 +410,18 @@ class GlyphMatrixController(
     private fun bindSdk() {
         if (isBound) return
         AppLogger.i(TAG, "SDK binding requested")
+        val generation = ++sdkBindingGeneration
+        pendingCloseConnection = null
+        sdkConnected = false
         isBound = true
-        glyphMatrixManager.init(callback)
+        try {
+            glyphMatrixManager.init(callbackForBinding(generation))
+        } catch (error: Throwable) {
+            sdkBindingGeneration++
+            isBound = false
+            sdkConnected = false
+            throw error
+        }
         logRecoveryTest("init-returned", "init", "connection is asynchronous; LED=unverified")
         onStatusChanged(context.getString(R.string.status_glyph_matrix_connecting))
     }
@@ -406,19 +439,28 @@ class GlyphMatrixController(
 
     private fun unbindSdk() {
         cancelNormalPlaybackCheck()
-        if (!isBound && !isSessionOpen) return
+        if (!isBound && !isSessionOpen && pendingCloseConnection == null) return
+        // Invalidate notifications before close/unInit; the SDK may notify inline or enqueue
+        // owner work while teardown is in progress. Keep the transport usable for one close.
+        sdkBindingGeneration++
         // OS disable is temporary while bindRequested remains true. Preserve explicit-stop intent
         // so enabling Glyph again can reconnect, without undoing a user's stopped capture.
         if (!bindRequested) sessionStopped = true
         sessionRecovery.cancel()
         closeMatrixSession(if (bindRequested) "OS Glyph disabled" else "unbind")
-        if (isBound) {
-            AppLogger.i(TAG, "SDK unbinding")
-            glyphMatrixManager.unInit()
-            logRecoveryTest("uninit-returned", "unInit", "LED=unverified")
+        try {
+            if (isBound) {
+                isBound = false
+                AppLogger.i(TAG, "SDK unbinding")
+                glyphMatrixManager.unInit()
+                logRecoveryTest("uninit-returned", "unInit", "LED=unverified")
+            }
+        } finally {
             isBound = false
             sdkConnected = false
             isSessionOpen = false
+            sdkConnectionGeneration++
+            pendingCloseConnection = null
         }
     }
 
@@ -2200,6 +2242,9 @@ class GlyphMatrixController(
     private fun tryRegisterMatrixSession(nowMs: Long, reason: String): Boolean {
         if (!bindRequested || !isBound || !sdkConnected || !glyphOutputAllowed || sessionStopped) return false
         if (!sessionRecovery.takeAttempt(nowMs)) return false
+        // A failed close on this transport must finish before registering another session.
+        // These attempts share the existing bounded registration backoff, never per-frame retry.
+        if (pendingCloseConnection == sdkConnectionGeneration && !tryCloseMatrixSession("before register: $reason")) return false
         AppLogger.i(TAG, "Matrix register: reason=$reason attempt=${sessionRecovery.attempts}/${MatrixSessionRecovery.MAX_ATTEMPTS}")
         val registered = try {
             glyphMatrixManager.register(currentDeviceCode())
@@ -2313,21 +2358,35 @@ class GlyphMatrixController(
     private fun closeMatrixSession(reason: String) {
         cancelNormalPlaybackCheck()
         AppLogger.i(TAG, "Matrix session release: reason=$reason open=$isSessionOpen failures=$failureCount")
-        val withoutTurnOff = avoidsSdkTurnOff()
         turnOffStandard() // 4a Pro B/D use a best-effort black frame even during explicit stop.
-        try {
-            if (!withoutTurnOff || (sdkConnected && isSessionOpen)) {
-                glyphMatrixManager.closeAppMatrix()
-                logRecoveryTest("full-release-returned", "closeAppMatrix", "reason=$reason LED=unverified")
-            }
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "closeAppMatrix during session release failed", error)
-        }
+        tryCloseMatrixSession(reason, allowUnregisteredClose = !avoidsSdkTurnOff())
         isSessionOpen = false
         recoveryTestSessionHeld = false
         matrixTurnedOffForSilence = false
         matrixReleasedForSilence = false
-        logRecoveryTest("full-session-closed", detail = "reason=$reason LED=unverified")
+        logRecoveryTest("full-session-ended", detail = "reason=$reason closePending=${pendingCloseConnection != null} LED=unverified")
+    }
+
+    /** One synchronous attempt, with no frame failure handler or automatic retry loop. */
+    private fun tryCloseMatrixSession(reason: String, allowUnregisteredClose: Boolean = false): Boolean {
+        if (!sdkConnected) {
+            AppLogger.i(TAG, "Matrix close skipped: disconnected reason=$reason")
+            return false
+        }
+        if (pendingCloseConnection != null && pendingCloseConnection != sdkConnectionGeneration) {
+            pendingCloseConnection = null
+        }
+        if (!isSessionOpen && pendingCloseConnection == null && !allowUnregisteredClose) return true
+        pendingCloseConnection = sdkConnectionGeneration
+        return try {
+            glyphMatrixManager.closeAppMatrix()
+            pendingCloseConnection = null
+            AppLogger.i(TAG, "Matrix close call returned: connection=$sdkConnectionGeneration reason=$reason LED=unverified")
+            true
+        } catch (error: Throwable) {
+            AppLogger.w(TAG, "Matrix close failed; pending on connection=$sdkConnectionGeneration reason=$reason", error)
+            false
+        }
     }
 
     override fun suspendSession() {
@@ -2396,13 +2455,7 @@ class GlyphMatrixController(
                 logRecoveryTest("silence-turn-off-failed", "turnOff", error.javaClass.simpleName)
             }
         }
-        try {
-            glyphMatrixManager.closeAppMatrix()
-            logRecoveryTest("silence-close-returned", "closeAppMatrix", "LED=unverified")
-        } catch (error: Throwable) {
-            AppLogger.w(TAG, "closeAppMatrix during silence release failed", error)
-            logRecoveryTest("silence-close-failed", "closeAppMatrix", error.javaClass.simpleName)
-        }
+        tryCloseMatrixSession("silence/playback policy")
         if (testMode == MatrixRecoveryTestMode.CLOSE_ONLY) mirrorOffMatrixPreviewFrame()
         matrixTurnedOffForSilence = true
         matrixReleasedForSilence = true
