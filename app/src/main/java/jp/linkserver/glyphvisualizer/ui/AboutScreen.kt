@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.goldy.*
-import jp.linkserver.goldy.compose.UpdateNotificationIcon
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
 import jp.linkserver.pyrite.about.AboutOverviewMosaic as PyriteAboutOverviewMosaic
 import jp.linkserver.pyrite.about.AboutInfo
@@ -63,7 +62,7 @@ fun AboutScreen(
     updateState: GoldyState = GoldyState(),
     onCheckForUpdates: suspend () -> CheckOutcome = { CheckOutcome.Disabled },
     onOpenUpdateCenter: () -> Unit = {},
-    onOpenUpdatePrompt: () -> Unit = {}
+    hasSavedUpdate: Boolean = false
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -143,16 +142,14 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AboutSectionTitle(stringResource(R.string.about_updates_title))
-                UpdateNotificationIcon(updateState,{onOpenUpdatePrompt()},strings=goldyNotificationStrings())
                 AboutUpdateCard(
                     description = stringResource(R.string.about_updates_body),
                     status = updateStatus ?: stringResource(R.string.about_update_not_checked),
-                    actionLabel = stringResource(if(updateState.availableUpdate!=null) R.string.goldy_update_view else R.string.about_update_check_button),
-                    onCheck = { updateState.availableUpdate?.let(onUpdateAvailable) ?: startUpdateCheck() },
-                    checking = checkingUpdates, hasResult = updateStatus != null
+                    actionLabel = stringResource(if(updateState.availableUpdate!=null || hasSavedUpdate) R.string.goldy_update_view else R.string.about_update_check_button),
+                    onCheck = { if (hasSavedUpdate) onOpenUpdateCenter() else updateState.availableUpdate?.let(onUpdateAvailable) ?: startUpdateCheck() },
+                    checking = checkingUpdates && updateState.availableUpdate == null && !hasSavedUpdate,
+                    hasResult = updateStatus != null || updateState.availableUpdate != null || hasSavedUpdate
                 )
-                if(updateState.availableUpdate!=null) TextButton(onClick={startUpdateCheck()},enabled=!checkingUpdates) { Text(stringResource(R.string.about_update_check_button)) }
-                TextButton(onClick=onOpenUpdateCenter) { Text(stringResource(R.string.goldy_transfer_open)) }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

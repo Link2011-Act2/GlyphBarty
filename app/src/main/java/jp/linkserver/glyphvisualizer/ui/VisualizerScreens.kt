@@ -532,7 +532,8 @@ internal fun MainScreenContent(
     onBackToExperimental: (() -> Unit)? = null,
     experimentalDetailsAsHome: Boolean = false,
     initialExperimentalDetailsTab: ExperimentalDetailsTab,
-    onExperimentalDetailsTabChanged: (ExperimentalDetailsTab) -> Unit
+    onExperimentalDetailsTabChanged: (ExperimentalDetailsTab) -> Unit,
+    updateNotification: @Composable () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val experimentalDetailsStyle = experimentalDetailsAsHome || onBackToExperimental != null
@@ -613,6 +614,7 @@ internal fun MainScreenContent(
             onStopClick = onStopClick,
             onOpenMenu = onOpenMenu,
             onOpenSettings = onOpenSettings,
+            updateNotification = updateNotification,
             onOpenLatency = onOpenLatency ?: {},
             onBack = onBackToExperimental ?: {}
         )
@@ -684,6 +686,7 @@ internal fun MainScreenContent(
                     )
                 },
                 actions = {
+                    updateNotification()
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             Icons.Default.Settings,

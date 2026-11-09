@@ -205,6 +205,7 @@ internal fun GlyphVisualizerApp(
         mutableStateOf(if (initialSetupPending) Screen.WELCOME else Screen.MAIN)
     }
     var settingsReturnScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
+    var updateReturnScreen by rememberSaveable { mutableStateOf(Screen.MAIN) }
     var selectedDetailsTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
@@ -216,13 +217,28 @@ internal fun GlyphVisualizerApp(
     }
     val previewState=remember { kotlinx.coroutines.flow.MutableStateFlow(GoldyState()) }
     val updateState by (updates?.state ?: previewState).collectAsState()
+    val transferState by remember(context, inspecting) {
+        if (inspecting) kotlinx.coroutines.flow.MutableStateFlow(jp.linkserver.glyphvisualizer.update.UpdateDownloadState(restoring=false))
+        else jp.linkserver.glyphvisualizer.update.UpdateTransferRuntime.get(context).state
+    }.collectAsState()
     val updateScope=rememberCoroutineScope()
     var showUpdatePrompt by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(openTransferRequest) { if(openTransferRequest>0) screen=Screen.UPDATE }
+    fun openUpdateFrom(origin: Screen) {
+        if (origin != Screen.UPDATE) updateReturnScreen = origin
+        showUpdatePrompt = false
+        screen = Screen.UPDATE
+    }
+    fun openUpdatePromptFrom(origin: Screen) {
+        updateReturnScreen = origin
+        showUpdatePrompt = true
+    }
+    LaunchedEffect(openTransferRequest) {
+        if(openTransferRequest>0) openUpdateFrom(if(screen==Screen.WELCOME) Screen.MAIN else screen)
+    }
         BackHandler(enabled = drawerOpen || (screen != Screen.MAIN && screen != Screen.WELCOME)) {
         when {
             drawerOpen -> drawerOpen = false
-            screen == Screen.UPDATE -> screen = Screen.ABOUT
+            screen == Screen.UPDATE -> screen = updateReturnScreen
             screen == Screen.OSS -> screen = Screen.ABOUT
             screen == Screen.ABOUT -> screen = Screen.SETTINGS
             screen == Screen.GLYPH_INSPECTOR -> screen = Screen.EXPERIMENTAL
@@ -353,6 +369,10 @@ internal fun GlyphVisualizerApp(
                             onOpenSettings = {
                                 settingsReturnScreen = targetScreen
                                 screen = Screen.SETTINGS
+                            },
+                            updateNotification = {
+                                jp.linkserver.glyphvisualizer.ui.GlyphUpdateNotificationIcon(
+                                    updateState, nothingStyleEnabled, { openUpdatePromptFrom(targetScreen) })
                             }
                         )
                     } else {
@@ -474,7 +494,11 @@ internal fun GlyphVisualizerApp(
                             experimentalMainUiEnabled &&
                             detailedHomeEnabled,
                         initialExperimentalDetailsTab = selectedDetailsTab,
-                        onExperimentalDetailsTabChanged = { selectedDetailsTab = it }
+                        onExperimentalDetailsTabChanged = { selectedDetailsTab = it },
+                        updateNotification = {
+                            jp.linkserver.glyphvisualizer.ui.GlyphUpdateNotificationIcon(
+                                updateState, nothingStyleEnabled, { openUpdatePromptFrom(targetScreen) })
+                        }
                     )
                     }
                     Screen.LATENCY -> LatencyScreenContent(
@@ -593,10 +617,11 @@ internal fun GlyphVisualizerApp(
                     )
                     Screen.ABOUT -> AboutScreen(
                         onBack={screen=Screen.SETTINGS},onOssLicenses={screen=Screen.OSS},
-                        onUpdateAvailable={screen=Screen.UPDATE},nothingStyleEnabled=nothingStyleEnabled,
+                        onUpdateAvailable={openUpdateFrom(Screen.ABOUT)},nothingStyleEnabled=nothingStyleEnabled,
                         updateState=updateState,onCheckForUpdates={updates?.check(force=true) ?: CheckOutcome.Disabled},
-                        onOpenUpdateCenter={screen=Screen.UPDATE},onOpenUpdatePrompt={showUpdatePrompt=true})
-                    Screen.UPDATE -> UpdateOverviewScreen(updateInfo=updateState.availableUpdate,onBack={screen=Screen.ABOUT})
+                        onOpenUpdateCenter={openUpdateFrom(Screen.ABOUT)},
+                        hasSavedUpdate=transferState.hasTransfer || transferState.restoring)
+                    Screen.UPDATE -> UpdateOverviewScreen(updateInfo=updateState.availableUpdate,onBack={screen=updateReturnScreen})
                     Screen.OSS -> OssLicensesScreen(
                         nothingStyleEnabled = nothingStyleEnabled,
                         onBack = { screen = Screen.ABOUT }
@@ -621,12 +646,12 @@ internal fun GlyphVisualizerApp(
 
             jp.linkserver.goldy.compose.UpdateNotificationBanner(
                 updateState.copy(showBanner=updateState.showBanner && screen!=Screen.UPDATE && screen!=Screen.WELCOME && !showUpdatePrompt),
-                {updates?.hideBanner();showUpdatePrompt=true},{updates?.hideBanner()},
+                {updates?.hideBanner();openUpdatePromptFrom(screen)},{updates?.hideBanner()},
                 modifier=Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal=20.dp).padding(top=72.dp),
                 strings=goldyNotificationStrings())
             if(showUpdatePrompt) jp.linkserver.goldy.compose.UpdateCheckDialog(updateState,
                 {updateScope.launch { updates?.check(force=true) }},
-                {showUpdatePrompt=false;screen=Screen.UPDATE},
+                {openUpdateFrom(updateReturnScreen)},
                 {tag -> updates?.ignoreVersion(tag);showUpdatePrompt=false},
                 {showUpdatePrompt=false},strings=goldyNotificationStrings())
         }

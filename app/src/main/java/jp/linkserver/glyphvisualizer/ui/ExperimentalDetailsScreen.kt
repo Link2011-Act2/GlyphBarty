@@ -190,7 +190,8 @@ internal fun ExperimentalDetailsScreenContent(
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLatency: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    updateNotification: @Composable () -> Unit = {}
 ) {
     val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -385,6 +386,7 @@ internal fun ExperimentalDetailsScreenContent(
                     )
                 },
                 actions = {
+                    updateNotification()
                     IconButton(onClick = onOpenSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,

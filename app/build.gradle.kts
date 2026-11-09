@@ -85,7 +85,7 @@ android {
 }
 
 dependencies {
-    implementation("com.github.Link2011-Act2.Goldy:elief:809dda97ab45cd28812f150697cba126c6d4d406")
+    implementation("com.github.Link2011-Act2.Goldy:elief:811908945c0763066e04b54ee1424a208ceb87a5")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("com.github.Link2011-Act2:Pyrite:508b1cf5131679fee7581acbc7ea55a365b6ff2c")

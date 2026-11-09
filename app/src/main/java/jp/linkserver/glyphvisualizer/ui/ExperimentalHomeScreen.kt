@@ -115,7 +115,8 @@ internal fun ExperimentalMainScreenContent(
     onEnablePhone1GlyphDebugClick: () -> Unit,
     onOpenDetails: () -> Unit,
     onOpenMenu: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    updateNotification: @Composable () -> Unit = {}
 ) {
     val displayFont = if (nothingStyleEnabled) NTypeFontFamily else FontFamily.SansSerif
     val deviceName = remember(heroTitle) {
@@ -345,15 +346,15 @@ internal fun ExperimentalMainScreenContent(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .padding(horizontal = 18.dp)
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = onOpenMenu,
-                    modifier = Modifier.align(Alignment.CenterStart)
+                    onClick = onOpenMenu
                 ) {
                     Icon(
                         imageVector = Icons.Default.Menu,
@@ -364,21 +365,26 @@ internal fun ExperimentalMainScreenContent(
                 }
                 Text(
                     text = stringResource(R.string.app_name),
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     color = contentColor,
                     fontFamily = displayFont,
                     fontSize = 25.sp
                 )
-                IconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.material3.LocalContentColor provides contentColor
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = stringResource(R.string.cd_settings),
-                        tint = contentColor,
-                        modifier = Modifier.size(27.dp)
-                    )
+                    updateNotification()
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.cd_settings),
+                            tint = contentColor,
+                            modifier = Modifier.size(27.dp)
+                        )
+                    }
                 }
             }
 
