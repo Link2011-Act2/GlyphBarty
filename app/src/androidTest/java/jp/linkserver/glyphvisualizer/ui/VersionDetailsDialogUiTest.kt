@@ -1,5 +1,7 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import jp.linkserver.glyphvisualizer.TrickuildMetadata
+
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.view.ContextThemeWrapper
@@ -52,13 +54,14 @@ class VersionDetailsDialogUiTest {
         return compose.activity.createConfigurationContext(config).getString(id)
     }
 
-    private fun personalityText(language: String) = "#${BuildConfig.PERSONALITY_NUMBER} · " +
-        localizedText(language, VersionPersonality.fromNumber(BuildConfig.PERSONALITY_NUMBER).nameResource)
+    private fun personalityText(language: String) = "#${TrickuildMetadata.PERSONALITY_NUMBER} · " +
+        localizedText(language, VersionPersonality.fromNumber(TrickuildMetadata.PERSONALITY_NUMBER).nameResource)
 
     @Composable private fun Localized(language: String, content: @Composable () -> Unit) {
         val context = LocalContext.current
-        val config = remember(context, language) {
-            Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag(language)) }
+        val parentConfiguration = LocalConfiguration.current
+        val config = remember(parentConfiguration, language) {
+            Configuration(parentConfiguration).apply { setLocale(Locale.forLanguageTag(language)) }
         }
         val localized = remember(context, config) { context.createConfigurationContext(config) }
         CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config,
@@ -76,11 +79,11 @@ class VersionDetailsDialogUiTest {
         }
         compose.onNodeWithTag("version_details_version").assertTextEquals(BuildConfig.VERSION_NAME)
         compose.onNodeWithTag("version_details_code").assertTextEquals(BuildConfig.VERSION_CODE.toString())
-        compose.onNodeWithTag("version_details_build").performScrollTo().assertTextEquals(BuildConfig.BUILD_NUMBER)
-        compose.onNodeWithTag("version_details_codename").performScrollTo().assertTextEquals(BuildConfig.CODE_NAME)
+        compose.onNodeWithTag("version_details_build").performScrollTo().assertTextEquals(TrickuildMetadata.BUILD_NUMBER)
+        compose.onNodeWithTag("version_details_codename").performScrollTo().assertTextEquals(TrickuildMetadata.CODE_NAME)
         compose.onNodeWithTag("version_details_roll").assertDoesNotExist()
         compose.onNodeWithTag("version_details_personality").performScrollTo().assertTextEquals(personalityText(language))
-        compose.onNodeWithTag("version_details_seed").performScrollTo().assertTextContains(BuildConfig.PERSONALITY_SEED, substring = true)
+        compose.onNodeWithTag("version_details_seed").performScrollTo().assertTextContains(TrickuildMetadata.PERSONALITY_SEED, substring = true)
         assertVisualHierarchy()
         compose.onNodeWithTag("version_details_version").performScrollTo()
         saveScreenshot("${if (nothing) "nothing" else "material"}-${if (dark) "dark" else "light"}-$language")
@@ -94,7 +97,7 @@ class VersionDetailsDialogUiTest {
     @Test fun smallNothingDarkJapanese() = verifySmallDialog(true, true, "ja")
 
     private fun verifySmallDialog(nothing: Boolean, dark: Boolean, language: String) {
-        val longBuild = "${BuildConfig.CODE_NAME}-d2.2.0-" + "0123456789abcdef".repeat(12)
+        val longBuild = "${TrickuildMetadata.CODE_NAME}-d2.2.0-" + "0123456789abcdef".repeat(12)
         compose.setContent {
             val parentComposition = rememberCompositionContext()
             // Dialog derives its separate window from LocalView, not LocalContext.
@@ -122,7 +125,7 @@ class VersionDetailsDialogUiTest {
         saveScreenshot("$prefix-top")
         assertFullWrappedText("version_details_version", BuildConfig.VERSION_NAME)
         assertFullWrappedText("version_details_build", longBuild)
-        compose.onNodeWithTag("version_details_codename").performScrollTo().assertTextEquals(BuildConfig.CODE_NAME)
+        compose.onNodeWithTag("version_details_codename").performScrollTo().assertTextEquals(TrickuildMetadata.CODE_NAME)
         compose.onNodeWithTag("version_details_personality").performScrollTo().assertTextEquals(personalityText(language))
         assertVisualHierarchy()
         compose.onNodeWithTag("version_details_seed").performScrollTo().assertIsDisplayed()

@@ -1,5 +1,7 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import jp.linkserver.glyphvisualizer.TrickuildMetadata
+
 import android.content.res.Configuration
 import jp.linkserver.glyphvisualizer.BuildConfig
 import java.security.MessageDigest
@@ -32,11 +34,11 @@ class VersionPersonalityTest {
         val core = BuildConfig.VERSION_NAME.substringBefore('-').substringBefore('+').split('.')
         val seed = "GlyphBarty:${core[0]}.${core[1]}"
         val unsignedByte = MessageDigest.getInstance("SHA-256").digest(seed.toByteArray(Charsets.UTF_8))[0].toInt() and 0xff
-        assertEquals(seed, BuildConfig.PERSONALITY_SEED)
-        assertEquals((unsignedByte % 5) + 1, BuildConfig.PERSONALITY_NUMBER)
-        if (seed == "GlyphBarty:2.2") assertEquals(VersionPersonality.VIVACIOUS, VersionPersonality.fromNumber(BuildConfig.PERSONALITY_NUMBER))
-        assertTrue(BuildConfig.CODE_NAME.isNotBlank())
-        assertTrue(BuildConfig.BUILD_NUMBER.startsWith("${BuildConfig.CODE_NAME}-"))
+        assertEquals(seed, TrickuildMetadata.PERSONALITY_SEED)
+        assertEquals((unsignedByte % 5) + 1, TrickuildMetadata.PERSONALITY_NUMBER)
+        if (seed == "GlyphBarty:2.2") assertEquals(VersionPersonality.VIVACIOUS, VersionPersonality.fromNumber(TrickuildMetadata.PERSONALITY_NUMBER))
+        assertTrue(TrickuildMetadata.CODE_NAME.isNotBlank())
+        assertTrue(TrickuildMetadata.BUILD_NUMBER.startsWith("${TrickuildMetadata.CODE_NAME}-"))
     }
 
     @Test fun invalidPersonalityNumbersDoNotSilentlySelectAnotherName() {

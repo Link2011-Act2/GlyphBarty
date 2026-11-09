@@ -1,5 +1,7 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import jp.linkserver.glyphvisualizer.TrickuildMetadata
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -36,12 +38,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import jp.linkserver.glyphvisualizer.AppLogger
-import jp.linkserver.glyphvisualizer.BuildConfig
 import jp.linkserver.glyphvisualizer.R
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
+import jp.linkserver.goldy.*
+import jp.linkserver.goldy.compose.UpdateNotificationIcon
 import jp.linkserver.glyphvisualizer.update.detectReleaseChannel
-import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.pyrite.about.AboutOverviewMosaic as PyriteAboutOverviewMosaic
 import jp.linkserver.pyrite.about.AboutInfo
 import jp.linkserver.pyrite.about.AboutDetail
@@ -58,8 +58,12 @@ import kotlinx.coroutines.withContext
 fun AboutScreen(
     onBack: () -> Unit,
     onOssLicenses: () -> Unit = {},
-    onUpdateAvailable: (AppUpdateInfo) -> Unit = {},
-    nothingStyleEnabled: Boolean = false
+    onUpdateAvailable: (UpdateCandidate) -> Unit = {},
+    nothingStyleEnabled: Boolean = false,
+    updateState: GoldyState = GoldyState(),
+    onCheckForUpdates: suspend () -> CheckOutcome = { CheckOutcome.Disabled },
+    onOpenUpdateCenter: () -> Unit = {},
+    onOpenUpdatePrompt: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -98,34 +102,19 @@ fun AboutScreen(
     var showClearLogConfirmation by remember { mutableStateOf(false) }
     val repositoryUrl = stringResource(R.string.about_support_site_url)
 
-    fun startUpdateCheck(manual: Boolean) {
-        if (checkingUpdates) return
-        checkingUpdates = true
-        updateStatus = if (manual) resources.getString(R.string.about_update_checking) else null
+    fun startUpdateCheck() {
+        if(checkingUpdates) return
+        checkingUpdates=true
+        updateStatus=resources.getString(R.string.about_update_checking)
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                AppUpdateRepository.checkAndRecord(
-                    context = context,
-                    repositoryUrl = repositoryUrl,
-                    showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
-                )
+            val result=onCheckForUpdates()
+            checkingUpdates=false
+            updateStatus=when(result) {
+                is CheckOutcome.Available -> resources.getString(R.string.about_update_available,result.update.release.tag)
+                is CheckOutcome.Failure, is CheckOutcome.Throttled -> resources.getString(R.string.goldy_update_failed)
+                is CheckOutcome.Incomplete -> resources.getString(R.string.goldy_update_incomplete)
+                else -> resources.getString(R.string.about_update_latest)
             }
-            checkingUpdates = false
-            result
-                .onSuccess { updateInfo ->
-                    if (updateInfo != null) {
-                        updateStatus = resources.getString(R.string.about_update_available, updateInfo.tagName)
-                        onUpdateAvailable(updateInfo)
-                    } else if (manual) {
-                        updateStatus = resources.getString(R.string.about_update_latest)
-                    }
-                }
-                .onFailure { error ->
-                    updateStatus = resources.getString(
-                        R.string.about_update_check_failed,
-                        error.localizedMessage ?: error.javaClass.simpleName
-                    )
-                }
         }
     }
 
@@ -143,7 +132,7 @@ fun AboutScreen(
                     "$channelLabel ${stringResource(R.string.about_overview_release_line, versionName, versionCode).replace(' ', '\u00A0')}"),
                 overview = AboutOverviewContent(
                     channel = AboutDetail(stringResource(R.string.about_overview_channel_title), channelName.ifBlank { channelLabel }),
-                    build = AboutDetail(stringResource(R.string.about_overview_build_title), BuildConfig.BUILD_NUMBER),
+                    build = AboutDetail(stringResource(R.string.about_overview_build_title), TrickuildMetadata.BUILD_NUMBER),
                     version = AboutDetail(stringResource(R.string.about_overview_version_title),
                         stringResource(R.string.about_overview_version_value, simpleVersion))
                 ),
@@ -154,13 +143,16 @@ fun AboutScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AboutSectionTitle(stringResource(R.string.about_updates_title))
+                UpdateNotificationIcon(updateState,{onOpenUpdatePrompt()},strings=goldyNotificationStrings())
                 AboutUpdateCard(
                     description = stringResource(R.string.about_updates_body),
                     status = updateStatus ?: stringResource(R.string.about_update_not_checked),
-                    actionLabel = stringResource(R.string.about_update_check_button),
-                    onCheck = { startUpdateCheck(manual = true) },
+                    actionLabel = stringResource(if(updateState.availableUpdate!=null) R.string.goldy_update_view else R.string.about_update_check_button),
+                    onCheck = { updateState.availableUpdate?.let(onUpdateAvailable) ?: startUpdateCheck() },
                     checking = checkingUpdates, hasResult = updateStatus != null
                 )
+                if(updateState.availableUpdate!=null) TextButton(onClick={startUpdateCheck()},enabled=!checkingUpdates) { Text(stringResource(R.string.about_update_check_button)) }
+                TextButton(onClick=onOpenUpdateCenter) { Text(stringResource(R.string.goldy_transfer_open)) }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

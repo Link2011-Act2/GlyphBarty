@@ -170,19 +170,22 @@ import jp.linkserver.glyphvisualizer.glyph.Phone4aAsPhone4bGlyphProbe
 import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
-import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
-import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
-import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
+import jp.linkserver.goldy.*
+import jp.linkserver.glyphvisualizer.update.AppUpdates
+import jp.linkserver.glyphvisualizer.ui.goldyNotificationStrings
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalInspectionMode
+import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GlyphVisualizerApp(
     uiState: VisualizerUiState,
-    actions: VisualizerUiActions
+    actions: VisualizerUiActions,
+    openTransferRequest: Long = 0L
 ) {
     with(uiState) {
         with(capture) {
@@ -205,8 +208,17 @@ internal fun GlyphVisualizerApp(
     var selectedDetailsTab by rememberSaveable { mutableStateOf(ExperimentalDetailsTab.LIVE) }
     var drawerOpen by remember { mutableStateOf(false) }
     var startPending by rememberSaveable { mutableStateOf(false) }
-    var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
-    var updateNotification by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    val inspecting=LocalInspectionMode.current
+    val updates=remember(context,inspecting) {
+        if(inspecting) null else AppUpdates.get(context).also {
+            jp.linkserver.glyphvisualizer.update.UpdateTransferRuntime.get(context)
+        }
+    }
+    val previewState=remember { kotlinx.coroutines.flow.MutableStateFlow(GoldyState()) }
+    val updateState by (updates?.state ?: previewState).collectAsState()
+    val updateScope=rememberCoroutineScope()
+    var showUpdatePrompt by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openTransferRequest) { if(openTransferRequest>0) screen=Screen.UPDATE }
         BackHandler(enabled = drawerOpen || (screen != Screen.MAIN && screen != Screen.WELCOME)) {
         when {
             drawerOpen -> drawerOpen = false
@@ -256,26 +268,7 @@ internal fun GlyphVisualizerApp(
             }
         }
     }
-    LaunchedEffect(repositoryUrl, automaticUpdateCheckEnabled) {
-        val showLatestForTesting = isShowLatestReleaseForTestingEnabled(context)
-        val result = withContext(Dispatchers.IO) {
-            AppUpdateRepository.checkAutomatically(
-                context = context,
-                enabled = automaticUpdateCheckEnabled,
-                    repositoryUrl = repositoryUrl,
-                    showLatestForTesting = showLatestForTesting
-            )
-        }
-        result?.onSuccess { updateInfo ->
-                if (
-                    updateInfo != null &&
-                    (showLatestForTesting || !isUpdateNotificationDismissed(context, updateInfo.tagName))
-                ) {
-                    availableUpdate = updateInfo
-                    updateNotification = updateInfo
-                }
-        }
-    }
+    LaunchedEffect(automaticUpdateCheckEnabled) { updates?.check() }
     if (showPhone1GlyphDebugControls && showPhone1GlyphDebugPermissionDialog) {
         AlertDialog(
             onDismissRequest = onDismissPhone1GlyphDebugPermissionDialog,
@@ -599,34 +592,11 @@ internal fun GlyphVisualizerApp(
                         onBack = { screen = Screen.EXPERIMENTAL }
                     )
                     Screen.ABOUT -> AboutScreen(
-                        onBack = { screen = Screen.SETTINGS },
-                        onOssLicenses = { screen = Screen.OSS },
-                        onUpdateAvailable = { updateInfo ->
-                            availableUpdate = updateInfo
-                            screen = Screen.UPDATE
-                        },
-                        nothingStyleEnabled = nothingStyleEnabled
-                    )
-                    Screen.UPDATE -> {
-                        val updateInfo = availableUpdate
-                        if (updateInfo != null) {
-                            UpdateOverviewScreen(
-                                updateInfo = updateInfo,
-                                nothingStyleEnabled = nothingStyleEnabled,
-                                onBack = { screen = Screen.ABOUT }
-                            )
-                        } else {
-                            AboutScreen(
-                                onBack = { screen = Screen.SETTINGS },
-                                onOssLicenses = { screen = Screen.OSS },
-                                onUpdateAvailable = { foundUpdate ->
-                                    availableUpdate = foundUpdate
-                                    screen = Screen.UPDATE
-                                },
-                                nothingStyleEnabled = nothingStyleEnabled
-                            )
-                        }
-                    }
+                        onBack={screen=Screen.SETTINGS},onOssLicenses={screen=Screen.OSS},
+                        onUpdateAvailable={screen=Screen.UPDATE},nothingStyleEnabled=nothingStyleEnabled,
+                        updateState=updateState,onCheckForUpdates={updates?.check(force=true) ?: CheckOutcome.Disabled},
+                        onOpenUpdateCenter={screen=Screen.UPDATE},onOpenUpdatePrompt={showUpdatePrompt=true})
+                    Screen.UPDATE -> UpdateOverviewScreen(updateInfo=updateState.availableUpdate,onBack={screen=Screen.ABOUT})
                     Screen.OSS -> OssLicensesScreen(
                         nothingStyleEnabled = nothingStyleEnabled,
                         onBack = { screen = Screen.ABOUT }
@@ -649,35 +619,16 @@ internal fun GlyphVisualizerApp(
                 }
             )
 
-            AnimatedVisibility(
-                visible = updateNotification != null,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 72.dp),
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                updateNotification?.let { updateInfo ->
-                    UpdateNotificationOverlay(
-                        updateInfo = updateInfo,
-                        nothingStyleEnabled = nothingStyleEnabled,
-                        onOpen = {
-                            availableUpdate = updateInfo
-                            updateNotification = null
-                            screen = Screen.UPDATE
-                        },
-                        onDismiss = {
-                            updateNotification = null
-                        },
-                        onDismissUntilNextVersion = {
-                            dismissUpdateNotificationUntilNextVersion(context, updateInfo.tagName)
-                            updateNotification = null
-                        }
-                    )
-                }
-            }
+            jp.linkserver.goldy.compose.UpdateNotificationBanner(
+                updateState.copy(showBanner=updateState.showBanner && screen!=Screen.UPDATE && screen!=Screen.WELCOME && !showUpdatePrompt),
+                {updates?.hideBanner();showUpdatePrompt=true},{updates?.hideBanner()},
+                modifier=Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal=20.dp).padding(top=72.dp),
+                strings=goldyNotificationStrings())
+            if(showUpdatePrompt) jp.linkserver.goldy.compose.UpdateCheckDialog(updateState,
+                {updateScope.launch { updates?.check(force=true) }},
+                {showUpdatePrompt=false;screen=Screen.UPDATE},
+                {tag -> updates?.ignoreVersion(tag);showUpdatePrompt=false},
+                {showUpdatePrompt=false},strings=goldyNotificationStrings())
         }
     }
 }

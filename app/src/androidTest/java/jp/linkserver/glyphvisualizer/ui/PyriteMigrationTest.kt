@@ -13,7 +13,10 @@ import androidx.test.platform.app.InstrumentationRegistry
 import jp.linkserver.glyphvisualizer.AppLogger
 import jp.linkserver.glyphvisualizer.R
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
+import jp.linkserver.goldy.GitHubRelease
+import jp.linkserver.goldy.UpdateCandidate
+import jp.linkserver.goldy.compose.LocalUpdateCardStyle
+import androidx.compose.material3.MaterialTheme
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -89,18 +92,28 @@ class PyriteMigrationTest {
     @Test fun materialLight() = verify(false, false)
     @Test fun materialDark() = verify(true, false)
 
-    @Test fun updateScreensKeepTheirExistingDesign() {
+    @Test fun updateScreensInheritBothHostThemes() {
         var dark by mutableStateOf(false)
         var nothing by mutableStateOf(true)
-        val update = AppUpdateInfo("v2.2.0-Beta1", "Beta", "Offline release notes.\n更新内容の表示確認。",
-            "https://example.com/release", null, null)
+        val update = UpdateCandidate(GitHubRelease(22, "v2.2.0-Beta1",
+            notes = "Offline release notes.\n更新内容の表示確認。",
+            url = "https://github.com/Link2011-Act2/GlyphBarty/releases/tag/v2.2.0-Beta1"))
         compose.setContent {
             GlyphBartyTheme(darkTheme = dark, nothingStyle = nothing) {
-                UpdateOverviewScreen(update, nothing, {})
+                val style = LocalUpdateCardStyle.current
+                val colors = MaterialTheme.colorScheme
+                val shape = MaterialTheme.shapes.large
+                SideEffect {
+                    assertEquals(if (dark) colors.surfaceContainerHigh else colors.surfaceContainerLowest, style.containerColor)
+                    assertSame(shape, style.shape)
+                }
+                UpdateOverviewScreen(update, {})
             }
         }
         for (style in listOf(true, false)) for (night in listOf(false, true)) {
             compose.runOnIdle { nothing = style; dark = night }
+            compose.onNodeWithText(update.release.tag).assertExists()
+            compose.onNodeWithTag("latest-release-notes").assertExists()
             capture("${if (style) "nothing" else "material"}-${if (night) "dark" else "light"}-update")
         }
     }
@@ -116,6 +129,8 @@ internal fun FixtureSettings(
     onMatrixTrackArtistEnabledChanged: (Boolean) -> Unit = {},
 ) {
     SettingsScreen(
+        uiDeviceProfile = if (matrixSupported) jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile.PHONE3_MATRIX
+            else jp.linkserver.glyphvisualizer.glyph.GlyphDeviceProfile.PHONE1,
         matrixSupported = matrixSupported,
         matrixTrackTitleEnabled = matrixTrackTitleEnabled,
         matrixTrackArtistEnabled = matrixTrackArtistEnabled,

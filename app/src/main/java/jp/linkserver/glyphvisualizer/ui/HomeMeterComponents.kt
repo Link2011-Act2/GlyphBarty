@@ -177,12 +177,6 @@ import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
-import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
-import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.isIntDevBuild
-import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
 import rikka.shizuku.Shizuku
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1057,98 +1051,6 @@ internal fun IsolatedCompactMeterOverlay(
             nothingStyleEnabled = nothingStyleEnabled,
             onDismissUpward = onDismissUpward
         )
-    }
-}
-
-@Composable
-internal fun UpdateNotificationOverlay(
-    updateInfo: AppUpdateInfo,
-    nothingStyleEnabled: Boolean,
-    onOpen: () -> Unit,
-    onDismiss: () -> Unit,
-    onDismissUntilNextVersion: () -> Unit
-) {
-    val density = LocalDensity.current
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-    var dragOffsetPx by remember(updateInfo.tagName) { mutableStateOf(0f) }
-    var dismissing by remember(updateInfo.tagName) { mutableStateOf(false) }
-    val exitDistancePx = with(density) { 96.dp.toPx() }
-    val animatedOffsetPx by animateFloatAsState(
-        targetValue = if (dismissing) -exitDistancePx else dragOffsetPx,
-        animationSpec = tween(durationMillis = 180),
-        label = "update-notification-dismiss",
-        finishedListener = {
-            if (dismissing) {
-                onDismiss()
-            }
-        }
-    )
-    val animatedAlpha = ((exitDistancePx + animatedOffsetPx) / exitDistancePx).coerceIn(0f, 1f)
-
-    androidx.compose.material3.Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                translationY = animatedOffsetPx
-                alpha = animatedAlpha
-            }
-            .pointerInput(updateInfo.tagName) {
-                val dismissThresholdPx = with(density) { 28.dp.toPx() }
-                detectVerticalDragGestures(
-                    onVerticalDrag = { _, dragAmount ->
-                        dragOffsetPx = (dragOffsetPx + dragAmount).coerceAtMost(0f)
-                    },
-                    onDragEnd = {
-                        if (dragOffsetPx < -dismissThresholdPx) {
-                            dismissing = true
-                        } else {
-                            dragOffsetPx = 0f
-                        }
-                    },
-                    onDragCancel = {
-                        dragOffsetPx = 0f
-                    }
-                )
-            },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                Icons.Default.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onOpen),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.update_notification_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = updateInfo.tagName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            TextButton(onClick = onDismissUntilNextVersion) {
-                Text(stringResource(R.string.update_notification_dont_show))
-            }
-        }
     }
 }
 

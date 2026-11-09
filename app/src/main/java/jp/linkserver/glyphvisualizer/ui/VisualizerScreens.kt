@@ -178,12 +178,8 @@ import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.AppUpdateRepository
-import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
 import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
 import jp.linkserver.glyphvisualizer.update.isIntDevBuild
-import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
 import rikka.shizuku.Shizuku
 
 @OptIn(ExperimentalMaterial3Api::class)

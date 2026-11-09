@@ -1,5 +1,7 @@
 package jp.linkserver.glyphvisualizer.ui
 
+import jp.linkserver.glyphvisualizer.TrickuildMetadata
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,10 +31,10 @@ internal fun VersionDetailsDialog(
     modifier: Modifier = Modifier,
     versionName: String = BuildConfig.VERSION_NAME,
     versionCode: Int = BuildConfig.VERSION_CODE,
-    buildNumber: String = BuildConfig.BUILD_NUMBER,
-    codename: String = BuildConfig.CODE_NAME,
-    personalityNumber: Int = BuildConfig.PERSONALITY_NUMBER,
-    personalitySeed: String = BuildConfig.PERSONALITY_SEED,
+    buildNumber: String = TrickuildMetadata.BUILD_NUMBER,
+    codename: String = TrickuildMetadata.CODE_NAME,
+    personalityNumber: Int = TrickuildMetadata.PERSONALITY_NUMBER,
+    personalitySeed: String = TrickuildMetadata.PERSONALITY_SEED,
 ) {
     val personality = VersionPersonality.fromNumber(personalityNumber)
     AlertDialog(

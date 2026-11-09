@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import androidx.compose.runtime.collectAsState
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -180,14 +181,6 @@ import jp.linkserver.glyphvisualizer.ui.openNotificationAccessSettings
 import jp.linkserver.glyphvisualizer.ui.theme.GlyphBartyTheme
 import jp.linkserver.glyphvisualizer.ui.theme.NTypeFontFamily
 import jp.linkserver.glyphvisualizer.ui.theme.NothingRed
-import jp.linkserver.glyphvisualizer.update.AppUpdateInfo
-import jp.linkserver.glyphvisualizer.update.checkGitHubReleaseUpdate
-import jp.linkserver.glyphvisualizer.update.dismissUpdateNotificationUntilNextVersion
-import jp.linkserver.glyphvisualizer.update.isShowLatestReleaseForTestingEnabled
-import jp.linkserver.glyphvisualizer.update.isIntDevBuild
-import jp.linkserver.glyphvisualizer.update.isUpdateNotificationDismissed
-import jp.linkserver.glyphvisualizer.update.markUpdateCheckFinished
-import jp.linkserver.glyphvisualizer.update.shouldCheckForUpdates
 import rikka.shizuku.Shizuku
 
 internal const val RESPONSE_SPEED_NONE_THRESHOLD = 0.54f
@@ -215,6 +208,12 @@ internal enum class WelcomeStep {
 }
 
 class MainActivity : ComponentActivity() {
+    private val transferOpen=kotlinx.coroutines.flow.MutableStateFlow(0L)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if(intent.action==jp.linkserver.glyphvisualizer.update.ApkUpdateProfile.ACTION_VIEW_TRANSFER) transferOpen.value++
+    }
     companion object {
         private const val STATE_PENDING_MEDIA_PLAYBACK_PERMISSION =
             "pending_media_playback_permission"
@@ -384,6 +383,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if(savedInstanceState==null && intent.action==jp.linkserver.glyphvisualizer.update.ApkUpdateProfile.ACTION_VIEW_TRANSFER) transferOpen.value++
         AppLogger.init(this)
         pendingMediaPlaybackOnlyPermissionRequest = savedInstanceState?.getBoolean(
             STATE_PENDING_MEDIA_PLAYBACK_PERMISSION,
@@ -480,6 +480,7 @@ class MainActivity : ComponentActivity() {
             }
             GlyphBartyTheme(nothingStyle = uiState.nothingStyleEnabled) {
                 GlyphVisualizerApp(
+                    openTransferRequest=transferOpen.collectAsState().value,
                     uiState = VisualizerUiState(
                         capture = uiState,
                         initialSetupPending = initialSetupPending,

@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import jp.linkserver.pyrite.theme.PyriteTheme
 import jp.linkserver.pyrite.theme.PyriteStyle
 import jp.linkserver.pyrite.theme.PyriteFonts
@@ -26,7 +27,12 @@ fun GlyphBartyTheme(
             typography = if (nothingStyle) NothingTypography else MaterialTheme.typography,
             shapes = if (nothingStyle) Shapes() else MaterialTheme.shapes,
             motionScheme = MaterialTheme.motionScheme,
-            content = content
+            content = {
+                CompositionLocalProvider(jp.linkserver.goldy.compose.LocalUpdateCardStyle provides
+                    jp.linkserver.goldy.compose.UpdateCardStyle(
+                        containerColor=if(darkTheme) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
+                        shape=MaterialTheme.shapes.large)) { content() }
+            }
         )
     }
 }
