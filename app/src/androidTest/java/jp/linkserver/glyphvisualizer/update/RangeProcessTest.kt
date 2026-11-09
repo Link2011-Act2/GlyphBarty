@@ -92,7 +92,7 @@ class RangeProcessTest {
             val owner = Any()
             instrumentation.runOnMainSync { runtime.setForeground(owner,true) }
             delay(100)
-            instrumentation.runOnMainSync { runtime.action(runtime.selection.value,UpdateAction.Download) }
+            instrumentation.runOnMainSync { runtime.action(runtime.selection.value,UpdateAction.Download); runtime.setForeground(owner,false) }
             waitFor { runtime.state.value.busy }
             waitFor {
                 val state = runtime.state.value
@@ -108,6 +108,7 @@ class RangeProcessTest {
             assertTrue(File(app.filesDir,"goldy-range-test").listFiles().orEmpty().none { it.extension == "part" })
             val automaticLaunches = launches
             instrumentation.runOnMainSync {
+                runtime.setForeground(owner,true)
                 runtime.action(runtime.selection.value,UpdateAction.Install)
                 runtime.action(runtime.selection.value,UpdateAction.Install)
             }
