@@ -47,10 +47,8 @@ hs_err_pid*.log
 /APK/
 
 # Local QA captures
-# Files already tracked under artifacts/ remain tracked.
 /artifacts/
 /design-qa.md
-/verification/
 
 # Local AI / automation tool state
 /.agents/
@@ -72,3 +70,31 @@ hs_err_pid*.log
 /デザイン/
 /app/libs/_aar_tmp/
 /app/libs/*_javap.txt
+
+# Local coding-assistant instructions and state
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
+GEMINI.md
+.agents/
+.codex/
+.claude/
+/BUG_FIX_PLAN.md
+
+# Local editor settings and credentials
+.idea/
+.vscode/
+
+# Generated UI comparisons
+/verification/pyrite-migration/
+/verification/pyrite-details-*/
+
+# Existing local working material
+/verification/
+
+# Local diagnostics and exported build artifacts
+*.pk8
+*.tmp
+
+# Local document archives
+.local-notes/
